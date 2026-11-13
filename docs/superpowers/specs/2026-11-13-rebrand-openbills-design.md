@@ -53,7 +53,7 @@ Groß-/Kleinschreibung: „OpenBills“ in Fließtext und UI, `openbills` in all
 - **Frontend:** `src/components/Layout.tsx` (Header), `index.html` (Title, Meta, Favicon), `src/utils/faviconUtils.ts` (Manifest-Name, Basistitel, application-name), `src/components/EmailManagement.tsx` (Placeholder), `src/services/api.ts` (Event-Name), `src/utils/pdf/zugferdGenerator.ts` (PDF Producer/Creator), `src/utils/pdfGenerator.ts.backup` (mit ersetzen, Datei sonst unverändert).
 - **Backend:** `backend/database.js` (Default-Logo-Pfade + Logmeldung), `routes/emailManagement.js` (Test-Mail-Betreff/-Text, Default-Absendername), `routes/backup.js` (Backup-Name), `utils/plan.js` + `utils/draftWatermark.js` (Env-Var-Namen, Kommentare), `tests/plan.test.js` + `tests/libraries.test.js`, `package.json`.
 - **Infra:** `docker-compose.yml`, `deploy-instance.sh`, `manage-instances.sh`.
-- **Doku:** `README.md`, `LICENSE` (Projektname im Zusatztext; AGPL-Text selbst unverändert; Copyright-Zeile → „OpenBills Contributors“), `CLAUDE.md`, `AGENTS.md`, `docs/CODE_REVIEW.md`, `docs/superpowers/specs/*`, `docs/superpowers/plans/*`.
+- **Doku:** `README.md`, `LICENSE` (Projektname im Zusatztext; AGPL-Text selbst unverändert; Copyright-Zeile siehe „Absender“), `CLAUDE.md`, `AGENTS.md`, `docs/CODE_REVIEW.md`, `docs/superpowers/specs/*`, `docs/superpowers/plans/*`.
 - **Lockfiles:** `package-lock.json`, `backend/package-lock.json` — nur das `name`-Feld, per `npm install --package-lock-only` in Docker regenerieren statt von Hand.
 - Abschlusskriterium: `git grep -i belego` liefert **keine** Treffer (Ausnahme: dieses Spec-Dokument selbst, das den alten Namen bewusst nennt, und die Umzugsanleitung im README).
 
@@ -70,6 +70,18 @@ Groß-/Kleinschreibung: „OpenBills“ in Fließtext und UI, `openbills` in all
 - Frontend-Favicon: `public/openbills-icon.png` (Vite kopiert `public/` nach `dist/`). `index.html` verweist bisher auf `/Belego_Icon.png`, das im Build gar nicht existiert — wird dabei mit repariert.
 - PNG-Export aus SVG im Docker-Container (z. B. `rsvg-convert` oder `sharp`), nicht auf dem Host.
 - Header in `Layout.tsx` zeigt weiterhin Firmenlogo/-icon aus der DB + Text; nur der Text wird „OpenBills“.
+
+## Absender: Namyslo Solutions
+
+OpenBills ist ein Projekt von **Namyslo Solutions** (Schreibweise ohne Bindestrich, `https://namyslo-solutions.de`).
+
+- **Nicht** im Default-Logo `OpenBills.png`/`OpenBills_Icon.png`, nicht im Favicon, nicht in Test-Mails, PDF-Metadaten oder Rechnungen — diese landen bei Kunden der Nutzer.
+- Namyslo-Icon: rundes Wirbel-Icon aus `Projects/Website-Namyslo-Solutions/public/logo3.png` (3567 px, transparent außerhalb des Kreises), verkleinert ins Repo als `backend/assets/NamysloSolutions_Icon.png` (128 px) und `public/namyslo-solutions-icon.png` (64 px).
+- Zusätzliche Lockup-Variante `backend/assets/OpenBills_by_NamysloSolutions.png` (+ `_dark.png`): Icon + Schriftzug wie oben, darunter klein grau (`#6B7280`, ~13/42 der Schriftzughöhe) die Zeile **„by ⟨Namyslo-Icon⟩ Namyslo Solutions“** — Icon steht zwischen „by“ und „Namyslo Solutions“, Höhe ≈ Zeilenhöhe. Für README-Kopf (statt Standard-Lockup) und spätere Landingpage.
+- App: Fußzeile unten in der Seitenleiste (`Layout.tsx`), klein grau: „OpenBills by ⟨Icon 16 px⟩ Namyslo Solutions“, „Namyslo Solutions“ als Link (`https://namyslo-solutions.de`, `target="_blank" rel="noopener noreferrer"`).
+- README: Fußzeile „Entwickelt von Namyslo Solutions · namyslo-solutions.de“.
+- LICENSE: `Copyright (C) 2025 Namyslo Solutions and OpenBills Contributors`.
+- `package.json` (beide): `"author": "Namyslo Solutions (https://namyslo-solutions.de)"`, `"homepage": "https://openbills.de"`.
 
 ## Demo-Instanz für Screenshots
 
