@@ -1,4 +1,6 @@
-import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
+import logger from '../utils/logger.js';
+import { AuthError, sendAuthError } from '../auth/errors.js';
 import { hasDb, migrateTestDb, resetAuthTables } from './helpers/db.js';
 import { normalizeEmail } from '../auth/users.js';
 import { describeRequest } from '../auth/audit.js';
@@ -6,6 +8,30 @@ import { describeRequest } from '../auth/audit.js';
 describe('normalizeEmail', () => {
   it('trimmt und macht klein', () => {
     expect(normalizeEmail(' Max@Firma.DE ')).toBe('max@firma.de');
+  });
+});
+
+describe('sendAuthError', () => {
+  const fakeRes = () => {
+    const res = { statusCode: null, body: null };
+    res.status = (c) => { res.statusCode = c; return res; };
+    res.json = (b) => { res.body = b; return res; };
+    return res;
+  };
+  it('AuthError: Status, Meldung und Code', () => {
+    const res = fakeRes();
+    sendAuthError(res, new AuthError(400, 'Ungültig', 'x'));
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({ error: 'Ungültig', code: 'x' });
+  });
+  it('andere Fehler: 500 ohne Details, geloggt', () => {
+    const spy = vi.spyOn(logger, 'error').mockImplementation(() => {});
+    const res = fakeRes();
+    sendAuthError(res, new Error('secret db detail'));
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({ error: 'Interner Fehler' });
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
   });
 });
 
@@ -140,7 +166,10 @@ describe.skipIf(!hasDb)('Auth-Repos (DB)', () => {
     const req = { ip: '1.2.3.4', get: () => 'UA', user: { id: 1, name: 'Max', email: 'm@x.de', is_operator: true } };
     await auditMod.audit(req, { action: 'X', details: { status: 200 } });
     await auditMod.audit(null, { action: 'Y' });
+    const spy = vi.spyOn(logger, 'error').mockImplementation(() => {});
     await auditMod.audit(null, { action: 'Z', entityType: 'a'.repeat(500) }); // schlägt fehl, darf nicht werfen
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
     const { rows } = await pool.query('SELECT * FROM audit_log ORDER BY id');
     expect(rows).toHaveLength(2);
     expect(rows[0]).toMatchObject({ actor_label: 'Max', is_operator: true, ip: '1.2.3.4', user_agent: 'UA' });

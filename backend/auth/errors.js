@@ -1,3 +1,5 @@
+import logger from '../utils/logger.js';
+
 export class AuthError extends Error {
   constructor(status, message, code) {
     super(message);
@@ -8,5 +10,9 @@ export class AuthError extends Error {
 }
 
 export function sendAuthError(res, err) {
-  return res.status(err.status || 500).json({ error: err.message, code: err.code });
+  if (err instanceof AuthError) {
+    return res.status(err.status).json({ error: err.message, code: err.code });
+  }
+  logger.error('Unerwarteter Auth-Fehler', { error: err?.message });
+  return res.status(500).json({ error: 'Interner Fehler' });
 }
