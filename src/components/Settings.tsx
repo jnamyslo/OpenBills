@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import logger from '../utils/logger';
 import { Save, Building2, Mail, Globe, CreditCard, Upload, X, Palette, Briefcase, FileText, Plus, Trash2, Database, Clock, Package, Edit2 } from 'lucide-react';
 import { useCompany } from '../context/CompanyContext';
+import { usePlan } from '../context/PlanContext';
+import { PlanLockedNotice } from './PlanLockedNotice';
 import { ColorPicker } from './ColorPicker';
 import { BackupManagement } from './BackupManagement';
 import { EmailManagement } from './EmailManagement';
@@ -11,6 +13,7 @@ import { YearlyInvoiceStartNumber, MaterialTemplate, HourlyRate } from '../types
 
 export function Settings() {
   const { company, updateCompany } = useCompany();
+  const { hasFeature } = usePlan();
   const [formData, setFormData] = useState(company);
   const [isSaving, setIsSaving] = useState(false);
   const [yearlyStartNumbers, setYearlyStartNumbers] = useState<YearlyInvoiceStartNumber[]>([]);
@@ -1079,65 +1082,71 @@ export function Settings() {
               </div>
             </div>
 
-            {/* Material Templates Management */}
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center">
-                  <Package className="h-4 w-4 text-primary-custom mr-2" />
-                  <h4 className="text-md font-semibold text-gray-800">Materialvorlagen</h4>
+            {hasFeature('customerPricing') ? (
+              <>
+              {/* Material Templates Management */}
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center">
+                    <Package className="h-4 w-4 text-primary-custom mr-2" />
+                    <h4 className="text-md font-semibold text-gray-800">Materialvorlagen</h4>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddingMaterial(true)}
+                    className="inline-flex items-center px-3 py-2 bg-primary-custom text-white rounded-lg hover:brightness-90 transition-colors"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Material hinzufügen
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setIsAddingMaterial(true)}
-                  className="inline-flex items-center px-3 py-2 bg-primary-custom text-white rounded-lg hover:brightness-90 transition-colors"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Material hinzufügen
-                </button>
-              </div>
               
-              {/* Material Templates List */}
-              <div className="space-y-3">
-                {materialTemplates.map((template) => (
-                  <div key={template.id} className={`p-3 rounded-lg border ${template.isDefault ? 'border-primary-custom bg-primary-custom/5' : 'border-gray-200 bg-gray-50'}`}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-3">
-                          <h5 className="font-medium text-gray-900">{template.name}</h5>
-                          {template.isDefault && (
-                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-primary-custom text-white">
-                              Standard
-                            </span>
+                {/* Material Templates List */}
+                <div className="space-y-3">
+                  {materialTemplates.map((template) => (
+                    <div key={template.id} className={`p-3 rounded-lg border ${template.isDefault ? 'border-primary-custom bg-primary-custom/5' : 'border-gray-200 bg-gray-50'}`}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-3">
+                            <h5 className="font-medium text-gray-900">{template.name}</h5>
+                            {template.isDefault && (
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-primary-custom text-white">
+                                Standard
+                              </span>
+                            )}
+                          </div>
+                          {template.description && (
+                            <p className="text-sm text-gray-600 mt-1">{template.description}</p>
                           )}
+                          <p className="text-sm font-semibold text-primary-custom mt-1">
+                            {template.unitPrice.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })} / {template.unit}
+                          </p>
                         </div>
-                        {template.description && (
-                          <p className="text-sm text-gray-600 mt-1">{template.description}</p>
-                        )}
-                        <p className="text-sm font-semibold text-primary-custom mt-1">
-                          {template.unitPrice.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })} / {template.unit}
-                        </p>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <button
-                          type="button"
-                          onClick={() => setEditingMaterial(template)}
-                          className="text-primary-custom hover:text-primary-custom/80 p-1"
-                        >
-                          <Edit2 className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteMaterial(template.id)}
-                          className="text-red-600 hover:text-red-800 p-1"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        <div className="flex items-center space-x-2">
+                          <button
+                            type="button"
+                            onClick={() => setEditingMaterial(template)}
+                            className="text-primary-custom hover:text-primary-custom/80 p-1"
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteMaterial(template.id)}
+                            className="text-red-600 hover:text-red-800 p-1"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
+              </>
+            ) : (
+              <PlanLockedNotice feature="customerPricing" compact />
+            )}
           </div>
         </div>
 

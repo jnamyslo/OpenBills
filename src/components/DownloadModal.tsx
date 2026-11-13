@@ -43,8 +43,12 @@ export function DownloadModal({
     });
   };
 
-  const isFormatDisabled = () => {
-    return false; // Keine Beschränkungen mehr
+  // Entwurf ohne Freigabe: PDF mit Wasserzeichen, XRechnung (XML) nicht möglich.
+  // Im Bulk-Modus prüft der Generator pro Rechnung.
+  const isUnreleasedDraft = !isBulkMode && invoice.status === 'draft' && !markAsSent;
+
+  const isFormatDisabled = (format: 'zugferd' | 'xrechnung') => {
+    return format === 'xrechnung' && isUnreleasedDraft;
   };
 
   const formatOptions = [
@@ -63,7 +67,8 @@ export function DownloadModal({
   ];
 
   const handleDownload = () => {
-    onDownload(selectedFormats, markAsSent && canMarkAsSent, selectedAttachmentIds);
+    const allowedFormats = selectedFormats.filter(f => !isFormatDisabled(f));
+    onDownload(allowedFormats.length > 0 ? allowedFormats : ['zugferd'], markAsSent && canMarkAsSent, selectedAttachmentIds);
   };
 
   return (
@@ -120,8 +125,8 @@ export function DownloadModal({
             <div className="space-y-3">
               {formatOptions.map((option) => {
                 const IconComponent = option.icon;
-                const isSelected = selectedFormats.includes(option.value);
-                const isDisabled = isFormatDisabled();
+                const isDisabled = isFormatDisabled(option.value);
+                const isSelected = selectedFormats.includes(option.value) && !isDisabled;
                 
                 return (
                   <label
@@ -160,6 +165,15 @@ export function DownloadModal({
               })}
             </div>
             
+            {isUnreleasedDraft && (
+              <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <p className="text-xs text-amber-800">
+                  Entwurf: Das PDF erhält das Wasserzeichen „ENTWURF“, XRechnung ist nicht verfügbar.
+                  Für ein fertiges Dokument „als versendet markieren“ aktivieren.
+                </p>
+              </div>
+            )}
+
             {selectedFormats.length > 1 && (
               <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
                 <p className="text-xs text-green-800">

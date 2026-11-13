@@ -14,6 +14,8 @@ import { ReminderManagement } from './components/ReminderManagement';
 import { DynamicColors } from './components/DynamicColors';
 import { useCompany } from './context/CompanyContext';
 import { useQuotes } from './context/QuoteContext';
+import { usePlan } from './context/PlanContext';
+import { PlanLockedNotice } from './components/PlanLockedNotice';
 
 interface PageState {
   page: string;
@@ -81,6 +83,7 @@ function AppContent({ currentPageState, handlePageChange }: AppContentProps) {
   const { loading } = useLoading();
   const { company } = useCompany();
   const { quotes } = useQuotes();
+  const { hasFeature } = usePlan();
 
   // Redirect to settings when the current page's module is disabled.
   // Done as an effect (not during render) to avoid updating state while rendering.
@@ -126,11 +129,17 @@ function AppContent({ currentPageState, handlePageChange }: AppContentProps) {
         if (!company.jobTrackingEnabled) {
           return null;
         }
+        if (!hasFeature('jobs')) {
+          return <PlanLockedNotice feature="jobs" />;
+        }
         return <JobManagement onNavigate={handlePageChange} />;
       case 'calendar':
         // Disabled if job tracking is not enabled; effect above redirects to settings
         if (!company.jobTrackingEnabled) {
           return null;
+        }
+        if (!hasFeature('jobs')) {
+          return <PlanLockedNotice feature="jobs" />;
         }
         return <Calendar onNavigate={handlePageChange} />;
       case 'invoices':
@@ -166,6 +175,9 @@ function AppContent({ currentPageState, handlePageChange }: AppContentProps) {
         // Disabled if reminders module is not enabled; effect above redirects to settings
         if (!company.remindersEnabled) {
           return null;
+        }
+        if (!hasFeature('reminders')) {
+          return <PlanLockedNotice feature="reminders" />;
         }
         return <ReminderManagement />;
       case 'settings':

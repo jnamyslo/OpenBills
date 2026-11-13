@@ -472,3 +472,31 @@ export type CreateInput<T> = Omit<T, 'id' | 'createdAt' | 'updatedAt'>;
  * Create update input type (all fields optional except id)
  */
 export type UpdateInput<T> = Partial<Omit<T, 'id'>> & { id: UUID };
+
+// ============================================================================
+// Plan-Tiers (Managed SaaS) – siehe docs/superpowers/specs/2026-11-13-plan-tiers.md
+// ============================================================================
+
+export type PlanName = 'selfhosted' | 'free' | 'starter' | 'professional' | 'enterprise';
+export type PlanFeature = 'email' | 'reminders' | 'jobs' | 'customerPricing' | 'reportingFull';
+export type PlanLimitKind = 'invoices' | 'quotes' | 'customers';
+
+export interface PlanInfo {
+  plan: PlanName;
+  label: string;
+  features: PlanFeature[];
+  limits: { invoicesPerMonth: number | null; quotesPerMonth: number | null; customers: number | null };
+  usage: { period: string; invoices: number; quotes: number; customers: number };
+  upgradeContact: string | null;
+}
+
+/** Antwort-Body des Backends bei 402 (Limit) bzw. 403 (Feature nicht im Plan). */
+export interface PlanErrorBody {
+  error: string;
+  code: 'PLAN_LIMIT_REACHED' | 'FEATURE_NOT_IN_PLAN';
+  plan: PlanName;
+  upgradeContact: string | null;
+  kind?: PlanLimitKind;
+  limit?: number;
+  feature?: PlanFeature;
+}

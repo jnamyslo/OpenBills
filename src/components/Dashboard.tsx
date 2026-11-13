@@ -5,12 +5,14 @@ import { Clock, CheckCircle, Send, Check } from 'lucide-react';
 import { useCustomers } from '../context/CustomerContext';
 import { useInvoices } from '../context/InvoiceContext';
 import { useCompany } from '../context/CompanyContext';
+import { featureUpgradeReason, usePlan } from '../context/PlanContext';
 import { useLoading } from '../context/AppContext';
 import { formatCurrency } from '../utils/formatters';
 import { blobToBase64 } from '../utils/blobUtils';
 import { EmailSendModal } from './EmailSendModal';
 import { generateInvoicePDF } from '../utils/pdfGenerator';
-import { apiService } from '../services/api';
+import { apiService, isPlanError } from '../services/api';
+import { releaseForOutput } from '../utils/releaseForOutput';
 import { Invoice } from '../types';
 
 interface DashboardProps {
@@ -21,6 +23,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
   const { customers } = useCustomers();
   const { invoices, updateInvoice } = useInvoices();
   const { company } = useCompany();
+  const { hasFeature, showUpgrade } = usePlan();
   const { loading } = useLoading();
 
   // Email modal state
@@ -48,6 +51,10 @@ export function Dashboard({ onNavigate }: DashboardProps) {
   };
 
   const handleSendEmail = async (invoice) => {
+    if (!hasFeature('email')) {
+      showUpgrade(featureUpgradeReason('email'));
+      return;
+    }
     const customer = customers.find(c => c.id === invoice.customerId);
     if (!customer) {
       alert('Kundendaten nicht gefunden.');
@@ -119,37 +126,28 @@ export function Dashboard({ onNavigate }: DashboardProps) {
         }
       }
 
-      // Send email for each selected format
-      const invoiceFormats = [];
-      
-      for (const format of formats) {
-        const pdfBlob = await generateInvoicePDF(emailModal.invoice, {
-          format,
-          company,
-          customer
-        });
-        
-        // Convert blob to base64 - use safe method for large files
-        const base64PDF = await blobToBase64(pdfBlob);
-        
-        invoiceFormats.push({
-          format,
-          content: base64PDF
-        });
-      }
-      
-      // Send email to all recipients
-      const result = await apiService.sendInvoiceEmailMultiFormat(
-        allEmails, 
-        invoiceFormats,
-        emailModal.invoice, 
-        customText,
-        processedAttachments
-      );
-      
-      if (!result.success) {
-        throw new Error(`Fehler beim E-Mail-Versand: ${result.message}`);
-      }
+      // Entwürfe werden vor dem Versand freigegeben (zählt gegen das Plan-Kontingent),
+      // damit der Kunde kein Dokument mit Wasserzeichen erhält.
+      const invoiceToSend = emailModal.invoice;
+      await releaseForOutput(invoiceToSend, status => updateInvoice(invoiceToSend.id, { status }), async released => {
+        const invoiceFormats = [];
+        for (const format of formats) {
+          const pdfBlob = await generateInvoicePDF(released, { format, company, customer });
+          // Convert blob to base64 - use safe method for large files
+          invoiceFormats.push({ format, content: await blobToBase64(pdfBlob) });
+        }
+
+        const result = await apiService.sendInvoiceEmailMultiFormat(
+          allEmails,
+          invoiceFormats,
+          released,
+          customText,
+          processedAttachments
+        );
+        if (!result.success) {
+          throw new Error(`Fehler beim E-Mail-Versand: ${result.message}`);
+        }
+      });
       
       const formatLabels = formats.map(f => {
         switch(f) {
@@ -165,24 +163,12 @@ export function Dashboard({ onNavigate }: DashboardProps) {
       
       alert(`Rechnung erfolgreich per E-Mail versendet! (${formatLabels.join(', ')})${attachmentInfo}`);
       
-      // Automatically mark as sent if it was draft.
-      // Eigener try/catch: die E-Mail ist zu diesem Zeitpunkt bereits erfolgreich
-      // versendet — ein Fehler beim Status-Update darf nicht als Versandfehler
-      // gemeldet werden und darf den Dialog nicht offen lassen.
-      if (emailModal.invoice.status === 'draft') {
-        try {
-          await updateInvoice(emailModal.invoice.id, { status: 'sent' });
-        } catch (error) {
-          logger.error('Error marking invoice as sent after email', { error });
-          alert('Die E-Mail wurde versendet, der Status konnte aber nicht auf "Versendet" gesetzt werden.');
-        }
-      }
-
       // Close email dialog
       setEmailModal({ isOpen: false, invoice: null, customer: null });
     } catch (error) {
       logger.error('Fehler beim E-Mail-Versand:', error);
-      alert('Fehler beim E-Mail-Versand: ' + (error as Error).message);
+      // Tarif-Fehler zeigt der Upgrade-Dialog
+      if (!isPlanError(error)) alert('Fehler beim E-Mail-Versand: ' + (error as Error).message);
     } finally {
       setIsSendingEmail(null);
     }
