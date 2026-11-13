@@ -267,7 +267,7 @@ OpenBills hieß früher Belego. Container, Volumes, Datenbanken und Env-Variable
 1. Alte Instanz auf den letzten Belego-Stand bringen, dann in der App **Einstellungen → Backup → Vollbackup** herunterladen. Ab jetzt keine Änderungen mehr in der alten Instanz.
 2. Eigene Werte aus `.env.backend.<name>` notieren (SMTP, Tarif, Upgrade-Kontakt …).
 3. Alte Instanz stoppen: `docker compose --env-file .env.<name> -f docker-compose.yml stop`
-4. Neuen Code holen und `./deploy-instance.sh <name> <db-port> <api-port> <web-port>` mit den bisherigen Ports ausführen. Notierte Werte in die neue `.env.backend.<name>` übertragen – `BELEGO_PLAN` heißt jetzt `OPENBILLS_PLAN`, `BELEGO_UPGRADE_CONTACT` heißt `OPENBILLS_UPGRADE_CONTACT`. **Alte `BELEGO_*`-Variablen werden nicht mehr gelesen** (die Instanz liefe sonst als Self-Hosted ohne Limits). Danach `./manage-instances.sh restart <name>`.
+4. Neuen Code holen und `./deploy-instance.sh` (interaktiv) mit gleichem Instanznamen und den bisherigen Ports ausführen. Notierte Werte in die neue `.env.backend.<name>` übertragen – `BELEGO_PLAN` heißt jetzt `OPENBILLS_PLAN`, `BELEGO_UPGRADE_CONTACT` heißt `OPENBILLS_UPGRADE_CONTACT`. **Alte `BELEGO_*`-Variablen werden nicht mehr gelesen** (die Instanz liefe sonst als Self-Hosted ohne Limits). Danach `./manage-instances.sh restart <name>`.
 5. In der neuen Instanz das Backup wiederherstellen und prüfen.
 6. Alte Reste entfernen (`manage-instances.sh` kennt nur noch `openbills-*`):
    ```bash
