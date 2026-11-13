@@ -23,7 +23,7 @@ Spec: `docs/superpowers/specs/2026-11-13-plan-tiers.md`
 
 ## Phase 3 – Frontend ✅ (2026-11-13)
 
-- [x] `api.ts`: `getPlan()`; 402/403 mit `code` → `PlanError` + Event `belego:plan-error`
+- [x] `api.ts`: `getPlan()`; 402/403 mit `code` → `PlanError` + Event `openbills:plan-error`
 - [x] `PlanContext` (lädt `/api/plan`, `hasFeature`, `isManaged`, aktualisiert bei Datenänderung; öffnet Upgrade-Dialog bei jedem Tarif-Fehler)
 - [x] `UpgradeDialog` mit `upgradeContact` (mailto/tel/URL), `PlanLockedNotice`, `PlanUsage` (Sidebar, nur Managed)
 - [x] Navigation: Schloss bei Aufträgen/Kalender/Mahnungen; Seiten zeigen Sperrhinweis

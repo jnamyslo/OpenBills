@@ -1,4 +1,4 @@
-# Belego
+# OpenBills
 
 German invoicing software (eRechnung, ZUGFeRD, XRechnung) with multi-instance deployment.
 
@@ -36,8 +36,8 @@ German invoicing software (eRechnung, ZUGFeRD, XRechnung) with multi-instance de
 | `docker compose --env-file .env.$INSTANCE -f docker-compose.yml logs -f [service]` | Logs folgen |
 | `docker compose --env-file .env.$INSTANCE -f docker-compose.yml exec backend sh` | Shell im Backend-Container |
 | `docker compose --env-file .env.$INSTANCE -f docker-compose.yml exec backend node server.js` | Backend-Prozess manuell starten |
-| `docker exec -it belego-$INSTANCE-db psql -U <user> <db>` | PSQL im Datenbank-Container |
-| `docker exec belego-$INSTANCE-db pg_dump -U <user> <db> > backup.sql` | DB-Dump |
+| `docker exec -it openbills-$INSTANCE-db psql -U <user> <db>` | PSQL im Datenbank-Container |
+| `docker exec openbills-$INSTANCE-db pg_dump -U <user> <db> > backup.sql` | DB-Dump |
 
 ### Lint (im Frontend-Container)
 
@@ -64,7 +64,7 @@ Das ESLint-Ergebnis erscheint im Build-Output. TypeScript-Prüfung erfolgt analo
 Docker‑Compose across 3 Services: `database` (PostgreSQL 15), `backend`, `frontend` (Nginx).
 
 Env files: `.env.<instance>` für Docker-Compose-Variablen, `.env.backend.<instance>` fürs Backend.  
-Instance-Namenskonvention: `COMPOSE_PROJECT_NAME=belego-<name>` scoped alle Container/Netzwerke/Volumes.
+Instance-Namenskonvention: `COMPOSE_PROJECT_NAME=openbills-<name>` scoped alle Container/Netzwerke/Volumes.
 
 ## Testing
 

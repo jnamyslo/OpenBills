@@ -33,7 +33,7 @@ docker compose --env-file .env.$INSTANCE -f docker-compose.yml build frontend
 docker compose --env-file .env.$INSTANCE -f docker-compose.yml exec backend sh
 
 # PSQL
-docker exec -it belego-$INSTANCE-db psql -U <user> <db>
+docker exec -it openbills-$INSTANCE-db psql -U <user> <db>
 ```
 
 Tests: Vitest in frontend (`npm test`, `src/**/__tests__`) and backend (`backend/tests`, nur Contract-Tests für adm-zip/nodemailer). Weiterhin in Docker ausführen, z. B. `docker run --rm -v "$PWD":/src:ro node:24-alpine sh -c "mkdir /app && cd /src && tar cf - --exclude=node_modules . | tar xf - -C /app && cd /app && npm ci && npm test"` (im jeweiligen Ordner; Bind-Mount von `node_modules` ist auf macOS unzuverlässig).
@@ -71,12 +71,12 @@ Monorepo: root = React frontend, `backend/` = Express API.
 Three Docker services per instance: `database` (PostgreSQL 15), `backend`, `frontend` (Nginx).
 
 - Env files: `.env.<instance>` for Docker Compose vars, `.env.backend.<instance>` for backend runtime.
-- `COMPOSE_PROJECT_NAME=belego-<name>` scopes all containers, networks, and volumes per instance.
+- `COMPOSE_PROJECT_NAME=openbills-<name>` scopes all containers, networks, and volumes per instance.
 - Nginx proxies `/api` → backend; `client_max_body_size 100M` for attachments.
 
 ### Plan-Tiers (Managed SaaS)
 
-- `BELEGO_PLAN` in `.env.backend.<name>` (free | starter | professional | enterprise; empty = selfhosted, unlimited). Matrix in `backend/utils/plan.js`; frontend reads it via `GET /api/plan` (`PlanContext`).
+- `OPENBILLS_PLAN` in `.env.backend.<name>` (free | starter | professional | enterprise; empty = selfhosted, unlimited). Matrix in `backend/utils/plan.js`; frontend reads it via `GET /api/plan` (`PlanContext`).
 - Backend enforces: `requireFeature()` middleware (403), quota counting on first non-draft status in `services/quotaService.js` (402). Frontend gating is UX only.
 - Drafts always get an "ENTWURF" watermark and no embedded ZUGFeRD/XRechnung; send/download "as sent" releases first via `src/utils/releaseForOutput.ts`.
 - Spec: `docs/superpowers/specs/2026-11-13-plan-tiers.md`.
@@ -112,7 +112,7 @@ Three libraries in use — pick by context:
 
 ### Issue tracker
 
-Issues live in GitHub Issues (`jnamyslo/Belego`). See `docs/agents/issue-tracker.md`.
+Issues live in GitHub Issues (`jnamyslo/OpenBills`). See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
