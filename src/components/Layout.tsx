@@ -129,7 +129,7 @@ export function Layout({ children, currentPage, onPageChange }: LayoutProps) {
                 })}
               </ul>
               <PlanUsage />
-              <div className="mt-6 pt-3 border-t border-gray-200 flex items-center gap-1 text-xs text-gray-400">
+              <div className="mt-6 pt-3 border-t border-gray-200 flex items-center gap-1 text-xs text-gray-400 whitespace-nowrap">
                 <span>OpenBills by</span>
                 <img src="/namyslo-solutions-icon.png" alt="" className="w-4 h-4 rounded-full" />
                 <a

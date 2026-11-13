@@ -53,7 +53,7 @@ const customerData = [
 ];
 const customers = [];
 for (const [name, address, postalCode, city] of customerData) {
-  const slug = name.toLowerCase().replace(/[^a-z]+/g, '-').replace(/^-|-$/g, '');
+  const slug = name.toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss').replace(/[^a-z]+/g, '-').replace(/^-|-$/g, '');
   customers.push(await call('POST', '/customers', {
     name, address, postalCode, city, country: 'Deutschland', email: `kontakt@${slug}.example`,
   }));
