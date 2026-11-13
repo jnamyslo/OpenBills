@@ -16,6 +16,8 @@ import yearlyInvoiceStartNumbersRouter from './routes/yearlyInvoiceStartNumbers.
 import backupRouter from './routes/backup.js';
 import reportingRouter from './routes/reporting.js';
 import remindersRouter from './routes/reminders.js';
+import planRouter from './routes/plan.js';
+import { getPlanName, requireFeature } from './utils/plan.js';
 
 dotenv.config();
 
@@ -58,15 +60,16 @@ app.use('/api/customers', customersRouter);
 app.use('/api/invoices', invoicesRouter);
 app.use('/api/quotes', quotesRouter);
 app.use('/api/company', companyRouter);
-app.use('/api/email', emailRouter);
+app.use('/api/email', requireFeature('email'), emailRouter);
 app.use('/api/email-management', emailManagementRouter);
-app.use('/api/jobs', jobsRouter);
-app.use('/api/material-templates', materialTemplatesRouter);
+app.use('/api/jobs', requireFeature('jobs', { allowRead: true }), jobsRouter);
+app.use('/api/material-templates', requireFeature('customerPricing', { allowRead: true }), materialTemplatesRouter);
 app.use('/api/hourly-rates', hourlyRatesRouter);
 app.use('/api/yearly-invoice-start-numbers', yearlyInvoiceStartNumbersRouter);
 app.use('/api/backup', backupRouter);
 app.use('/api/reporting', reportingRouter);
-app.use('/api/reminders', remindersRouter);
+app.use('/api/reminders', requireFeature('reminders', { allowRead: true }), remindersRouter);
+app.use('/api/plan', planRouter);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -77,6 +80,7 @@ app.use((err, req, res, next) => {
 // Initialize database and start server
 async function startServer() {
   try {
+    logger.info('Plan', { plan: getPlanName() });
     logger.info('Connecting to database...');
     await createTables();
     logger.info('Database initialized successfully');

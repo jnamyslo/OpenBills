@@ -74,11 +74,18 @@ Three Docker services per instance: `database` (PostgreSQL 15), `backend`, `fron
 - `COMPOSE_PROJECT_NAME=belego-<name>` scopes all containers, networks, and volumes per instance.
 - Nginx proxies `/api` → backend; `client_max_body_size 100M` for attachments.
 
+### Plan-Tiers (Managed SaaS)
+
+- `BELEGO_PLAN` in `.env.backend.<name>` (free | starter | professional | enterprise; empty = selfhosted, unlimited). Matrix in `backend/utils/plan.js`; frontend reads it via `GET /api/plan` (`PlanContext`).
+- Backend enforces: `requireFeature()` middleware (403), quota counting on first non-draft status in `services/quotaService.js` (402). Frontend gating is UX only.
+- Drafts always get an "ENTWURF" watermark and no embedded ZUGFeRD/XRechnung; send/download "as sent" releases first via `src/utils/releaseForOutput.ts`.
+- Spec: `docs/superpowers/specs/2026-11-13-plan-tiers.md`.
+
 ### PDF Generation
 
 Three libraries in use — pick by context:
 - `jspdf` — frontend invoice/quote/reminder PDF generation
-- `pdf-lib` — ZUGFeRD PDF/A-3 embedding (attaches ZUGFeRD XML with `AFRelationship`)
+- `pdf-lib` — ZUGFeRD PDF/A-3 embedding (attaches ZUGFeRD XML with `AFRelationship`); backend: draft watermark on emailed drafts (`backend/utils/draftWatermark.js`)
 - `pdfkit` — backend-side generation (jobs)
 
 ### eRechnung

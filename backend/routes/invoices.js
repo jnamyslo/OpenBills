@@ -1,5 +1,6 @@
 import express from 'express';
 import logger from '../utils/logger.js';
+import { sendPlanError } from '../utils/plan.js';
 import { findAllInvoices, findInvoiceById } from '../queries/invoiceQueries.js';
 import { createInvoice, updateInvoice, deleteInvoice } from '../services/invoiceService.js';
 
@@ -46,6 +47,7 @@ router.post('/', async (req, res) => {
     const invoice = await createInvoice({ customerId, items, notes, attachments, issueDate, dueDate, status, globalDiscountType, globalDiscountValue, globalDiscountAmount });
     res.status(201).json(invoice);
   } catch (error) {
+    if (sendPlanError(res, error)) return;
     logger.error('Failed to create invoice', {
       error: error.message,
       stack: error.stack,
@@ -66,6 +68,7 @@ router.put('/:id', async (req, res) => {
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
     res.json(invoice);
   } catch (error) {
+    if (sendPlanError(res, error)) return;
     logger.error('Failed to update invoice', {
       error: error.message,
       stack: error.stack,

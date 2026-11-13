@@ -4,6 +4,8 @@ import { BarChart3, Download, FileText, TrendingUp, Users, DollarSign, RefreshCw
 import { useCustomers } from '../context/CustomerContext';
 import { apiService } from '../services/api';
 import { InvoiceJournalResponse, ReportingStatistics, InvoiceJournalEntry, CustomerStats } from '../types';
+import { usePlan } from '../context/PlanContext';
+import { PlanLockedNotice } from './PlanLockedNotice';
 
 export function ReportingManagement() {
   const { customers } = useCustomers();
@@ -19,6 +21,10 @@ export function ReportingManagement() {
   const [statistics, setStatistics] = useState<ReportingStatistics | null>(null);
   const [statisticsLoading, setStatisticsLoading] = useState(false);
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  // Basis-Reporting: nur laufendes Jahr, ohne Rechnungsjournal und Top-Kunden
+  // Erst nach geladenem Plan entscheiden, sonst würde das Journal im Basis-Tarif kurz angefragt (403)
+  const { plan, hasFeature } = usePlan();
+  const fullReporting = plan !== null && hasFeature('reportingFull');
   
   // State for PDF generation
   const [generatingPDF, setGeneratingPDF] = useState(false);
@@ -28,11 +34,16 @@ export function ReportingManagement() {
 
   // Load initial data
   useEffect(() => {
-    loadJournalData();
     loadStatistics();
   // Nur beim Mounten laden.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (fullReporting) loadJournalData();
+  // Laden, sobald feststeht, dass das Journal im Tarif enthalten ist.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fullReporting]);
 
   const loadJournalData = async () => {
     setJournalLoading(true);
@@ -289,6 +300,11 @@ export function ReportingManagement() {
       {/* Two Column Layout */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         {/* Invoice Journal Section */}
+        {!fullReporting ? (
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+            <PlanLockedNotice feature="reportingFull" compact />
+          </div>
+        ) : (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200">
           <div className="p-4 lg:p-6">
             <div className="flex items-center justify-between mb-4">
@@ -517,6 +533,7 @@ export function ReportingManagement() {
             )}
           </div>
         </div>
+        )}
 
         {/* Statistics Section */}
         <div className="space-y-6">
@@ -528,7 +545,7 @@ export function ReportingManagement() {
                 <h2 className="text-lg font-semibold text-gray-900">Jahresstatistik</h2>
               </div>
               <div className="flex items-center space-x-2">
-                <select
+                {fullReporting && <select
                   value={selectedYear}
                   onChange={(e) => {
                     setSelectedYear(parseInt(e.target.value));
@@ -544,7 +561,7 @@ export function ReportingManagement() {
                       </option>
                     );
                   })}
-                </select>
+                </select>}
                 <button
                   onClick={loadStatistics}
                   disabled={statisticsLoading}
@@ -602,7 +619,7 @@ export function ReportingManagement() {
           </div>
 
           {/* Top Customers */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 lg:p-6">
+          {fullReporting && <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 lg:p-6">
             <div className="flex items-center mb-4">
               <Users className="h-5 w-5 text-primary-custom mr-2" />
               <h2 className="text-lg font-semibold text-gray-900">Top Kunden {selectedYear}</h2>
@@ -646,7 +663,7 @@ export function ReportingManagement() {
                 <p>Keine Kundendaten verfügbar</p>
               </div>
             )}
-          </div>
+          </div>}
         </div>
       </div>
     </div>

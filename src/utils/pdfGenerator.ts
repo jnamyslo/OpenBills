@@ -27,6 +27,7 @@ import {
 import type { PDFContext, PageMargins } from './pdf/pdfComponents';
 import { generateXRechnungXML } from './pdf/xrechnungGenerator';
 import { embedZUGFeRDXMLIntoPDF } from './pdf/zugferdGenerator';
+import { addDraftWatermark, DraftExportError } from './pdf/draftWatermark';
 
 // Export types for external use
 export interface PDFOptions {
@@ -63,6 +64,13 @@ export function downloadBlob(blob: Blob, filename: string) {
  * Generate Invoice PDF
  */
 export async function generateInvoicePDF(invoice: Invoice, options: PDFOptions): Promise<Blob> {
+  const isDraft = invoice.status === 'draft';
+
+  // XML kann kein Wasserzeichen tragen: Entwürfe nicht als XRechnung exportieren
+  if (isDraft && options.format === 'xrechnung') {
+    throw new DraftExportError();
+  }
+
   // For XRechnung format, generate XML instead of PDF
   if (options.format === 'xrechnung') {
     return generateXRechnungXML(invoice, options);
@@ -472,6 +480,12 @@ export async function generateInvoicePDF(invoice: Invoice, options: PDFOptions):
   for (let pageNum = 1; pageNum <= pageCount; pageNum++) {
     pdf.setPage(pageNum);
     addPDFFooter(context, pageNum, pageCount);
+  }
+
+  // Entwurf: Wasserzeichen, kein eingebettetes ZUGFeRD-XML
+  if (isDraft) {
+    addDraftWatermark(pdf);
+    return pdf.output('blob');
   }
 
   // === EMBED ZUGFERD XML ===
@@ -1204,6 +1218,10 @@ export async function generateQuotePDF(quote: Quote & { description?: string }, 
     }
   }
   
+  if (quote.status === 'draft') {
+    addDraftWatermark(pdf);
+  }
+
   return pdf.output('blob');
 }
 

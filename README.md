@@ -162,12 +162,12 @@ Interaktiv (empfohlen):
 ./deploy-instance.sh
 ```
 Was passiert:
-- Instanzname, Port‑Erkennung, SMTP‑Setup, sichere Passwörter, Konfigurationstest
+- Instanzname, Port‑Erkennung, Tarif‑Auswahl, sichere Passwörter, Konfigurationstest
 
 Schnell‑Deployment (ohne E‑Mail‑Setup):
 ```bash
-./deploy-instance.sh client1 5432 3001 8080
-#                  ^name   ^db   ^api ^web
+./deploy-instance.sh --legacy client1 5432 3001 8080 [tarif]
+#                           ^name   ^db   ^api ^web  ^optional, siehe „Tarife“
 ```
 
 # Zugriff
@@ -194,6 +194,42 @@ Beispiel‑Portschema:
 ./manage-instances.sh config client1
 ./manage-instances.sh remove client1   # ⚠️ löscht Daten
 ```
+
+`list` zeigt pro Instanz Status, Tarif und Ports.
+
+---
+
+## 💳 Tarife (Managed SaaS)
+
+Self‑Hosted‑Instanzen haben **immer den vollen Funktionsumfang ohne Limits**. Tarife sind nur für betriebene (Managed‑SaaS‑)Instanzen gedacht und werden pro Instanz in `.env.backend.<name>` gesetzt:
+
+```bash
+BELEGO_PLAN=starter                          # free | starter | professional | enterprise; leer = self-hosted
+BELEGO_UPGRADE_CONTACT=vertrieb@example.com  # E-Mail, Telefon oder URL im Upgrade-Hinweis
+```
+
+`deploy-instance.sh` fragt beides ab. Nachträglich ändern: `./manage-instances.sh config <name>`, danach `./manage-instances.sh restart <name>`. Ein unbekannter Wert in `BELEGO_PLAN` verhindert den Start des Backends (kein stilles „unbegrenzt“ bei Tippfehlern).
+
+| | Free | Starter | Professional | Enterprise |
+|---|---:|---:|---:|---:|
+| Rechnungen / Monat | 5 | 25 | 100 | ∞ |
+| Angebote / Monat | 5 | 25 | 100 | ∞ |
+| Kunden (gesamt) | 10 | 50 | 250 | ∞ |
+| PDF, XRechnung, ZUGFeRD, Backup | ✓ | ✓ | ✓ | ✓ |
+| E‑Mail‑Versand, Mahnwesen | – | ✓ | ✓ | ✓ |
+| Aufträge & Zeiterfassung | – | – | ✓ | ✓ |
+| Kundenspez. Stundensätze, Materialvorlagen | – | – | ✓ | ✓ |
+| Reporting | Basis | Basis | voll | voll |
+
+**Zählregeln**
+- Eine Rechnung bzw. ein Angebot zählt **einmal**, sobald es den Entwurfsstatus verlässt (z. B. beim Versand). Entwürfe sind unbegrenzt.
+- Löschen gibt kein Kontingent zurück. Abrechnungsmonat ist der Kalendermonat der Freigabe (deutsche Zeit).
+- Am Limit wird die Freigabe abgelehnt; die App zeigt einen Upgrade‑Hinweis mit dem hinterlegten Kontakt.
+- Nach einem Downgrade bleiben bestehende Daten erhalten; gesperrt werden nur neue Freigaben und nicht enthaltene Funktionen.
+
+**Entwürfe** tragen in Vorschau und Download (in allen Instanzen, auch self‑hosted) das Wasserzeichen „ENTWURF“ und lassen sich nicht als XRechnung oder mit eingebettetem ZUGFeRD exportieren. Beim E‑Mail‑Versand oder Download mit „als versendet markieren“ wird der Entwurf vorher freigegeben, der Empfänger erhält ein fertiges Dokument.
+
+Details: [`docs/superpowers/specs/2026-11-13-plan-tiers.md`](docs/superpowers/specs/2026-11-13-plan-tiers.md)
 
 ---
 

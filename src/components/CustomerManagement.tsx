@@ -2,12 +2,15 @@ import React, { useState } from 'react';
 import logger from '../utils/logger';
 import { Plus, Edit, Trash2, Search, Mail, Phone, MapPin, X, Clock, Package } from 'lucide-react';
 import { useCustomers } from '../context/CustomerContext';
+import { usePlan } from '../context/PlanContext';
+import { PlanLockedNotice } from './PlanLockedNotice';
 import { Customer, CustomerEmail, HourlyRate, MaterialTemplate } from '../types';
 import { apiService } from '../services/api';
 import { findDuplicateCustomer, showDuplicateCustomerAlert, formatCustomerNumber } from '../utils/customerUtils';
 
 export function CustomerManagement() {
   const { customers, addCustomer, updateCustomer, deleteCustomer, refreshCustomers } = useCustomers();
+  const { hasFeature } = usePlan();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -958,146 +961,152 @@ export function CustomerManagement() {
                 )}
               </div>
 
-              {/* Customer-specific hourly rates */}
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <label className="block text-sm font-medium text-gray-700">
-                    Kundenspezifische Stundensätze
-                  </label>
-                  <button
-                    type="button"
-                    onClick={handleOpenCreateHourlyRateModal}
-                    className="flex items-center space-x-1 text-sm text-blue-600 hover:text-blue-800"
-                  >
-                    <Plus className="h-4 w-4" />
-                    <span>Hinzufügen</span>
-                  </button>
-                </div>
-                
-                {!editingCustomer && (
-                  <p className="text-xs text-gray-500 mb-3">
-                    Stundensätze werden beim Speichern des Kunden automatisch angelegt.
-                  </p>
-                )}
-
-                {/* Existing Customer Hourly Rates */}
-                {customerHourlyRates.length > 0 && (
-                  <div className="space-y-2 mb-3">
-                    {customerHourlyRates.map((rate) => (
-                      <div key={rate.id} className="flex items-center space-x-2 p-3 bg-gray-50 rounded-lg">
-                        <Clock className="h-4 w-4 text-gray-400 flex-shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium text-gray-900">
-                            {rate.name}
-                            {rate.isDefault && <span className="ml-2 bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">Standard</span>}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {(rate.rate != null ? Number(rate.rate).toFixed(2) : '0.00')}€/h • MwSt: {rate.taxRate != null ? rate.taxRate : 19}%
-                            {rate.description && ` • ${rate.description}`}
-                          </div>
-                        </div>
-                        <div className="flex space-x-1">
-                          <button
-                            type="button"
-                            onClick={() => handleOpenHourlyRateModal(rate)}
-                            className="p-1 text-blue-600 hover:text-blue-800 flex-shrink-0"
-                            title="Bearbeiten"
-                          >
-                            <Edit className="h-4 w-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteHourlyRate(rate.id)}
-                            className="p-1 text-red-500 hover:text-red-700 flex-shrink-0"
-                            title="Löschen"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+              {hasFeature('customerPricing') ? (
+                <>
+                {/* Customer-specific hourly rates */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Kundenspezifische Stundensätze
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleOpenCreateHourlyRateModal}
+                      className="flex items-center space-x-1 text-sm text-blue-600 hover:text-blue-800"
+                    >
+                      <Plus className="h-4 w-4" />
+                      <span>Hinzufügen</span>
+                    </button>
                   </div>
-                )}
+                
+                  {!editingCustomer && (
+                    <p className="text-xs text-gray-500 mb-3">
+                      Stundensätze werden beim Speichern des Kunden automatisch angelegt.
+                    </p>
+                  )}
+
+                  {/* Existing Customer Hourly Rates */}
+                  {customerHourlyRates.length > 0 && (
+                    <div className="space-y-2 mb-3">
+                      {customerHourlyRates.map((rate) => (
+                        <div key={rate.id} className="flex items-center space-x-2 p-3 bg-gray-50 rounded-lg">
+                          <Clock className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-gray-900">
+                              {rate.name}
+                              {rate.isDefault && <span className="ml-2 bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">Standard</span>}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {(rate.rate != null ? Number(rate.rate).toFixed(2) : '0.00')}€/h • MwSt: {rate.taxRate != null ? rate.taxRate : 19}%
+                              {rate.description && ` • ${rate.description}`}
+                            </div>
+                          </div>
+                          <div className="flex space-x-1">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenHourlyRateModal(rate)}
+                              className="p-1 text-blue-600 hover:text-blue-800 flex-shrink-0"
+                              title="Bearbeiten"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteHourlyRate(rate.id)}
+                              className="p-1 text-red-500 hover:text-red-700 flex-shrink-0"
+                              title="Löschen"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
 
                 
-                {customerHourlyRates.length === 0 && editingCustomer && (
-                  <p className="text-xs text-gray-500 italic">
-                    Keine kundenspezifischen Stundensätze konfiguriert. Es werden die Standard-Stundensätze verwendet.
-                  </p>
-                )}
-              </div>
-
-              {/* Customer-specific materials */}
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <label className="block text-sm font-medium text-gray-700">
-                    Kundenspezifische Materialien
-                  </label>
-                  <button
-                    type="button"
-                    onClick={handleOpenCreateMaterialModal}
-                    className="flex items-center space-x-1 text-sm text-blue-600 hover:text-blue-800"
-                  >
-                    <Plus className="h-4 w-4" />
-                    <span>Hinzufügen</span>
-                  </button>
+                  {customerHourlyRates.length === 0 && editingCustomer && (
+                    <p className="text-xs text-gray-500 italic">
+                      Keine kundenspezifischen Stundensätze konfiguriert. Es werden die Standard-Stundensätze verwendet.
+                    </p>
+                  )}
                 </div>
-                
-                {!editingCustomer && (
-                  <p className="text-xs text-gray-500 mb-3">
-                    Materialien werden beim Speichern des Kunden automatisch angelegt.
-                  </p>
-                )}
 
-                {/* Existing Customer Materials */}
-                {customerMaterials.length > 0 && (
-                  <div className="space-y-2 mb-3">
-                    {customerMaterials.map((material) => (
-                      <div key={material.id} className="flex items-center space-x-2 p-3 bg-gray-50 rounded-lg">
-                        <Package className="h-4 w-4 text-gray-400 flex-shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium text-gray-900">
-                            {material.name}
-                            {material.isDefault && <span className="ml-2 bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">Standard</span>}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {(material.unitPrice != null ? Number(material.unitPrice).toFixed(2) : '0.00')}€/{material.unit} • MwSt: {material.taxRate != null ? material.taxRate : 19}%
-                            {material.description && ` • ${material.description}`}
-                          </div>
-                        </div>
-                        <div className="flex space-x-1">
-                          <button
-                            type="button"
-                            onClick={() => handleOpenMaterialModal(material)}
-                            className="p-1 text-blue-600 hover:text-blue-800 flex-shrink-0"
-                            title="Bearbeiten"
-                          >
-                            <Edit className="h-4 w-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteMaterial(material.id)}
-                            className="p-1 text-red-500 hover:text-red-700 flex-shrink-0"
-                            title="Löschen"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                {/* Customer-specific materials */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Kundenspezifische Materialien
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleOpenCreateMaterialModal}
+                      className="flex items-center space-x-1 text-sm text-blue-600 hover:text-blue-800"
+                    >
+                      <Plus className="h-4 w-4" />
+                      <span>Hinzufügen</span>
+                    </button>
                   </div>
-                )}
+                
+                  {!editingCustomer && (
+                    <p className="text-xs text-gray-500 mb-3">
+                      Materialien werden beim Speichern des Kunden automatisch angelegt.
+                    </p>
+                  )}
+
+                  {/* Existing Customer Materials */}
+                  {customerMaterials.length > 0 && (
+                    <div className="space-y-2 mb-3">
+                      {customerMaterials.map((material) => (
+                        <div key={material.id} className="flex items-center space-x-2 p-3 bg-gray-50 rounded-lg">
+                          <Package className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-gray-900">
+                              {material.name}
+                              {material.isDefault && <span className="ml-2 bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">Standard</span>}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {(material.unitPrice != null ? Number(material.unitPrice).toFixed(2) : '0.00')}€/{material.unit} • MwSt: {material.taxRate != null ? material.taxRate : 19}%
+                              {material.description && ` • ${material.description}`}
+                            </div>
+                          </div>
+                          <div className="flex space-x-1">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenMaterialModal(material)}
+                              className="p-1 text-blue-600 hover:text-blue-800 flex-shrink-0"
+                              title="Bearbeiten"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteMaterial(material.id)}
+                              className="p-1 text-red-500 hover:text-red-700 flex-shrink-0"
+                              title="Löschen"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
 
                 
-                {customerMaterials.length === 0 && editingCustomer && (
-                  <p className="text-xs text-gray-500 italic">
-                    Keine kundenspezifischen Materialien konfiguriert. Es werden die Standard-Materialien verwendet.
-                  </p>
-                )}
-              </div>
+                  {customerMaterials.length === 0 && editingCustomer && (
+                    <p className="text-xs text-gray-500 italic">
+                      Keine kundenspezifischen Materialien konfiguriert. Es werden die Standard-Materialien verwendet.
+                    </p>
+                  )}
+                </div>
 
+                </>
+              ) : (
+                <PlanLockedNotice feature="customerPricing" compact />
+              )}
               <div className="flex flex-col sm:flex-row gap-4 pt-4">
                 <button
                   type="submit"

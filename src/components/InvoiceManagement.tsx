@@ -5,7 +5,8 @@ import { Plus, Edit, Trash2, Search, Download, FileText, Send, Check, Mail, Eye 
 import { useCustomers } from '../context/CustomerContext';
 import { useInvoices } from '../context/InvoiceContext';
 import { useCompany } from '../context/CompanyContext';
-import { Invoice } from '../types';
+import { featureUpgradeReason, usePlan } from '../context/PlanContext';
+import { Customer, Invoice } from '../types';
 import { InvoiceEditor } from './InvoiceEditor';
 import { ConfirmationModal } from './ConfirmationModal';
 import { EmailSendModal } from './EmailSendModal';
@@ -13,9 +14,10 @@ import { DownloadModal } from './DownloadModal';
 import { DocumentPreview, PreviewDocument } from './DocumentPreview';
 import { createInvoiceAttachmentPreviewDocuments } from '../utils/previewDocuments';
 import { generateInvoicePDF, downloadBlob } from '../utils/pdfGenerator';
-import { apiService } from '../services/api';
+import { apiService, isPlanError } from '../services/api';
 import { formatCurrency } from '../utils/formatters';
 import { blobToBase64, base64ToBlob } from '../utils/blobUtils';
+import { releaseForOutput } from '../utils/releaseForOutput';
 
 interface InvoiceManagementProps {
   initialFilter?: string;
@@ -27,6 +29,7 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
   const { customers, addCustomer } = useCustomers();
   const { invoices, deleteInvoice, updateInvoice } = useInvoices();
   const { company } = useCompany();
+  const { hasFeature, showUpgrade } = usePlan();
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   const [searchTerm, setSearchTerm] = useState(initialSearchTerm || '');
@@ -279,6 +282,30 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
 
   const handleDownloadConfirm = async (formats: ('zugferd' | 'xrechnung')[], markAsSent: boolean, selectedAttachmentIds: string[] = []) => {
     if (!downloadModal.invoice) return;
+
+    // "Als versendet markieren": Entwurf vor dem Download freigeben (zählt gegen das
+    // Plan-Kontingent) → Dokument ohne Wasserzeichen. Ohne Freigabe trägt ein Entwurf
+    // das Wasserzeichen; XRechnung ist dann nicht möglich.
+    const downloadInvoiceFiles = async (invoice: Invoice, customer: Customer, delayMs: number) => {
+      const download = async (doc: Invoice) => {
+        for (let i = 0; i < formats.length; i++) {
+          const format = formats[i];
+          if (i > 0) {
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+          }
+          const pdfBlob = await generateInvoicePDF(doc, { format, company, customer });
+          const filename = format === 'xrechnung'
+            ? `${doc.invoiceNumber}_xrechnung.xml`
+            : `${doc.invoiceNumber}.pdf`;
+          downloadBlob(pdfBlob, filename);
+        }
+      };
+      if (markAsSent) {
+        await releaseForOutput(invoice, status => updateInvoice(invoice.id, { status }), download);
+      } else {
+        await download(invoice);
+      }
+    };
     
     // Handle bulk mode
     if (downloadModal.isBulkMode && downloadModal.bulkInvoices) {
@@ -297,31 +324,7 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
               continue;
             }
             
-            // Download each format with delay
-            for (let i = 0; i < formats.length; i++) {
-              const format = formats[i];
-              
-              // Add longer delay between downloads for bulk operations (except for the first one)
-              if (i > 0) {
-                await new Promise(resolve => setTimeout(resolve, 1500));
-              }
-              
-              const pdfBlob = await generateInvoicePDF(invoice, {
-                format,
-                company,
-                customer
-              });
-              
-              let filename: string;
-              if (format === 'xrechnung') {
-                filename = `${invoice.invoiceNumber}_xrechnung.xml`;
-              } else {
-                const formatSuffix = format === 'zugferd' ? '' : `_${format}`;
-                filename = `${invoice.invoiceNumber}${formatSuffix}.pdf`;
-              }
-              
-              downloadBlob(pdfBlob, filename);
-            }
+            await downloadInvoiceFiles(invoice, customer, 1500);
 
             // Download invoice attachments if they exist and are selected (matches single-download behavior)
             const bulkSelectedAttachments = selectedAttachmentIds.length > 0
@@ -346,12 +349,6 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
                   logger.error(`Error downloading attachment ${attachment.name} for invoice ${invoice.invoiceNumber}:`, error);
                 }
               }
-            }
-            
-            // Mark as sent if requested — only promote drafts, never
-            // downgrade an already sent/paid/overdue invoice back to 'sent'.
-            if (markAsSent && invoice.status === 'draft') {
-              await updateInvoice(invoice.id, { status: 'sent' });
             }
             
             successCount++;
@@ -385,31 +382,9 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
       if (!customer) {
         alert('Kundendaten nicht gefunden.');
         return;
-      }      // Download each format with delay
-      for (let i = 0; i < formats.length; i++) {
-        const format = formats[i];
-        
-        // Add longer delay between downloads (except for the first one)
-        if (i > 0) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-      
-        const pdfBlob = await generateInvoicePDF(invoice, {
-          format,
-          company,
-          customer
-        });
-        
-        let filename: string;
-        if (format === 'xrechnung') {
-          filename = `${invoice.invoiceNumber}_xrechnung.xml`;
-        } else {
-          const formatSuffix = format === 'zugferd' ? '' : `_${format}`;
-          filename = `${invoice.invoiceNumber}${formatSuffix}.pdf`;
-        }
-        
-        downloadBlob(pdfBlob, filename);
       }
+
+      await downloadInvoiceFiles(invoice, customer, 1000);
 
       // Download invoice attachments if they exist and are selected
       if (invoice.attachments && invoice.attachments.length > 0 && selectedAttachmentIds.length > 0) {
@@ -436,15 +411,11 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
           }
         }
       }
-        // Mark as sent if requested — only promote drafts, never
-        // downgrade an already sent/paid/overdue invoice back to 'sent'.
-        if (markAsSent && invoice.status === 'draft') {
-          await updateInvoice(invoice.id, { status: 'sent' });
-        }
       
     } catch (error) {
       logger.error('Fehler beim Generieren der Datei:', error);
-      alert('Fehler beim Erstellen der Datei. Bitte versuchen Sie es erneut.');
+      // Tarif-Fehler zeigt der Upgrade-Dialog
+      if (!isPlanError(error)) alert('Fehler beim Erstellen der Datei: ' + (error as Error).message);
     } finally {
       setIsExporting(null);
       setDownloadModal({ isOpen: false, invoice: null, isBulkMode: false, bulkInvoices: [] });
@@ -452,6 +423,10 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
   };
 
   const handleSendEmail = async (invoice: Invoice) => {
+    if (!hasFeature('email')) {
+      showUpgrade(featureUpgradeReason('email'));
+      return;
+    }
     const customer = customers.find(c => c.id === invoice.customerId);
     if (!customer) {
       alert('Kundendaten nicht gefunden.');
@@ -523,24 +498,6 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
               }
             }
 
-            // Generate PDFs for all selected formats
-            const invoiceFormats = [];
-            
-            for (const format of formats) {
-              const pdfBlob = await generateInvoicePDF(invoice, {
-                format,
-                company,
-                customer
-              });
-              
-              const base64PDF = await blobToBase64(pdfBlob);
-              
-              invoiceFormats.push({
-                format,
-                content: base64PDF
-              });
-            }
-            
             // Empfänger: eigene Adressen des Kunden plus im Modal ausgewählte /
             // manuell erfasste Adressen. MUSS ein Array sein — die API und
             // /api/email/send-invoice-multi lehnen einen String mit HTTP 400 ab.
@@ -553,23 +510,26 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
               new Set([...customerEmails, ...extraEmails].filter(Boolean))
             ) as string[];
 
-            // Send email
-            const result = await apiService.sendInvoiceEmailMultiFormat(
-              recipients,
-              invoiceFormats,
-              invoice,
-              customText,
-              processedAttachments
-            );
-            
-            if (!result.success) {
-              throw new Error(`Email send failed: ${result.message}`);
-            }
-            
-            // Mark as sent if it was draft
-            if (invoice.status === 'draft') {
-              await updateInvoice(invoice.id, { status: 'sent' });
-            }
+            // Entwürfe werden vor dem Versand freigegeben (zählt gegen das Plan-Kontingent),
+            // damit der Kunde kein Dokument mit Wasserzeichen erhält.
+            await releaseForOutput(invoice, status => updateInvoice(invoice.id, { status }), async released => {
+              const invoiceFormats = [];
+              for (const format of formats) {
+                const pdfBlob = await generateInvoicePDF(released, { format, company, customer });
+                invoiceFormats.push({ format, content: await blobToBase64(pdfBlob) });
+              }
+
+              const result = await apiService.sendInvoiceEmailMultiFormat(
+                recipients,
+                invoiceFormats,
+                released,
+                customText,
+                processedAttachments
+              );
+              if (!result.success) {
+                throw new Error(`Email send failed: ${result.message}`);
+              }
+            });
             
             successCount++;
           } catch (error) {
@@ -644,45 +604,36 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
         }
       }
 
-      // Generate PDFs for all selected formats
-      const invoiceFormats = [];
-      
-      for (const format of formats) {
-        const pdfBlob = await generateInvoicePDF(emailModal.invoice, {
-          format,
-          company,
-          customer
-        });
-        
-        // Convert blob to base64 - use safe method for large files
-        const base64PDF = await blobToBase64(pdfBlob);
-        
-        invoiceFormats.push({
-          format,
-          content: base64PDF
-        });
-      }
-      
       // Combine selected emails and manual emails
       const allEmails = [...(selectedEmails || []), ...(manualEmails?.filter(email => email.trim()) || [])];
-      
+
       if (allEmails.length === 0) {
         alert('Bitte wählen Sie mindestens eine E-Mail-Adresse aus.');
         return;
       }
 
-      // Send email to all recipients
-      const result = await apiService.sendInvoiceEmailMultiFormat(
-        allEmails, 
-        invoiceFormats,
-        emailModal.invoice, 
-        customText,
-        processedAttachments
-      );
-      
-      if (!result.success) {
-        throw new Error(`Fehler beim E-Mail-Versand: ${result.message}`);
-      }
+      // Entwürfe werden vor dem Versand freigegeben (zählt gegen das Plan-Kontingent),
+      // damit der Kunde kein Dokument mit Wasserzeichen erhält.
+      const invoiceToSend = emailModal.invoice;
+      await releaseForOutput(invoiceToSend, status => updateInvoice(invoiceToSend.id, { status }), async released => {
+        const invoiceFormats = [];
+        for (const format of formats) {
+          const pdfBlob = await generateInvoicePDF(released, { format, company, customer });
+          // Convert blob to base64 - use safe method for large files
+          invoiceFormats.push({ format, content: await blobToBase64(pdfBlob) });
+        }
+
+        const result = await apiService.sendInvoiceEmailMultiFormat(
+          allEmails,
+          invoiceFormats,
+          released,
+          customText,
+          processedAttachments
+        );
+        if (!result.success) {
+          throw new Error(`Fehler beim E-Mail-Versand: ${result.message}`);
+        }
+      });
       
       const formatLabels = formats.map(f => {
         switch(f) {
@@ -698,24 +649,12 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
       
       alert(`Rechnung erfolgreich per E-Mail versendet! (${formatLabels.join(', ')})${attachmentInfo}`);
       
-      // Automatically mark as sent if it was draft.
-      // Eigener try/catch: die E-Mail ist hier bereits erfolgreich versendet —
-      // ein Fehler beim Status-Update darf nicht als Versandfehler gemeldet
-      // werden und darf den Dialog nicht offen lassen.
-      if (emailModal.invoice.status === 'draft') {
-        try {
-          await updateInvoice(emailModal.invoice.id, { status: 'sent' });
-        } catch (error) {
-          logger.error('Error marking invoice as sent after email', { error });
-          alert('Die E-Mail wurde versendet, der Status konnte aber nicht auf "Versendet" gesetzt werden.');
-        }
-      }
-
       // Close email dialog
       setEmailModal({ isOpen: false, invoice: null, customer: null, isBulkMode: false, bulkInvoices: [] });
     } catch (error) {
       logger.error('Fehler beim E-Mail-Versand:', error);
-      alert('Fehler beim E-Mail-Versand: ' + (error as Error).message);
+      // Tarif-Fehler zeigt der Upgrade-Dialog
+      if (!isPlanError(error)) alert('Fehler beim E-Mail-Versand: ' + (error as Error).message);
     } finally {
       setIsSendingEmail(null);
     }
@@ -799,6 +738,10 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
   };
 
   const handleBulkEmail = async () => {
+    if (!hasFeature('email')) {
+      showUpgrade(featureUpgradeReason('email'));
+      return;
+    }
     if (selectedInvoiceIds.length === 0) return;
     
     const selectedInvoices = invoices.filter(inv => selectedInvoiceIds.includes(inv.id));

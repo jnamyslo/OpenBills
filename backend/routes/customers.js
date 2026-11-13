@@ -2,8 +2,13 @@ import express from 'express';
 import { query } from '../database.js';
 import logger from '../utils/logger.js';
 import { validateSchema, schemas } from '../utils/validation.js';
+import { requireFeature, sendPlanError } from '../utils/plan.js';
+import { assertCustomerSlotAvailable } from '../services/quotaService.js';
 
 const router = express.Router();
+
+// Kundenspezifische Stundensätze/Materialien nur ab Professional; Bestandsdaten bleiben lesbar
+router.use(['/:id/hourly-rates', '/:id/materials'], requireFeature('customerPricing', { allowRead: true }));
 
 // Get all customers
 router.get('/', async (req, res) => {
@@ -297,6 +302,8 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Validation failed', details: validation.errors });
     }
 
+    await assertCustomerSlotAvailable();
+
     const maxAttempts = 5;
     let lastError;
 
@@ -361,6 +368,7 @@ router.post('/', async (req, res) => {
 
     throw lastError;
   } catch (error) {
+    if (sendPlanError(res, error)) return;
     logger.error('Failed to create customer', {
       error: error.message,
       stack: error.stack,

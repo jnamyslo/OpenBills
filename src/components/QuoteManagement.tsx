@@ -6,16 +6,18 @@ import { useCustomers } from '../context/CustomerContext';
 import { useInvoices } from '../context/InvoiceContext';
 import { useQuotes } from '../context/QuoteContext';
 import { useCompany } from '../context/CompanyContext';
+import { featureUpgradeReason, usePlan } from '../context/PlanContext';
 import { Quote } from '../types';
 import { ConfirmationModal } from './ConfirmationModal';
 import { EmailSendModal } from './EmailSendModal';
-import { apiService } from '../services/api';
+import { apiService, isPlanError } from '../services/api';
 import { formatCurrency } from '../utils/formatters';
 import { generateQuotePDF, downloadBlob } from '../utils/pdfGenerator';
 import { DocumentPreview, PreviewDocument } from './DocumentPreview';
 import { createQuoteAttachmentPreviewDocuments } from '../utils/previewDocuments';
 import { processAttachments, AttachmentFile } from '../utils/fileUtils';
 import { blobToBase64 } from '../utils/blobUtils';
+import { releaseForOutput } from '../utils/releaseForOutput';
 
 interface QuoteManagementProps {
   onNavigate?: (page: string, quoteId?: string) => void;
@@ -25,6 +27,7 @@ export function QuoteManagement({ onNavigate }: QuoteManagementProps = {}) {
   const { customers } = useCustomers();
   const { refreshInvoices } = useInvoices();
   const { company } = useCompany();
+  const { hasFeature, showUpgrade } = usePlan();
   // Angebote kommen aus dem QuoteContext — kein zweiter, eigener Datenbestand.
   const { quotes, updateQuote, deleteQuote, refreshQuotes } = useQuotes();
   const [searchTerm, setSearchTerm] = useState('');
@@ -293,6 +296,10 @@ export function QuoteManagement({ onNavigate }: QuoteManagementProps = {}) {
   };
 
   const handleBulkEmail = async () => {
+    if (!hasFeature('email')) {
+      showUpgrade(featureUpgradeReason('email'));
+      return;
+    }
     if (selectedQuoteIds.length === 0) return;
     
     const selectedQuotes = quotes.filter(quote => selectedQuoteIds.includes(quote.id));
@@ -421,6 +428,10 @@ export function QuoteManagement({ onNavigate }: QuoteManagementProps = {}) {
   };
 
   const handleSendEmail = async (quote: Quote) => {
+    if (!hasFeature('email')) {
+      showUpgrade(featureUpgradeReason('email'));
+      return;
+    }
     const customer = customers.find(c => c.id === quote.customerId);
     if (!customer) {
       alert('Kunde nicht gefunden.');
@@ -492,32 +503,28 @@ export function QuoteManagement({ onNavigate }: QuoteManagementProps = {}) {
               }
             }
 
-            // Generate PDF for this quote
-            const pdfBlob = await generateQuotePDF(quote, {
-              company,
-              customer: customer!,
-            });
-
-            const pdfBase64 = await blobToBase64(pdfBlob);
-
             // Send email for this quote: this quote's own customer emails, plus any
             // extra recipients (selected emails / manual emails) the user picked in the modal
             const customerEmails = [customer?.email, ...(customer?.additionalEmails?.filter(e => e.isActive).map(e => e.email) || [])];
             const extraEmails = [...(selectedEmails || []), ...(manualEmails || [])];
             const emailAddresses = Array.from(new Set([...customerEmails, ...extraEmails].filter(Boolean))) as string[];
 
-            await apiService.sendQuoteEmail(
-              quote.id,
-              emailAddresses,
-              customText,
-              processedAttachments,
-              pdfBase64
-            );
+            // Entwürfe werden vor dem Versand freigegeben (zählt gegen das Plan-Kontingent),
+            // damit der Kunde kein Dokument mit Wasserzeichen erhält.
+            await releaseForOutput(quote, status => updateQuote(quote.id, { status }), async released => {
+              const pdfBlob = await generateQuotePDF(released, {
+                company,
+                customer: customer!,
+              });
 
-            // Update quote status if it's draft
-            if (quote.status === 'draft') {
-              await updateQuote(quote.id, { status: 'sent' });
-            }
+              await apiService.sendQuoteEmail(
+                quote.id,
+                emailAddresses,
+                customText,
+                processedAttachments,
+                await blobToBase64(pdfBlob)
+              );
+            });
 
             successCount++;
           } catch (error) {
@@ -591,33 +598,24 @@ export function QuoteManagement({ onNavigate }: QuoteManagementProps = {}) {
         throw new Error('Kunde nicht gefunden');
       }
 
-      const pdfBlob = await generateQuotePDF(emailModal.quote, {
-        company,
-        customer,
+      // Entwürfe werden vor dem Versand freigegeben (zählt gegen das Plan-Kontingent),
+      // damit der Kunde kein Dokument mit Wasserzeichen erhält.
+      const quoteToSend = emailModal.quote;
+      await releaseForOutput(quoteToSend, status => updateQuote(quoteToSend.id, { status }), async released => {
+        const pdfBlob = await generateQuotePDF(released, {
+          company,
+          customer,
+        });
+
+        // Convert blob to base64 for backend
+        await apiService.sendQuoteEmail(
+          quoteToSend.id,
+          allEmails,
+          customText,
+          processedAttachments,
+          await blobToBase64(pdfBlob)
+        );
       });
-
-      // Convert blob to base64 for backend
-      const pdfBase64 = await blobToBase64(pdfBlob);
-
-      await apiService.sendQuoteEmail(
-        emailModal.quote.id,
-        allEmails,
-        customText,
-        processedAttachments,
-        pdfBase64
-      );
-
-      // Update quote status to 'sent' if it's currently 'draft'
-      if (emailModal.quote.status === 'draft') {
-        // Eigener try/catch: die E-Mail ist hier bereits versendet — ein Fehler
-        // beim Status-Update darf nicht als Versandfehler gemeldet werden.
-        try {
-          await updateQuote(emailModal.quote.id, { status: 'sent' });
-        } catch (error) {
-          logger.error('Error marking quote as sent after email', { error });
-          alert('Die E-Mail wurde versendet, der Status konnte aber nicht auf "Versendet" gesetzt werden.');
-        }
-      }
 
       const totalAttachments = processedAttachments.length;
       const attachmentInfo = totalAttachments > 0 
@@ -628,7 +626,8 @@ export function QuoteManagement({ onNavigate }: QuoteManagementProps = {}) {
       setEmailModal({ isOpen: false, quote: null, customer: null });
     } catch (error) {
       logger.error('Error sending quote email:', error);
-      alert('Fehler beim E-Mail-Versand: ' + (error as Error).message);
+      // Tarif-Fehler zeigt der Upgrade-Dialog
+      if (!isPlanError(error)) alert('Fehler beim E-Mail-Versand: ' + (error as Error).message);
     } finally {
       setIsEmailSending(false);
       setIsSendingEmail(null);

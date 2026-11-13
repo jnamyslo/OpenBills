@@ -1,7 +1,22 @@
-import { Customer, Invoice, Quote, Company, JobEntry, MaterialTemplate, HourlyRate, YearlyInvoiceStartNumber, InvoiceJournalResponse, ReportingStatistics, ReminderEligibility } from '../types';
+import { Customer, Invoice, Quote, Company, JobEntry, MaterialTemplate, HourlyRate, YearlyInvoiceStartNumber, InvoiceJournalResponse, ReportingStatistics, ReminderEligibility, PlanInfo, PlanErrorBody } from '../types';
 import logger from '../utils/logger';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+
+/** Fehler, wenn der Plan eine Aktion nicht erlaubt (Limit erreicht / Feature nicht enthalten). */
+export class PlanError extends Error {
+  readonly body: PlanErrorBody;
+  constructor(body: PlanErrorBody) {
+    super(body.error);
+    this.name = 'PlanError';
+    this.body = body;
+  }
+}
+
+export const isPlanError = (error: unknown): error is PlanError => error instanceof PlanError;
+
+/** Event, auf das der PlanContext mit dem Upgrade-Dialog reagiert. */
+export const PLAN_ERROR_EVENT = 'belego:plan-error';
 
 // ============================================================================
 // Helper Types
@@ -59,6 +74,11 @@ class ApiService {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Network error' }));
+        if (errorData.code === 'PLAN_LIMIT_REACHED' || errorData.code === 'FEATURE_NOT_IN_PLAN') {
+          const planError = new PlanError(errorData as PlanErrorBody);
+          window.dispatchEvent(new CustomEvent(PLAN_ERROR_EVENT, { detail: planError.body }));
+          throw planError;
+        }
         throw new Error(errorData.error || errorData.message || `HTTP error! status: ${response.status}`);
       }
 
@@ -688,6 +708,14 @@ class ApiService {
 
   async getReminderHistory(): Promise<Invoice[]> {
     return this.request<Invoice[]>('/reminders/history');
+  }
+
+  // --------------------------------------------------------------------------
+  // Plan API
+  // --------------------------------------------------------------------------
+
+  async getPlan(): Promise<PlanInfo> {
+    return this.request<PlanInfo>('/plan');
   }
 }
 

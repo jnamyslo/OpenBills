@@ -59,6 +59,47 @@ prompt_password() {
     fi
 }
 
+# Gültige Tarife (leer = self-hosted, unbegrenzt). Muss zu backend/utils/plan.js passen.
+VALID_PLANS="free starter professional enterprise"
+
+is_valid_plan() {
+    local plan="$1" p
+    [ -z "$plan" ] && return 0
+    for p in $VALID_PLANS; do
+        [ "$p" = "$plan" ] && return 0
+    done
+    return 1
+}
+
+# Tarif interaktiv abfragen; setzt BELEGO_PLAN und BELEGO_UPGRADE_CONTACT
+prompt_plan() {
+    echo
+    print_info "=== Tarif-Konfiguration ==="
+    print_info "Self-Hosted = alle Funktionen, keine Limits. Tarife nur für Managed-SaaS-Instanzen."
+    echo "  1) Self-Hosted (Standard)"
+    echo "  2) Free          –   5 Rechnungen/Angebote pro Monat,  10 Kunden"
+    echo "  3) Starter       –  25 Rechnungen/Angebote pro Monat,  50 Kunden, E-Mail, Mahnwesen"
+    echo "  4) Professional  – 100 Rechnungen/Angebote pro Monat, 250 Kunden, alle Funktionen"
+    echo "  5) Enterprise    – unbegrenzt, alle Funktionen"
+    while true; do
+        local choice
+        choice=$(prompt_input "Tarif wählen (1-5)" "1")
+        case "$choice" in
+            1) BELEGO_PLAN=""; break ;;
+            2) BELEGO_PLAN="free"; break ;;
+            3) BELEGO_PLAN="starter"; break ;;
+            4) BELEGO_PLAN="professional"; break ;;
+            5) BELEGO_PLAN="enterprise"; break ;;
+            *) print_error "Bitte 1 bis 5 eingeben." ;;
+        esac
+    done
+
+    BELEGO_UPGRADE_CONTACT=""
+    if [ -n "$BELEGO_PLAN" ]; then
+        BELEGO_UPGRADE_CONTACT=$(prompt_input "Kontakt für Upgrade-Hinweis (E-Mail, Telefon oder URL, optional)" "")
+    fi
+}
+
 # Function to check if port is available
 check_port() {
     local port=$1
@@ -132,6 +173,8 @@ collect_instance_config() {
         print_error "Ports dürfen nicht identisch sein!"
         return 1
     fi
+
+    prompt_plan
     
 
     
@@ -150,6 +193,7 @@ deploy_instance() {
     print_info "Database Port: $DB_PORT"
     print_info "Backend Port: $BACKEND_PORT" 
     print_info "Frontend Port: $FRONTEND_PORT"
+    print_info "Tarif: ${BELEGO_PLAN:-self-hosted}"
     echo
     
     # Final confirmation
@@ -183,6 +227,11 @@ DB_NAME=belego_${INSTANCE_NAME}
 DB_USER=rm_user_${INSTANCE_NAME}
 DB_PASSWORD=${DB_PASSWORD}
 NODE_ENV=production
+
+# Managed SaaS: free | starter | professional | enterprise (leer = self-hosted, unbegrenzt)
+BELEGO_PLAN=${BELEGO_PLAN}
+# Kontakt im Upgrade-Hinweis (E-Mail, Telefon oder URL)
+BELEGO_UPGRADE_CONTACT=${BELEGO_UPGRADE_CONTACT}
 EOF
 
     # Start deployment
@@ -287,13 +336,15 @@ show_help() {
     echo "  $0 -h, --help             # Diese Hilfe anzeigen"
     echo
     echo "Legacy Modus (für Kompatibilität):"
-    echo "  $0 --legacy <instance_name> [db_port] [backend_port] [frontend_port]"
+    echo "  $0 --legacy <instance_name> [db_port] [backend_port] [frontend_port] [plan]"
+    echo "      plan: free | starter | professional | enterprise (weglassen = self-hosted)"
     echo
     echo "Beispiele:"
     echo "  $0                        # Startet interaktiven Modus (Standard)"
     echo "  $0 --interactive          # Startet interaktiven Modus"
     echo "  $0 --legacy client1 5432 3001 8080"
     echo "  $0 --legacy client2 5433 3002 8081"
+    echo "  $0 --legacy client3 5434 3003 8082 starter"
     echo
     print_info "Der interaktive Modus läuft standardmäßig und ist empfohlen, da er eine"
     print_info "vollständige E-Mail-Konfiguration und Validierung bietet."
@@ -315,6 +366,13 @@ legacy_deploy() {
     DB_PORT=${2:-5432}
     BACKEND_PORT=${3:-3001}
     FRONTEND_PORT=${4:-8080}
+    BELEGO_PLAN=${5:-}
+    BELEGO_UPGRADE_CONTACT=""
+
+    if ! is_valid_plan "$BELEGO_PLAN"; then
+        print_error "Unbekannter Tarif '$BELEGO_PLAN'. Erlaubt: $VALID_PLANS (oder weglassen für self-hosted)."
+        exit 1
+    fi
 
     # Check if ports are already in use
     if ! check_port $DB_PORT; then
@@ -356,6 +414,11 @@ DB_NAME=belego_${INSTANCE_NAME}
 DB_USER=rm_user_${INSTANCE_NAME}
 DB_PASSWORD=${DB_PASSWORD}
 NODE_ENV=production
+
+# Managed SaaS: free | starter | professional | enterprise (leer = self-hosted, unbegrenzt)
+BELEGO_PLAN=${BELEGO_PLAN}
+# Kontakt im Upgrade-Hinweis (E-Mail, Telefon oder URL)
+BELEGO_UPGRADE_CONTACT=${BELEGO_UPGRADE_CONTACT}
 EOF
 
     # Deploy with specific env file
@@ -364,6 +427,10 @@ EOF
         print_info "Frontend available at: http://localhost:$FRONTEND_PORT"
         print_info "Backend API available at: http://localhost:$BACKEND_PORT"
         print_info "Database available at: localhost:$DB_PORT"
+        print_info "Tarif: ${BELEGO_PLAN:-self-hosted}"
+        if [ -n "$BELEGO_PLAN" ]; then
+            print_info "Upgrade-Kontakt bei Bedarf in .env.backend.${INSTANCE_NAME} setzen (BELEGO_UPGRADE_CONTACT)."
+        fi
         print_warning "E-Mail-Funktionen sind im Legacy-Modus nicht konfiguriert."
         print_info "Verwenden Sie das Script ohne --legacy Flag für vollständige Konfiguration."
     else

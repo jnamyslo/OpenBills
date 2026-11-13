@@ -1,7 +1,10 @@
 import React, { ReactNode, useState } from 'react';
-import { FileText, Users, Settings, BarChart3, Building2, Menu, X, Briefcase, Calendar, Home, FileCheck, Bell } from 'lucide-react';
+import { FileText, Users, Settings, BarChart3, Building2, Menu, X, Briefcase, Calendar, Home, FileCheck, Bell, Lock } from 'lucide-react';
 import { DynamicColors } from './DynamicColors';
 import { useCompany } from '../context/CompanyContext';
+import { usePlan } from '../context/PlanContext';
+import { PlanUsage } from './PlanUsage';
+import { PlanFeature } from '../types';
 
 interface LayoutProps {
   children: ReactNode;
@@ -11,8 +14,12 @@ interface LayoutProps {
 
 export function Layout({ children, currentPage, onPageChange }: LayoutProps) {
   const { company } = useCompany();
+  const { hasFeature } = usePlan();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
+  // Module, die einen höheren Tarif erfordern: in der Navigation mit Schloss markiert
+  const requiredFeature: Record<string, PlanFeature> = { jobs: 'jobs', calendar: 'jobs', reminders: 'reminders' };
+
   const baseNavItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Home },
     { id: 'invoices', label: 'Rechnungen', icon: FileText },
@@ -113,11 +120,15 @@ export function Layout({ children, currentPage, onPageChange }: LayoutProps) {
                       >
                         <Icon className="h-5 w-5 mr-3 flex-shrink-0" />
                         <span className="truncate">{item.label}</span>
+                        {requiredFeature[item.id] && !hasFeature(requiredFeature[item.id]) && (
+                          <Lock className="h-4 w-4 ml-auto text-gray-400 flex-shrink-0" aria-label="Im Tarif nicht enthalten" />
+                        )}
                       </button>
                     </li>
                   );
                 })}
               </ul>
+              <PlanUsage />
             </div>
           </nav>
 

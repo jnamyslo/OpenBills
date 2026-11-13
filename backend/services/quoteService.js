@@ -3,6 +3,7 @@ import { findQuoteById } from '../queries/quoteQueries.js';
 import { findInvoiceById } from '../queries/invoiceQueries.js';
 import { generateInvoiceNumber } from './invoiceService.js';
 import { validateDiscountFields } from '../utils/validation.js';
+import { countReleaseIfNeeded } from './quotaService.js';
 
 export async function createQuote(data) {
   const discountValidation = validateDiscountFields(data);
@@ -177,6 +178,8 @@ export async function createQuote(data) {
       `, [quoteId, attachment.name, attachment.content, attachment.contentType, attachment.size]);
     }
 
+    await countReleaseIfNeeded(client, 'quotes', quoteId, status);
+
     await client.query('COMMIT');
 
     return await findQuoteById(quoteId);
@@ -298,6 +301,8 @@ export async function updateQuote(id, data) {
         `, [id, attachment.name, content, attachment.contentType, attachment.size]);
       }
     }
+
+    await countReleaseIfNeeded(client, 'quotes', id, mergedData.status);
 
     await client.query('COMMIT');
 

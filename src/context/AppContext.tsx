@@ -9,6 +9,7 @@ import { InvoiceProvider, useInvoices } from './InvoiceContext';
 import { QuoteProvider, useQuotes } from './QuoteContext';
 import { JobProvider, useJobs } from './JobContext';
 import { CompanyProvider, useCompany, defaultCompany } from './CompanyContext';
+import { PlanProvider } from './PlanContext';
 
 // ============================================================================
 // Re-export hooks for convenience
@@ -19,6 +20,7 @@ export { useInvoices } from './InvoiceContext';
 export { useQuotes } from './QuoteContext';
 export { useJobs } from './JobContext';
 export { useCompany } from './CompanyContext';
+export { usePlan } from './PlanContext';
 
 // ============================================================================
 // Loading Context
@@ -111,7 +113,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
             <JobProvider>
               <CompanyProvider loading={loading}>
                 <DataLoader>
-                  {children}
+                  <PlanProvider>
+                    {children}
+                  </PlanProvider>
                 </DataLoader>
               </CompanyProvider>
             </JobProvider>

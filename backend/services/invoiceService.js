@@ -2,6 +2,7 @@ import { pool, query } from '../database.js';
 import { findInvoiceById } from '../queries/invoiceQueries.js';
 import logger from '../utils/logger.js';
 import { validateDiscountFields } from '../utils/validation.js';
+import { countReleaseIfNeeded } from './quotaService.js';
 
 export async function generateInvoiceNumber(issueDate) {
   const client = await pool.connect();
@@ -169,6 +170,8 @@ export async function createInvoice(data) {
         VALUES ($1, $2, $3, $4, $5)
       `, [invoiceId, attachment.name, attachment.content, attachment.contentType, attachment.size]);
     }
+
+      await countReleaseIfNeeded(client, 'invoices', invoiceId, status);
 
       await client.query('COMMIT');
 
@@ -358,6 +361,8 @@ export async function updateInvoice(id, data) {
         `, [id, attachment.name, content, attachment.contentType, attachment.size]);
       }
     }
+
+    await countReleaseIfNeeded(client, 'invoices', id, mergedData.status);
 
     await client.query('COMMIT');
 
