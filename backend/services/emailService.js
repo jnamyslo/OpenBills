@@ -9,7 +9,7 @@ const __dirname = dirname(__filename);
 
 // Escape HTML special characters to prevent HTML injection when embedding
 // user-supplied text (e.g. customText) into outbound email HTML.
-const escapeHtml = (text) => {
+export const escapeHtml = (text) => {
   if (!text) return text;
   return text
     .replace(/&/g, '&amp;')
@@ -47,7 +47,7 @@ const sanitizeFilename = (filename) => {
 };
 
 // SMTP Configuration
-const createTransporter = async () => {
+export const createTransporter = async () => {
   // Try to get SMTP settings from database first
   try {
     const result = await query('SELECT * FROM smtp_settings WHERE id = 1 AND is_enabled = true');
@@ -243,7 +243,7 @@ const saveEmailToHistory = async (emailData, status = 'sent', errorMessage = nul
 };
 
 // Function to get sender info from database settings or fallback to env
-const getSenderInfo = async () => {
+export const getSenderInfo = async () => {
   try {
     const result = await query('SELECT email_from, email_from_name, smtp_user FROM smtp_settings WHERE id = 1 AND is_enabled = true');
     
