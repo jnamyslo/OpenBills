@@ -262,13 +262,13 @@ Beispiele (typische Provider):
 
 ### Umzug von Belego
 
-OpenBills hieß früher Belego. Container, Volumes, Datenbanken und Env-Variablen tragen jetzt `openbills` im Namen; bestehende Belego-Instanzen werden **nicht** automatisch übernommen. Umzug per Backup/Restore (kurze Downtime, gleiche Ports):
+OpenBills hieß früher Belego. Container, Volumes, Datenbanken und Env-Variablen tragen jetzt `openbills` im Namen; bestehende Belego-Instanzen werden **nicht** automatisch übernommen. Ein reines `git pull` + `./manage-instances.sh restart <name>` auf einer alten Instanz wird **nicht** unterstützt (Instanz läuft zwar weiter, aber `list`/`backup` finden sie nicht mehr und ein Tarif aus `BELEGO_PLAN` greift nicht). Umzug per Backup/Restore (kurze Downtime, gleiche Ports):
 
 1. Alte Instanz auf den letzten Belego-Stand bringen, dann in der App **Einstellungen → Backup → Vollbackup** herunterladen. Ab jetzt keine Änderungen mehr in der alten Instanz.
 2. Eigene Werte aus `.env.backend.<name>` notieren (SMTP, Tarif, Upgrade-Kontakt …).
 3. Alte Instanz stoppen: `docker compose --env-file .env.<name> -f docker-compose.yml stop`
 4. Neuen Code holen und `./deploy-instance.sh` (interaktiv) mit gleichem Instanznamen und den bisherigen Ports ausführen. Notierte Werte in die neue `.env.backend.<name>` übertragen – `BELEGO_PLAN` heißt jetzt `OPENBILLS_PLAN`, `BELEGO_UPGRADE_CONTACT` heißt `OPENBILLS_UPGRADE_CONTACT`. **Alte `BELEGO_*`-Variablen werden nicht mehr gelesen** (die Instanz liefe sonst als Self-Hosted ohne Limits). Danach `./manage-instances.sh restart <name>`.
-5. In der neuen Instanz das Backup wiederherstellen und prüfen.
+5. In der neuen Instanz das Backup wiederherstellen und prüfen. Das Backup bringt das bisherige Firmenlogo/-icon mit – war das noch das Belego-Standardlogo, unter **Einstellungen** durch das eigene oder das OpenBills-Logo (`backend/assets/OpenBills.png`, `OpenBills_Icon.png`) ersetzen.
 6. Alte Reste entfernen (`manage-instances.sh` kennt nur noch `openbills-*`):
    ```bash
    docker rm belego-<name>-frontend belego-<name>-backend belego-<name>-db
