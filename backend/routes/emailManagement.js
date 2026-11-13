@@ -799,11 +799,11 @@ router.post('/send-test-email', async (req, res) => {
     });
 
     // Prepare email content
-    const subject = custom_subject || 'Test-E-Mail von Belego';
+    const subject = custom_subject || 'Test-E-Mail von OpenBills';
     const htmlContent = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2>Test-E-Mail erfolgreich!</h2>
-        <p>Diese Test-E-Mail wurde von Ihrem Belego-System gesendet.</p>
+        <p>Diese Test-E-Mail wurde von Ihrem OpenBills-System gesendet.</p>
         ${custom_message ? `
           <div style="background-color: #f0f8ff; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #2563eb;">
             <p style="margin: 0; white-space: pre-line;">${escapeHtml(custom_message)}</p>
@@ -818,7 +818,7 @@ router.post('/send-test-email', async (req, res) => {
         <p>Wenn Sie diese E-Mail erhalten haben, funktioniert Ihre E-Mail-Konfiguration korrekt!</p>
         <hr style="margin-top: 30px; border: none; border-top: 1px solid #eee;">
         <p style="font-size: 12px; color: #666;">
-          Diese E-Mail wurde automatisch von Belego generiert.
+          Diese E-Mail wurde automatisch von OpenBills generiert.
         </p>
       </div>
     `;
@@ -826,7 +826,7 @@ router.post('/send-test-email', async (req, res) => {
     // Send the email
     const mailOptions = {
       from: {
-        name: dbSettings.email_from_name || 'Belego',
+        name: dbSettings.email_from_name || 'OpenBills',
         address: dbSettings.email_from || dbSettings.smtp_user
       },
       to: recipient_email,
@@ -844,7 +844,7 @@ router.post('/send-test-email', async (req, res) => {
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
     `, [
       dbSettings.email_from || dbSettings.smtp_user,
-      dbSettings.email_from_name || 'Belego',
+      dbSettings.email_from_name || 'OpenBills',
       recipient_email,
       subject,
       htmlContent,
@@ -875,9 +875,9 @@ router.post('/send-test-email', async (req, res) => {
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
         `, [
           dbSettings.email_from || dbSettings.smtp_user,
-          dbSettings.email_from_name || 'Belego',
+          dbSettings.email_from_name || 'OpenBills',
           req.body.recipient_email || 'unknown',
-          req.body.custom_subject || 'Test-E-Mail von Belego',
+          req.body.custom_subject || 'Test-E-Mail von OpenBills',
           'test',
           'failed',
           error.message

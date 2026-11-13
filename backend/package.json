@@ -1,7 +1,9 @@
 {
-  "name": "belego-backend",
+  "name": "openbills-backend",
   "version": "1.0.0",
-  "description": "Backend for Belego",
+  "description": "Backend for OpenBills",
+  "author": "Namyslo Solutions (https://namyslo-solutions.de)",
+  "homepage": "https://openbills.de",
   "main": "server.js",
   "type": "module",
   "license": "AGPL-3.0",

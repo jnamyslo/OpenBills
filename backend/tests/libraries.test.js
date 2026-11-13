@@ -1,4 +1,4 @@
-// Contract-Tests für die Drittbibliotheken, die Belego aus dem Backend nutzt.
+// Contract-Tests für die Drittbibliotheken, die OpenBills aus dem Backend nutzt.
 // Sie bilden die in routes/backup.js und services/emailService.js verwendeten
 // Aufrufe nach und fangen Breaking Changes bei Dependency-Updates ab.
 import { describe, it, expect } from 'vitest';
@@ -40,7 +40,7 @@ describe('nodemailer (services/emailService.js)', () => {
   it('baut Mails mit mehreren Anhängen und Empfängern korrekt zusammen', async () => {
     const transporter = nodemailer.createTransport({ jsonTransport: true });
     const info = await transporter.sendMail({
-      from: 'Belego <rechnung@example.com>',
+      from: 'OpenBills <rechnung@example.com>',
       to: 'kunde@example.com',
       cc: 'buchhaltung@example.com',
       subject: 'Rechnung RE-2026-001',

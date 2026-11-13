@@ -651,7 +651,7 @@ router.post('/create-zip', async (req, res) => {
     
     // Add metadata file
     const metadata = {
-      name: 'Belego Vollbackup',
+      name: 'OpenBills Vollbackup',
       created: new Date().toISOString(),
       version: backup.version,
       tables: Object.keys(backup.data).length,
