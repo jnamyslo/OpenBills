@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Script to deploy multiple instances of Belego
+# Script to deploy multiple instances of OpenBills
 # Interactive deployment with guided configuration
 
 # Colors for better output
@@ -71,7 +71,7 @@ is_valid_plan() {
     return 1
 }
 
-# Tarif interaktiv abfragen; setzt BELEGO_PLAN und BELEGO_UPGRADE_CONTACT
+# Tarif interaktiv abfragen; setzt OPENBILLS_PLAN und OPENBILLS_UPGRADE_CONTACT
 prompt_plan() {
     echo
     print_info "=== Tarif-Konfiguration ==="
@@ -85,18 +85,18 @@ prompt_plan() {
         local choice
         choice=$(prompt_input "Tarif wählen (1-5)" "1")
         case "$choice" in
-            1) BELEGO_PLAN=""; break ;;
-            2) BELEGO_PLAN="free"; break ;;
-            3) BELEGO_PLAN="starter"; break ;;
-            4) BELEGO_PLAN="professional"; break ;;
-            5) BELEGO_PLAN="enterprise"; break ;;
+            1) OPENBILLS_PLAN=""; break ;;
+            2) OPENBILLS_PLAN="free"; break ;;
+            3) OPENBILLS_PLAN="starter"; break ;;
+            4) OPENBILLS_PLAN="professional"; break ;;
+            5) OPENBILLS_PLAN="enterprise"; break ;;
             *) print_error "Bitte 1 bis 5 eingeben." ;;
         esac
     done
 
-    BELEGO_UPGRADE_CONTACT=""
-    if [ -n "$BELEGO_PLAN" ]; then
-        BELEGO_UPGRADE_CONTACT=$(prompt_input "Kontakt für Upgrade-Hinweis (E-Mail, Telefon oder URL, optional)" "")
+    OPENBILLS_UPGRADE_CONTACT=""
+    if [ -n "$OPENBILLS_PLAN" ]; then
+        OPENBILLS_UPGRADE_CONTACT=$(prompt_input "Kontakt für Upgrade-Hinweis (E-Mail, Telefon oder URL, optional)" "")
     fi
 }
 
@@ -123,9 +123,9 @@ find_available_port() {
 # Function to collect instance configuration
 collect_instance_config() {
     echo
-    print_info "=== Belego Instance Deployment ==="
+    print_info "=== OpenBills Instance Deployment ==="
     echo
-    print_info "Dieses Skript führt Sie durch die Konfiguration einer neuen Belego-Instanz."
+    print_info "Dieses Skript führt Sie durch die Konfiguration einer neuen OpenBills-Instanz."
     echo
     
     # Instance name
@@ -193,7 +193,7 @@ deploy_instance() {
     print_info "Database Port: $DB_PORT"
     print_info "Backend Port: $BACKEND_PORT" 
     print_info "Frontend Port: $FRONTEND_PORT"
-    print_info "Tarif: ${BELEGO_PLAN:-self-hosted}"
+    print_info "Tarif: ${OPENBILLS_PLAN:-self-hosted}"
     echo
     
     # Final confirmation
@@ -207,12 +207,12 @@ deploy_instance() {
     # Create Docker Compose environment file
     print_info "Erstelle Docker Compose Konfiguration..."
     cat > .env.${INSTANCE_NAME} << EOF
-COMPOSE_PROJECT_NAME=belego-${INSTANCE_NAME}
+COMPOSE_PROJECT_NAME=openbills-${INSTANCE_NAME}
 INSTANCE_NAME=${INSTANCE_NAME}
 DB_PORT=${DB_PORT}
 BACKEND_PORT=${BACKEND_PORT}
 FRONTEND_PORT=${FRONTEND_PORT}
-POSTGRES_DB=belego_${INSTANCE_NAME}
+POSTGRES_DB=openbills_${INSTANCE_NAME}
 POSTGRES_USER=rm_user_${INSTANCE_NAME}
 POSTGRES_PASSWORD=${DB_PASSWORD}
 EOF
@@ -223,15 +223,15 @@ EOF
 PORT=3001
 DB_HOST=database
 DB_PORT=5432
-DB_NAME=belego_${INSTANCE_NAME}
+DB_NAME=openbills_${INSTANCE_NAME}
 DB_USER=rm_user_${INSTANCE_NAME}
 DB_PASSWORD=${DB_PASSWORD}
 NODE_ENV=production
 
 # Managed SaaS: free | starter | professional | enterprise (leer = self-hosted, unbegrenzt)
-BELEGO_PLAN=${BELEGO_PLAN}
+OPENBILLS_PLAN=${OPENBILLS_PLAN}
 # Kontakt im Upgrade-Hinweis (E-Mail, Telefon oder URL)
-BELEGO_UPGRADE_CONTACT=${BELEGO_UPGRADE_CONTACT}
+OPENBILLS_UPGRADE_CONTACT=${OPENBILLS_UPGRADE_CONTACT}
 EOF
 
     # Start deployment
@@ -327,7 +327,7 @@ main() {
 # Function to show help
 show_help() {
     echo
-    print_info "=== Belego Deployment Script ==="
+    print_info "=== OpenBills Deployment Script ==="
     echo
     echo "Usage:"
     echo "  $0                        # Interaktiver Modus (Standard, empfohlen)"
@@ -366,11 +366,11 @@ legacy_deploy() {
     DB_PORT=${2:-5432}
     BACKEND_PORT=${3:-3001}
     FRONTEND_PORT=${4:-8080}
-    BELEGO_PLAN=${5:-}
-    BELEGO_UPGRADE_CONTACT=""
+    OPENBILLS_PLAN=${5:-}
+    OPENBILLS_UPGRADE_CONTACT=""
 
-    if ! is_valid_plan "$BELEGO_PLAN"; then
-        print_error "Unbekannter Tarif '$BELEGO_PLAN'. Erlaubt: $VALID_PLANS (oder weglassen für self-hosted)."
+    if ! is_valid_plan "$OPENBILLS_PLAN"; then
+        print_error "Unbekannter Tarif '$OPENBILLS_PLAN'. Erlaubt: $VALID_PLANS (oder weglassen für self-hosted)."
         exit 1
     fi
 
@@ -395,12 +395,12 @@ legacy_deploy() {
     
     # Create minimal configuration (no SMTP)
     cat > .env.${INSTANCE_NAME} << EOF
-COMPOSE_PROJECT_NAME=belego-${INSTANCE_NAME}
+COMPOSE_PROJECT_NAME=openbills-${INSTANCE_NAME}
 INSTANCE_NAME=${INSTANCE_NAME}
 DB_PORT=${DB_PORT}
 BACKEND_PORT=${BACKEND_PORT}
 FRONTEND_PORT=${FRONTEND_PORT}
-POSTGRES_DB=belego_${INSTANCE_NAME}
+POSTGRES_DB=openbills_${INSTANCE_NAME}
 POSTGRES_USER=rm_user_${INSTANCE_NAME}
 POSTGRES_PASSWORD=${DB_PASSWORD}
 EOF
@@ -410,15 +410,15 @@ EOF
 PORT=3001
 DB_HOST=database
 DB_PORT=5432
-DB_NAME=belego_${INSTANCE_NAME}
+DB_NAME=openbills_${INSTANCE_NAME}
 DB_USER=rm_user_${INSTANCE_NAME}
 DB_PASSWORD=${DB_PASSWORD}
 NODE_ENV=production
 
 # Managed SaaS: free | starter | professional | enterprise (leer = self-hosted, unbegrenzt)
-BELEGO_PLAN=${BELEGO_PLAN}
+OPENBILLS_PLAN=${OPENBILLS_PLAN}
 # Kontakt im Upgrade-Hinweis (E-Mail, Telefon oder URL)
-BELEGO_UPGRADE_CONTACT=${BELEGO_UPGRADE_CONTACT}
+OPENBILLS_UPGRADE_CONTACT=${OPENBILLS_UPGRADE_CONTACT}
 EOF
 
     # Deploy with specific env file
@@ -427,9 +427,9 @@ EOF
         print_info "Frontend available at: http://localhost:$FRONTEND_PORT"
         print_info "Backend API available at: http://localhost:$BACKEND_PORT"
         print_info "Database available at: localhost:$DB_PORT"
-        print_info "Tarif: ${BELEGO_PLAN:-self-hosted}"
-        if [ -n "$BELEGO_PLAN" ]; then
-            print_info "Upgrade-Kontakt bei Bedarf in .env.backend.${INSTANCE_NAME} setzen (BELEGO_UPGRADE_CONTACT)."
+        print_info "Tarif: ${OPENBILLS_PLAN:-self-hosted}"
+        if [ -n "$OPENBILLS_PLAN" ]; then
+            print_info "Upgrade-Kontakt bei Bedarf in .env.backend.${INSTANCE_NAME} setzen (OPENBILLS_UPGRADE_CONTACT)."
         fi
         print_warning "E-Mail-Funktionen sind im Legacy-Modus nicht konfiguriert."
         print_info "Verwenden Sie das Script ohne --legacy Flag für vollständige Konfiguration."
