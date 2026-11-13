@@ -1,6 +1,6 @@
 /**
  * Plan-Tiers für Managed-SaaS-Instanzen.
- * Plan kommt aus BELEGO_PLAN; fehlt er, läuft die Instanz als "selfhosted" ohne Einschränkungen.
+ * Plan kommt aus OPENBILLS_PLAN; fehlt er, läuft die Instanz als "selfhosted" ohne Einschränkungen.
  * Siehe docs/superpowers/specs/2026-11-13-plan-tiers.md
  */
 
@@ -41,13 +41,13 @@ export function resolvePlanName(value) {
   const name = (value ?? '').trim().toLowerCase();
   if (name === '') return 'selfhosted';
   if (!Object.hasOwn(PLANS, name) || name === 'selfhosted') {
-    throw new Error(`Unbekannter BELEGO_PLAN "${value}". Erlaubt: free, starter, professional, enterprise oder leer.`);
+    throw new Error(`Unbekannter OPENBILLS_PLAN "${value}". Erlaubt: free, starter, professional, enterprise oder leer.`);
   }
   return name;
 }
 
 export function getPlanName() {
-  return resolvePlanName(process.env.BELEGO_PLAN);
+  return resolvePlanName(process.env.OPENBILLS_PLAN);
 }
 
 export function getPlan() {
@@ -68,7 +68,7 @@ export function getLimit(kind) {
 }
 
 export function getUpgradeContact() {
-  return process.env.BELEGO_UPGRADE_CONTACT?.trim() || null;
+  return process.env.OPENBILLS_UPGRADE_CONTACT?.trim() || null;
 }
 
 /** Abrechnungsperiode 'YYYY-MM' in deutscher Zeit. */

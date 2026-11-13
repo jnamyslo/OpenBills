@@ -1,5 +1,10 @@
 <div align="center">
-  <img src="backend/assets/Belego.png" alt="Belego Logo" width="400">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="backend/assets/OpenBills_by_NamysloSolutions_dark.png">
+    <img src="backend/assets/OpenBills_by_NamysloSolutions.png" alt="OpenBills by Namyslo Solutions" width="400">
+  </picture>
+
+  **[openbills.de](https://openbills.de)**
 </div>
 
 # Moderne Rechnungssoftware für KMU, Handwerk & Dienstleister
@@ -7,7 +12,7 @@
 > Leistungsstarke, eRechnung-konforme Rechnungs- und Angebotssoftware mit Auftragsverwaltung, Zeiterfassung, Mahnwesen, E‑Mail‑Versand und Backup – entwickelt für den deutschen Markt.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Open Source](https://img.shields.io/badge/Open%20Source-100%25-success.svg)](https://github.com/jnamyslo/Belego)
+[![Open Source](https://img.shields.io/badge/Open%20Source-100%25-success.svg)](https://github.com/jnamyslo/OpenBills)
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://docker.com)
 [![Node.js](https://img.shields.io/badge/Node.js-18%2B-green.svg)](https://nodejs.org)
 [![React](https://img.shields.io/badge/React-18%2B-blue.svg)](https://reactjs.org)
@@ -18,9 +23,9 @@
 
 ---
 
-## 🔎 Warum Belego?
+## 🔎 Warum OpenBills?
 
-Belego ist eine praxisnahe, in Deutschland entwickelte Open‑Source‑Rechnungssoftware. Sie deckt den kompletten Prozess von Angebot über Auftrag/Zeiterfassung bis zur Rechnung inkl. eRechnung (ZUGFeRD/XRechnung), Versand per E‑Mail, Mahnwesen und Backups ab. Ideal für KMU, Startups, Handwerksbetriebe und Freelancer.
+OpenBills ist eine praxisnahe, in Deutschland entwickelte Open‑Source‑Rechnungssoftware. Sie deckt den kompletten Prozess von Angebot über Auftrag/Zeiterfassung bis zur Rechnung inkl. eRechnung (ZUGFeRD/XRechnung), Versand per E‑Mail, Mahnwesen und Backups ab. Ideal für KMU, Startups, Handwerksbetriebe und Freelancer.
 
 Suchbegriffe (SEO): Rechnungssoftware, Rechnungsprogramm, eRechnung, ZUGFeRD, XRechnung, GoBD, Mahnwesen, Angebote, Auftragsverwaltung, Zeiterfassung, Handwerk, KMU, PostgreSQL, Docker.
 
@@ -71,11 +76,11 @@ Suchbegriffe (SEO): Rechnungssoftware, Rechnungsprogramm, eRechnung, ZUGFeRD, XR
 
 ## 📸 Screenshots & Einblicke
 
-Erleben Sie Belego in Aktion – hier sind einige Einblicke in die Benutzeroberfläche:
+Erleben Sie OpenBills in Aktion – hier sind einige Einblicke in die Benutzeroberfläche:
 
 ### Dashboard & Übersicht
 <div align="center">
-  <img src="demo/Dashboard.png" alt="Belego Dashboard" width="800">
+  <img src="demo/Dashboard.png" alt="OpenBills Dashboard" width="800">
   <p><em>Übersichtliches Dashboard mit allen wichtigen Kennzahlen, überfälligen Rechnungen und Schnellzugriffen</em></p>
 </div>
 
@@ -115,7 +120,7 @@ Erleben Sie Belego in Aktion – hier sind einige Einblicke in die Benutzeroberf
 
 ### Reporting & Auswertungen
 <div align="center">
-  <img src="demo/Reportingh.png" alt="Reporting" width="800">
+  <img src="demo/Reporting.png" alt="Reporting" width="800">
   <p><em>Umfassende Auswertungen mit Zeitraum-Filtern, Umsatzstatistiken und Kunden-Toplisten</em></p>
 </div>
 
@@ -153,8 +158,8 @@ Erleben Sie Belego in Aktion – hier sind einige Einblicke in die Benutzeroberf
 ### Multi‑Instanz Setup
 
 ```bash
-git clone https://github.com/jnamyslo/Belego.git
-cd Belego
+git clone https://github.com/jnamyslo/OpenBills.git
+cd OpenBills
 ```
 
 Interaktiv (empfohlen):
@@ -204,11 +209,11 @@ Beispiel‑Portschema:
 Self‑Hosted‑Instanzen haben **immer den vollen Funktionsumfang ohne Limits**. Tarife sind nur für betriebene (Managed‑SaaS‑)Instanzen gedacht und werden pro Instanz in `.env.backend.<name>` gesetzt:
 
 ```bash
-BELEGO_PLAN=starter                          # free | starter | professional | enterprise; leer = self-hosted
-BELEGO_UPGRADE_CONTACT=vertrieb@example.com  # E-Mail, Telefon oder URL im Upgrade-Hinweis
+OPENBILLS_PLAN=starter                          # free | starter | professional | enterprise; leer = self-hosted
+OPENBILLS_UPGRADE_CONTACT=vertrieb@example.com  # E-Mail, Telefon oder URL im Upgrade-Hinweis
 ```
 
-`deploy-instance.sh` fragt beides ab. Nachträglich ändern: `./manage-instances.sh config <name>`, danach `./manage-instances.sh restart <name>`. Ein unbekannter Wert in `BELEGO_PLAN` verhindert den Start des Backends (kein stilles „unbegrenzt“ bei Tippfehlern).
+`deploy-instance.sh` fragt beides ab. Nachträglich ändern: `./manage-instances.sh config <name>`, danach `./manage-instances.sh restart <name>`. Ein unbekannter Wert in `OPENBILLS_PLAN` verhindert den Start des Backends (kein stilles „unbegrenzt“ bei Tippfehlern).
 
 | | Free | Starter | Professional | Enterprise |
 |---|---:|---:|---:|---:|
@@ -254,6 +259,24 @@ Beispiele (typische Provider):
 - JSON‑Backups aller Tabellen
 - Voll‑Backups als ZIP (inkl. Datenbank‑Dump im JSON‑Format + Metadaten)
 - Download/Upload/Restore direkt in der App (mit Kompatibilitäts‑Fixes)
+
+### Umzug von Belego
+
+OpenBills hieß früher Belego. Container, Volumes, Datenbanken und Env-Variablen tragen jetzt `openbills` im Namen; bestehende Belego-Instanzen werden **nicht** automatisch übernommen. Ein reines `git pull` + `./manage-instances.sh restart <name>` auf einer alten Instanz wird **nicht** unterstützt (Instanz läuft zwar weiter, aber `list`/`backup` finden sie nicht mehr und ein Tarif aus `BELEGO_PLAN` greift nicht). Umzug per Backup/Restore (kurze Downtime, gleiche Ports):
+
+1. Alte Instanz auf den letzten Belego-Stand bringen, dann in der App **Einstellungen → Backup → Vollbackup** herunterladen. Ab jetzt keine Änderungen mehr in der alten Instanz.
+2. Eigene Werte aus `.env.backend.<name>` notieren (SMTP, Tarif, Upgrade-Kontakt …).
+3. Alte Instanz stoppen: `docker compose --env-file .env.<name> -f docker-compose.yml stop`
+4. Neuen Code holen und `./deploy-instance.sh` (interaktiv) mit gleichem Instanznamen und den bisherigen Ports ausführen. Notierte Werte in die neue `.env.backend.<name>` übertragen – `BELEGO_PLAN` heißt jetzt `OPENBILLS_PLAN`, `BELEGO_UPGRADE_CONTACT` heißt `OPENBILLS_UPGRADE_CONTACT`. **Alte `BELEGO_*`-Variablen werden nicht mehr gelesen** (die Instanz liefe sonst als Self-Hosted ohne Limits). Danach `./manage-instances.sh restart <name>`.
+5. In der neuen Instanz das Backup wiederherstellen und prüfen. Das Backup bringt das bisherige Firmenlogo/-icon mit – war das noch das Belego-Standardlogo, unter **Einstellungen** durch das eigene oder das OpenBills-Logo (`backend/assets/OpenBills.png`, `OpenBills_Icon.png`) ersetzen.
+6. Alte Reste entfernen (`manage-instances.sh` kennt nur noch `openbills-*`):
+   ```bash
+   docker rm belego-<name>-frontend belego-<name>-backend belego-<name>-db
+   docker volume rm belego-<name>_postgres_data
+   docker network rm belego-<name>_network
+   ```
+
+Zurück: neue Instanz stoppen, alte Container wieder starten (`docker start belego-<name>-db belego-<name>-backend belego-<name>-frontend`).
 
 ---
 
@@ -305,12 +328,12 @@ Besonders willkommen: Übersetzungen, UI/UX, Reporting, Performance, Doku.
 
 ## ⚖️ Lizenzierung
 
-Belego ist **100% Open Source** und lizenziert unter der **GNU Affero General Public License v3.0 (AGPL‑3.0)**.
+OpenBills ist **100% Open Source** und lizenziert unter der **GNU Affero General Public License v3.0 (AGPL‑3.0)**.
 
 ### Was bedeutet das?
 
 ✅ **Du kannst:**
-- Belego kostenlos für persönliche oder geschäftliche Zwecke nutzen
+- OpenBills kostenlos für persönliche oder geschäftliche Zwecke nutzen
 - Den Code ändern und an deine Bedürfnisse anpassen
 - Die Software weiterverteilen (auch modifizierte Versionen)
 - Zum Projekt beitragen
@@ -323,7 +346,7 @@ Belego ist **100% Open Source** und lizenziert unter der **GNU Affero General Pu
 ### Warum AGPL v3?
 
 Die AGPL v3 schützt die Freiheit der Software auch bei Netzwerk‑Nutzung. Sie sorgt dafür, dass:
-- Belego für immer frei und Open Source bleibt
+- OpenBills für immer frei und Open Source bleibt
 - Verbesserungen der gesamten Community zugutekommen
 - Die Community vor proprietären Forks geschützt ist
 
@@ -358,13 +381,13 @@ E‑Mail funktioniert nicht?
 Container startet nicht?
 ```bash
 ./manage-instances.sh logs your-instance
-docker ps -a --filter "name=belego-"
+docker ps -a --filter "name=openbills-"
 ```
 
 Community & Kontakt:
-- Wiki: [GitHub Wiki](https://github.com/jnamyslo/Belego/wiki)
-- Issues: [Bug Reports & Feature Requests](https://github.com/jnamyslo/Belego/issues)
-- Discussions: [Community Support](https://github.com/jnamyslo/Belego/discussions)
+- Wiki: [GitHub Wiki](https://github.com/jnamyslo/OpenBills/wiki)
+- Issues: [Bug Reports & Feature Requests](https://github.com/jnamyslo/OpenBills/issues)
+- Discussions: [Community Support](https://github.com/jnamyslo/OpenBills/discussions)
 - Commercial Support: info@namyslo-solutions.de
 
 Projekt unterstützen:
@@ -374,9 +397,9 @@ Projekt unterstützen:
 
 <div align="center">
 
-### 🚀 Entwickelt mit ❤️ in Deutschland
+### 🚀 Entwickelt mit ❤️ in Deutschland von [Namyslo Solutions](https://namyslo-solutions.de)
 
-**[⭐ Stern geben](https://github.com/jnamyslo/Belego)** • **[🍴 Fork erstellen](https://github.com/jnamyslo/Belego/fork)** • **[📖 Doku](https://github.com/jnamyslo/Belego/wiki)**
+**[⭐ Stern geben](https://github.com/jnamyslo/OpenBills)** • **[🍴 Fork erstellen](https://github.com/jnamyslo/OpenBills/fork)** • **[📖 Doku](https://github.com/jnamyslo/OpenBills/wiki)**
 
 —
 

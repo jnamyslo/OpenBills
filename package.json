@@ -1,9 +1,11 @@
 {
-  "name": "belego",
+  "name": "openbills",
   "private": true,
   "version": "1.0.0",
   "type": "module",
   "license": "AGPL-3.0",
+  "author": "Namyslo Solutions (https://namyslo-solutions.de)",
+  "homepage": "https://openbills.de",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

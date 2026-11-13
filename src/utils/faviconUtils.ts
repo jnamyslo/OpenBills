@@ -86,19 +86,19 @@ const getIconType = (iconUrl: string): string => {
 const updateWebAppManifest = (iconUrl: string) => {
   // Get company data from localStorage as fallback
   const companyData = localStorage.getItem('invoice-app-company');
-  let companyName = 'Belego';
+  let companyName = 'OpenBills';
   
   if (companyData) {
     try {
       const company = JSON.parse(companyData);
-      companyName = company.name || 'Belego';
+      companyName = company.name || 'OpenBills';
     } catch {
       logger.warn('Could not parse company data from localStorage');
     }
   }
 
   const manifest = {
-    name: `${companyName} - Belego`,
+    name: `${companyName} - OpenBills`,
     short_name: companyName,
     description: 'eRechnung-konforme Rechnungsanwendung',
     start_url: '/',
@@ -151,7 +151,7 @@ const updateWebAppManifest = (iconUrl: string) => {
  * Updates the page title based on company name
  */
 export const updatePageTitle = (companyName?: string) => {
-  const baseTitle = 'Belego - eRechnung-konforme Rechnungsanwendung';
+  const baseTitle = 'OpenBills - eRechnung-konforme Rechnungsanwendung';
   if (companyName && companyName.trim() && companyName !== 'Meine Firma GmbH') {
     document.title = `${companyName} - ${baseTitle}`;
   } else {
@@ -206,7 +206,7 @@ export const setupMetaTags = () => {
     applicationNameMeta.name = 'application-name';
     document.head.appendChild(applicationNameMeta);
   }
-  applicationNameMeta.content = 'Belego';
+  applicationNameMeta.content = 'OpenBills';
 
   // MS Tile Color for Windows
   let msTileColorMeta = document.querySelector('meta[name="msapplication-TileColor"]') as HTMLMetaElement;

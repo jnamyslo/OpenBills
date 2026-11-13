@@ -1,7 +1,7 @@
 GNU AFFERO GENERAL PUBLIC LICENSE
 Version 3, 19 November 2007
 
-Copyright (C) 2025 Belego Contributors
+Copyright (C) 2025 Namyslo Solutions and OpenBills Contributors
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published by
@@ -20,28 +20,28 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 ABOUT THIS LICENSE
 ================================================================================
 
-Belego is licensed under AGPL v3 - a strong copyleft license that ensures
+OpenBills is licensed under AGPL v3 - a strong copyleft license that ensures
 the software remains free and open source, even when used as a service over
 a network.
 
 ✅ What you CAN do:
-- Use Belego for personal or business purposes (free of charge)
+- Use OpenBills for personal or business purposes (free of charge)
 - Modify and customize the software
 - Distribute the software and your modifications
-- Offer Belego as a hosted service (SaaS)
+- Offer OpenBills as a hosted service (SaaS)
 - Contribute to the project
 
 ✅ What you MUST do:
 - Keep the source code open and available
 - License your modifications under AGPL v3
-- If you offer Belego as a network service (SaaS), you must make your
+- If you offer OpenBills as a network service (SaaS), you must make your
   complete source code (including all modifications) available to your users
 - Include the original copyright and license notices
 - State significant changes made to the software
 
 ❌ What you CANNOT do:
 - Make the software proprietary or closed-source
-- Offer Belego as a service without making your source code available
+- Offer OpenBills as a service without making your source code available
 - Remove or alter license and copyright notices
 - Hold the authors liable for any issues
 
@@ -49,7 +49,7 @@ a network.
 WHY AGPL v3?
 ================================================================================
 
-The AGPL v3 license ensures that Belego remains free and open source forever,
+The AGPL v3 license ensures that OpenBills remains free and open source forever,
 while protecting against the "SaaS loophole" where companies could host 
 modified versions without contributing back to the community.
 
@@ -63,7 +63,7 @@ This creates a healthy ecosystem where:
 SAAS HOSTING
 ================================================================================
 
-You are explicitly permitted and encouraged to offer Belego as a hosted
+You are explicitly permitted and encouraged to offer OpenBills as a hosted
 Software-as-a-Service (SaaS). The AGPL v3 license requires that you:
 
 1. Make your complete source code (including any modifications) available
@@ -78,11 +78,11 @@ hosting scenarios.
 CONTRIBUTING
 ================================================================================
 
-Contributions to Belego are welcome and appreciated! By contributing, you
+Contributions to OpenBills are welcome and appreciated! By contributing, you
 agree that your contributions will be licensed under AGPL v3.
 
 For more information, visit:
-- GitHub: https://github.com/jnamyslo/Belego
+- GitHub: https://github.com/jnamyslo/OpenBills
 - Full License Text: https://www.gnu.org/licenses/agpl-3.0.html
 - Contact: info@namyslo-solutions.de
 

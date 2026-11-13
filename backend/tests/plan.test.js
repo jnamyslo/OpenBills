@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import {
-  resolvePlanName, getLimit, hasFeature, currentPeriod, requireFeature, PlanError,
+  resolvePlanName, getPlanName, getUpgradeContact, getLimit, hasFeature, currentPeriod, requireFeature, PlanError,
 } from '../utils/plan.js';
 import { countReleaseIfNeeded } from '../services/quotaService.js';
 
@@ -19,14 +19,25 @@ describe('resolvePlanName', () => {
   });
 
   it('wirft bei Tippfehlern und bei explizitem selfhosted', () => {
-    expect(() => resolvePlanName('profesional')).toThrow(/Unbekannter BELEGO_PLAN/);
+    expect(() => resolvePlanName('profesional')).toThrow(/Unbekannter OPENBILLS_PLAN/);
     expect(() => resolvePlanName('selfhosted')).toThrow();
   });
 });
 
 describe('Limits und Features', () => {
+  it('ignoriert den alten BELEGO_PLAN', () => {
+    vi.stubEnv('OPENBILLS_PLAN', '');
+    vi.stubEnv('BELEGO_PLAN', 'free');
+    expect(getPlanName()).toBe('selfhosted');
+  });
+
+  it('liest den Upgrade-Kontakt aus OPENBILLS_UPGRADE_CONTACT', () => {
+    vi.stubEnv('OPENBILLS_UPGRADE_CONTACT', 'vertrieb@openbills.de');
+    expect(getUpgradeContact()).toBe('vertrieb@openbills.de');
+  });
+
   it('selfhosted ist unbegrenzt mit allen Features', () => {
-    vi.stubEnv('BELEGO_PLAN', '');
+    vi.stubEnv('OPENBILLS_PLAN', '');
     expect(getLimit('invoices')).toBeNull();
     expect(getLimit('customers')).toBeNull();
     expect(hasFeature('jobs')).toBe(true);
@@ -37,20 +48,20 @@ describe('Limits und Features', () => {
       free: [5, 5, 10], starter: [25, 25, 50], professional: [100, 100, 250], enterprise: [null, null, null],
     };
     for (const [plan, [inv, quo, cust]] of Object.entries(expected)) {
-      vi.stubEnv('BELEGO_PLAN', plan);
+      vi.stubEnv('OPENBILLS_PLAN', plan);
       expect([getLimit('invoices'), getLimit('quotes'), getLimit('customers')]).toEqual([inv, quo, cust]);
     }
   });
 
   it('Feature-Verteilung', () => {
-    vi.stubEnv('BELEGO_PLAN', 'free');
+    vi.stubEnv('OPENBILLS_PLAN', 'free');
     expect(hasFeature('email')).toBe(false);
-    vi.stubEnv('BELEGO_PLAN', 'starter');
+    vi.stubEnv('OPENBILLS_PLAN', 'starter');
     expect(hasFeature('email')).toBe(true);
     expect(hasFeature('reminders')).toBe(true);
     expect(hasFeature('jobs')).toBe(false);
     expect(hasFeature('reportingFull')).toBe(false);
-    vi.stubEnv('BELEGO_PLAN', 'professional');
+    vi.stubEnv('OPENBILLS_PLAN', 'professional');
     expect(hasFeature('jobs')).toBe(true);
     expect(hasFeature('customerPricing')).toBe(true);
   });
@@ -73,7 +84,7 @@ describe('requireFeature', () => {
   };
 
   it('blockiert fehlendes Feature mit 403', () => {
-    vi.stubEnv('BELEGO_PLAN', 'free');
+    vi.stubEnv('OPENBILLS_PLAN', 'free');
     const { res, next } = run(requireFeature('jobs'), 'POST');
     expect(next).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(403);
@@ -81,7 +92,7 @@ describe('requireFeature', () => {
   });
 
   it('allowRead lässt GET durch, blockiert Schreiben', () => {
-    vi.stubEnv('BELEGO_PLAN', 'free');
+    vi.stubEnv('OPENBILLS_PLAN', 'free');
     expect(run(requireFeature('jobs', { allowRead: true }), 'GET').next).toHaveBeenCalled();
     expect(run(requireFeature('jobs', { allowRead: true }), 'PUT').next).not.toHaveBeenCalled();
   });
@@ -105,14 +116,14 @@ function fakeClient({ countedAt = null, used = 0 } = {}) {
 
 describe('countReleaseIfNeeded', () => {
   it('Entwurf zählt nicht', async () => {
-    vi.stubEnv('BELEGO_PLAN', 'free');
+    vi.stubEnv('OPENBILLS_PLAN', 'free');
     const client = fakeClient();
     await countReleaseIfNeeded(client, 'invoices', 'id', 'draft');
     expect(client.query).not.toHaveBeenCalled();
   });
 
   it('Freigabe zählt einmal', async () => {
-    vi.stubEnv('BELEGO_PLAN', 'free');
+    vi.stubEnv('OPENBILLS_PLAN', 'free');
     const client = fakeClient();
     await countReleaseIfNeeded(client, 'invoices', 'id', 'sent');
     await countReleaseIfNeeded(client, 'invoices', 'id', 'paid');
@@ -121,7 +132,7 @@ describe('countReleaseIfNeeded', () => {
   });
 
   it('wirft 402 am Limit und zählt nicht weiter', async () => {
-    vi.stubEnv('BELEGO_PLAN', 'free');
+    vi.stubEnv('OPENBILLS_PLAN', 'free');
     const client = fakeClient({ used: 5 });
     const error = await countReleaseIfNeeded(client, 'quotes', 'id', 'sent').catch(e => e);
     expect(error).toBeInstanceOf(PlanError);
@@ -131,7 +142,7 @@ describe('countReleaseIfNeeded', () => {
   });
 
   it('selfhosted zählt ohne Limit', async () => {
-    vi.stubEnv('BELEGO_PLAN', '');
+    vi.stubEnv('OPENBILLS_PLAN', '');
     const client = fakeClient({ used: 10_000 });
     await countReleaseIfNeeded(client, 'invoices', 'id', 'sent');
     expect(client.state.used).toBe(10_001);

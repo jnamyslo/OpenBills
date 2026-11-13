@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Script to manage multiple Belego instances
+# Script to manage multiple OpenBills instances
 
 # Colors for better output
 RED='\033[0;31m'
@@ -29,11 +29,11 @@ print_error() {
 # Function to list all running instances
 list_instances() {
     echo
-    print_info "=== Laufende Belego Instanzen ==="
+    print_info "=== Laufende OpenBills Instanzen ==="
     echo
     
-    # Get all running containers with belego in name
-    containers=$(docker ps --filter "name=belego-" --format "table {{.Names}}\t{{.Ports}}\t{{.Status}}")
+    # Get all running containers with openbills in name
+    containers=$(docker ps --filter "name=openbills-" --format "table {{.Names}}\t{{.Ports}}\t{{.Status}}")
     
     if [ "$(echo "$containers" | wc -l)" -eq 1 ]; then
         print_warning "Keine laufenden Instanzen gefunden."
@@ -52,10 +52,10 @@ list_instances() {
                 BACKEND_PORT=$(grep "BACKEND_PORT=" "$env_file" | cut -d'=' -f2)
                 FRONTEND_PORT=$(grep "FRONTEND_PORT=" "$env_file" | cut -d'=' -f2)
                 # Tarif aus der Backend-Konfiguration (leer/fehlend = self-hosted)
-                PLAN=$(grep -E '^BELEGO_PLAN=' ".env.backend.$instance_name" | tail -1 | cut -d'=' -f2- | tr -d '"'"'"'\r ')
+                PLAN=$(grep -E '^OPENBILLS_PLAN=' ".env.backend.$instance_name" | tail -1 | cut -d'=' -f2- | tr -d '"'"'"'\r ')
                 
                 # Check if running
-                if docker ps --filter "name=belego-${instance_name}" --format "{{.Names}}" | grep -q "belego-${instance_name}"; then
+                if docker ps --filter "name=openbills-${instance_name}" --format "{{.Names}}" | grep -q "openbills-${instance_name}"; then
                     status="${GREEN}RUNNING${NC}"
                 else
                     status="${RED}STOPPED${NC}"
@@ -225,7 +225,7 @@ backup_instance() {
     local backup_dir="backups"
     local timestamp=$(date +%Y%m%d_%H%M%S)
     local backup_file="${backup_dir}/backup_${instance_name}_${timestamp}.sql"
-    local container_name="belego-${instance_name}-db"
+    local container_name="openbills-${instance_name}-db"
     
     # Create backup directory if it doesn't exist
     mkdir -p "$backup_dir"
@@ -325,7 +325,7 @@ case "$1" in
         ;;
     --help|-h|help)
         echo
-        print_info "=== Belego Instance Manager ==="
+        print_info "=== OpenBills Instance Manager ==="
         echo
         echo "Usage: $0 {command} [instance_name] [options]"
         echo

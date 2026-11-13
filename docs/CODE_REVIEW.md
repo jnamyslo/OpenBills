@@ -18,7 +18,7 @@ This document tracks two things:
 > ```
 > The `-v /app/node_modules` anonymous volume keeps `node_modules` out of the host tree.
 
-> **Auth is intentionally absent** in this service — it is handled by an upstream service in front of Belego. Do **not** add auth middleware here. (Original review flagged open CORS/endpoints; dismissed per project owner.)
+> **Auth is intentionally absent** in this service — it is handled by an upstream service in front of OpenBills. Do **not** add auth middleware here. (Original review flagged open CORS/endpoints; dismissed per project owner.)
 
 ---
 
@@ -145,7 +145,7 @@ The detailed original findings for each item are retained below for reference.
 
 ### Infra / deployment notes (not code bugs)
 
-- Default DB password `belego123` in `docker-compose.yml`; document that operators must override `POSTGRES_PASSWORD` per instance.
+- Default DB password `openbills123` in `docker-compose.yml`; document that operators must override `POSTGRES_PASSWORD` per instance.
 - Postgres port published to host by default (`${DB_PORT:-5432}:5432`) — consider binding to `127.0.0.1` unless remote DB access is required.
 - `frontend` build bakes `VITE_API_URL=http://localhost:${BACKEND_PORT}/api` — only works when the browser is on the same host. Fine if the upstream proxy rewrites `/api`, but worth documenting.
 

@@ -69,7 +69,7 @@ export function Layout({ children, currentPage, onPageChange }: LayoutProps) {
                 ) : (
                   <Building2 className="h-6 w-6 lg:h-8 lg:w-8 text-primary-custom mr-2 lg:mr-3" />
                 )}
-                <h1 className="text-lg lg:text-2xl font-bold text-gray-900">Belego</h1>
+                <h1 className="text-lg lg:text-2xl font-bold text-gray-900">OpenBills</h1>
               </button>
               
               {/* Mobile menu button */}
@@ -129,6 +129,18 @@ export function Layout({ children, currentPage, onPageChange }: LayoutProps) {
                 })}
               </ul>
               <PlanUsage />
+              <div className="mt-6 pt-3 border-t border-gray-200 flex items-center gap-1 text-xs text-gray-400 whitespace-nowrap">
+                <span>OpenBills by</span>
+                <img src="/namyslo-solutions-icon.png" alt="" className="w-4 h-4 rounded-full" />
+                <a
+                  href="https://namyslo-solutions.de"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-gray-600 underline"
+                >
+                  Namyslo Solutions
+                </a>
+              </div>
             </div>
           </nav>
 

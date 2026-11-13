@@ -8,8 +8,8 @@ Managed-SaaS-Instanzen bekommen einen Plan (Free, Starter, Professional, Enterpr
 
 ## Entscheidungen
 
-- **Kein Lizenzkey.** Der Betreiber steuert jede Instanz selbst. Plan per Env-Var `BELEGO_PLAN` in `.env.backend.<name>`.
-- `BELEGO_PLAN` fehlt → Plan `selfhosted` = alles unlimited, alle Features.
+- **Kein Lizenzkey.** Der Betreiber steuert jede Instanz selbst. Plan per Env-Var `OPENBILLS_PLAN` in `.env.backend.<name>`.
+- `OPENBILLS_PLAN` fehlt → Plan `selfhosted` = alles unlimited, alle Features.
 - Plan-Definitionen als Konstante im Code (`backend/utils/plan.js`), nicht in Env.
 - Auth unverändert (Authentik + NPM Forward-Auth). Plan gilt pro Instanz.
 
@@ -68,11 +68,11 @@ Bekanntes Restrisiko: Frontend-Wasserzeichen ist per DevTools umgehbar. Akzeptie
 `.env.backend.<name>` (Vorlage in `deploy-instance.sh`):
 
 ```bash
-BELEGO_PLAN=              # free | starter | professional | enterprise; leer/fehlt = selfhosted
-BELEGO_UPGRADE_CONTACT=   # E-Mail, Telefon oder URL im Upgrade-Hinweis
+OPENBILLS_PLAN=              # free | starter | professional | enterprise; leer/fehlt = selfhosted
+OPENBILLS_UPGRADE_CONTACT=   # E-Mail, Telefon oder URL im Upgrade-Hinweis
 ```
 
-Unbekannter Wert in `BELEGO_PLAN` → Startfehler (kein stilles Fallback auf unlimited).
+Unbekannter Wert in `OPENBILLS_PLAN` → Startfehler (kein stilles Fallback auf unlimited).
 
 ## Reporting
 

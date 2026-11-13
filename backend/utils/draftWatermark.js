@@ -1,6 +1,6 @@
 /**
  * Serverseitiges Wasserzeichen für Entwürfe.
- * Absicherung für den E-Mail-Versand: Ein Entwurf verlässt Belego nie als fertiges Dokument,
+ * Absicherung für den E-Mail-Versand: Ein Entwurf verlässt OpenBills nie als fertiges Dokument,
  * auch wenn das Frontend umgangen wird. Eingebettete Dateien (ZUGFeRD-XML) werden entfernt.
  */
 import { PDFDocument, PDFDict, PDFName, StandardFonts, rgb, degrees } from 'pdf-lib';

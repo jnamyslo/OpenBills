@@ -767,7 +767,7 @@ git commit -m "refactor(QuoteEditor): replace useApp() with individual context h
 #### Step 7.1 — Verify no remaining `useApp()` usage
 
 ```bash
-grep -rn "useApp" /Users/namysloj/Projects/Belego/src/
+grep -rn "useApp" /Users/namysloj/Projects/OpenBills/src/
 ```
 
 Expected output: empty. If any remain, fix them before proceeding.
@@ -1006,7 +1006,7 @@ Open `http://localhost:<WEB_PORT>` and verify each flow:
 - [ ] **Step 10.5 — Check for broken `useApp` import** (sanity check)
 
 ```bash
-grep -rn "useApp" /Users/namysloj/Projects/Belego/src/
+grep -rn "useApp" /Users/namysloj/Projects/OpenBills/src/
 ```
 
 Expected: empty.
