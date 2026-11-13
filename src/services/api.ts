@@ -16,7 +16,7 @@ export class PlanError extends Error {
 export const isPlanError = (error: unknown): error is PlanError => error instanceof PlanError;
 
 /** Event, auf das der PlanContext mit dem Upgrade-Dialog reagiert. */
-export const PLAN_ERROR_EVENT = 'belego:plan-error';
+export const PLAN_ERROR_EVENT = 'openbills:plan-error';
 
 // ============================================================================
 // Helper Types

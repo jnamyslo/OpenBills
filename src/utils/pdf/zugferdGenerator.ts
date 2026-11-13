@@ -260,8 +260,8 @@ export async function embedZUGFeRDXMLIntoPDF(pdfBuffer: ArrayBuffer, invoice: In
     pdfDoc.setTitle(`Rechnung ${invoice.invoiceNumber}`);
     pdfDoc.setSubject(`ZUGFeRD invoice ${invoice.invoiceNumber}`);
     pdfDoc.setKeywords(['ZUGFeRD', 'invoice', 'electronic invoice', 'EN 16931']);
-    pdfDoc.setProducer('Belego');
-    pdfDoc.setCreator('Belego');
+    pdfDoc.setProducer('OpenBills');
+    pdfDoc.setCreator('OpenBills');
     pdfDoc.setCreationDate(new Date());
     pdfDoc.setModificationDate(new Date());
     
