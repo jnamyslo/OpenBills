@@ -109,6 +109,14 @@ describe.skipIf(!hasDb)('POST /api/auth/login und Co.', () => {
     expect(Number(res.headers['retry-after'])).toBeGreaterThan(0);
   });
 
+  it('10 parallele Fehlversuche pro Account -> höchstens 5 ohne 429', async () => {
+    await makeUser();
+    const results = await Promise.all(Array.from({ length: 10 }, (_, i) =>
+      post('/api/auth/login', { email: 'max@firma.de', password: WRONG }).set('X-Forwarded-For', `10.1.0.${i}`)));
+    expect(results.filter((r) => r.status !== 429).length).toBeLessThanOrEqual(5);
+    expect(results.filter((r) => r.status === 429).length).toBeGreaterThanOrEqual(5);
+  });
+
   it('10 Fehlversuche -> 423, danach auch korrektes Passwort -> 423', async () => {
     await makeUser();
     for (let i = 1; i <= 10; i += 1) {
@@ -188,6 +196,13 @@ describe.skipIf(!hasDb)('POST /api/auth/login und Co.', () => {
       expect(res.body.code).toBe('RATE_LIMITED');
     });
 
+    it('10 parallele falsche TOTP-Codes -> höchstens 5 ohne 429', async () => {
+      const pending = await login();
+      const results = await Promise.all(Array.from({ length: 10 }, () =>
+        post('/api/auth/login/totp', { code: 'zzzz-zzzz' }, pending)));
+      expect(results.filter((r) => r.status !== 429).length).toBeLessThanOrEqual(5);
+    });
+
     it('defektes Secret zählt als falscher Code', async () => {
       await pool.query(`UPDATE users SET totp_secret_enc = 'v1:kaputt' WHERE id = $1`, [user.id]);
       const pending = await login();
@@ -215,6 +230,18 @@ describe.skipIf(!hasDb)('POST /api/auth/login und Co.', () => {
       const res = await post('/api/auth/password', { currentPassword: PASSWORD, newPassword: 'kurz' }, cookie);
       expect(res.status).toBe(400);
       expect(res.body.error).toContain('mindestens 12 Zeichen');
+    });
+
+    it('6. falsches aktuelles Passwort -> 429', async () => {
+      await makeUser();
+      const cookie = sessionCookie(await post('/api/auth/login', { email: 'max@firma.de', password: PASSWORD }));
+      for (let i = 0; i < 5; i += 1) {
+        expect((await post('/api/auth/password', { currentPassword: WRONG, newPassword: 'neues-langes-passwort' }, cookie)).status).toBe(400);
+      }
+      const res = await post('/api/auth/password', { currentPassword: PASSWORD, newPassword: 'neues-langes-passwort' }, cookie);
+      expect(res.status).toBe(429);
+      expect(res.body.code).toBe('RATE_LIMITED');
+      expect(Number(res.headers['retry-after'])).toBeGreaterThan(0);
     });
 
     it('Erfolg beendet andere Sessions, eigene bleibt, neues Passwort gilt', async () => {

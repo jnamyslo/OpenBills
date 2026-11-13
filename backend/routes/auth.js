@@ -7,7 +7,7 @@ import { verifyPassword, verifyDummyPassword, validatePassword, hashPassword } f
 import {
   findUserByEmail, findUserById, normalizeEmail, recordLoginFailure, recordLoginSuccess, toPublicUser,
 } from '../auth/users.js';
-import { checkRateLimit, recordAttempt, clearRateLimit, LIMITS } from '../auth/rateLimit.js';
+import { reserveAttempt, releaseAttempt, clearRateLimit, LIMITS } from '../auth/rateLimit.js';
 import {
   createSession, completeMfa, deleteSession, deleteUserSessions, setSessionCookie, clearSessionCookie,
 } from '../auth/sessions.js';
@@ -26,28 +26,28 @@ const INVALID_CODE = { error: 'Code ungültig', code: 'INVALID_CODE' };
 const loginUserKey = (email) => `login:user:${hashToken(email)}`;
 const loginIpKey = (req) => `login:ip:${req.ip}`;
 const totpUserKey = (userId) => `totp:user:${userId}`;
+const passwordChangeKey = (userId) => `pwchange:user:${userId}`;
 
 const isLocked = (user) => Boolean(user.locked_until && new Date(user.locked_until) > new Date());
 
-// Liefert Sekunden bis zum Ende der Sperre (0 = frei). Prüft Account- und IP-Schlüssel.
-async function rateLimitRetryAfter(accountKey, ipKey) {
+// Reserviert den Versuch atomar vor der Prüfung für Account- und IP-Schlüssel.
+// Liefert Sekunden bis zum Ende der Sperre (0 = Versuch erlaubt).
+async function reserveAttempts(accountKey, ipKey) {
   const [account, ip] = await Promise.all([
-    checkRateLimit(accountKey, LIMITS.perAccount.limit, LIMITS.perAccount.windowMs),
-    checkRateLimit(ipKey, LIMITS.perIp.limit, LIMITS.perIp.windowMs),
+    reserveAttempt(accountKey, LIMITS.perAccount.limit, LIMITS.perAccount.windowMs),
+    reserveAttempt(ipKey, LIMITS.perIp.limit, LIMITS.perIp.windowMs),
   ]);
   return Math.max(account, ip);
+}
+
+// Erfolg: Account-Zähler zurücksetzen, den IP-Versuch wieder freigeben.
+async function releaseAttempts(accountKey, ipKey) {
+  await Promise.all([clearRateLimit(accountKey), releaseAttempt(ipKey)]);
 }
 
 function sendRateLimited(res, retryAfter) {
   res.set('Retry-After', String(retryAfter));
   return res.status(429).json({ error: 'Zu viele Versuche. Bitte später erneut versuchen.', code: 'RATE_LIMITED' });
-}
-
-async function recordFailedAttempt(accountKey, ipKey) {
-  await Promise.all([
-    recordAttempt(accountKey, LIMITS.perAccount.windowMs),
-    recordAttempt(ipKey, LIMITS.perIp.windowMs),
-  ]);
 }
 
 // Zählt einen Fehlversuch für die Sperre und protokolliert eine neu ausgelöste Sperre.
@@ -78,7 +78,7 @@ router.post('/login', async (req, res) => {
     const accountKey = loginUserKey(normalized);
     const ipKey = loginIpKey(req);
 
-    const retryAfter = await rateLimitRetryAfter(accountKey, ipKey);
+    const retryAfter = await reserveAttempts(accountKey, ipKey);
     if (retryAfter > 0) return sendRateLimited(res, retryAfter);
 
     const user = await findUserByEmail(normalized);
@@ -89,7 +89,6 @@ router.post('/login', async (req, res) => {
     }
 
     if (!valid) {
-      await recordFailedAttempt(accountKey, ipKey);
       if (usable) await recordUserFailure(req, user);
       await audit(req, {
         action: 'auth.login_failed',
@@ -101,12 +100,13 @@ router.post('/login', async (req, res) => {
     }
 
     // Sperre erst nach korrektem Passwort melden: falsche Passwörter bekommen weiter die neutrale 401.
+    // Die Reservierung bleibt bestehen, damit das Sperr-Orakel durch das Rate-Limit begrenzt ist.
     if (isLocked(user)) {
       await audit(req, { action: 'auth.login_failed', user, entityType: 'users', entityId: user.id, details: { reason: 'locked' } });
       return res.status(423).json(ACCOUNT_LOCKED);
     }
 
-    await clearRateLimit(accountKey);
+    await releaseAttempts(accountKey, ipKey);
     const sessionMeta = { ip: req.ip ?? null, userAgent: req.get('user-agent') ?? null };
 
     if (user.totp_enabled_at) {
@@ -172,7 +172,7 @@ router.post('/login/totp', async (req, res) => {
     const accountKey = totpUserKey(user.id);
     const ipKey = loginIpKey(req);
 
-    const retryAfter = await rateLimitRetryAfter(accountKey, ipKey);
+    const retryAfter = await reserveAttempts(accountKey, ipKey);
     if (retryAfter > 0) return sendRateLimited(res, retryAfter);
 
     const code = String(req.body?.code ?? '').replace(/\s+/g, '').toLowerCase();
@@ -181,13 +181,12 @@ router.post('/login/totp', async (req, res) => {
     else if (RECOVERY_CODE.test(code)) valid = await useRecoveryCode(req, user, code);
 
     if (!valid) {
-      await recordFailedAttempt(accountKey, ipKey);
       await recordUserFailure(req, user);
       await audit(req, { action: 'auth.login_failed', user, entityType: 'users', entityId: user.id, details: { mfa: true } });
       return res.status(401).json(INVALID_CODE);
     }
 
-    await clearRateLimit(accountKey);
+    await releaseAttempts(accountKey, ipKey);
     await completeMfa(req.sessionToken);
     return res.json({ user: await finishLogin(req, user) });
   } catch (err) {
@@ -197,8 +196,8 @@ router.post('/login/totp', async (req, res) => {
 
 router.post('/logout', async (req, res) => {
   try {
-    if (req.sessionToken) await deleteSession(req.sessionToken);
     clearSessionCookie(res);
+    if (req.sessionToken) await deleteSession(req.sessionToken);
     if (req.user) await audit(req, { action: 'auth.logout', entityType: 'users', entityId: req.user.id });
     return res.status(204).end();
   } catch (err) {
@@ -214,11 +213,16 @@ router.post('/password', async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body ?? {};
     const user = await findUserById(req.user.id);
+    const pwKey = passwordChangeKey(user.id);
+    const retryAfter = await reserveAttempt(pwKey, LIMITS.perAccount.limit, LIMITS.perAccount.windowMs);
+    if (retryAfter > 0) return sendRateLimited(res, retryAfter);
+
     const currentOk = typeof currentPassword === 'string'
       && currentPassword.length > 0
       && currentPassword.length <= MAX_PASSWORD_LENGTH
       && await verifyPassword(user.password_hash, currentPassword);
     if (!currentOk) throw new AuthError(400, 'Aktuelles Passwort ist falsch', 'INVALID_PASSWORD');
+    await clearRateLimit(pwKey);
 
     const problem = validatePassword(newPassword);
     if (problem) throw new AuthError(400, problem, 'WEAK_PASSWORD');
