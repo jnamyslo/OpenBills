@@ -4,7 +4,7 @@ export function getAuthConfig() {
   try {
     publicOrigin = new URL(publicUrl).origin;
   } catch {
-    // ungültige URL: assertAuthConfig meldet das
+    // ungültige URL: assertAuthConfig lehnt sie beim Start ab; hier nur Fallback
   }
   const hops = Number.parseInt(process.env.TRUST_PROXY_HOPS ?? '', 10);
   return {
@@ -20,6 +20,15 @@ export function assertAuthConfig() {
   const cfg = getAuthConfig();
   if (!cfg.publicUrl) {
     throw new Error('PUBLIC_URL fehlt (z. B. https://rechnung.example.de)');
+  }
+  let protocol;
+  try {
+    protocol = new URL(cfg.publicUrl).protocol;
+  } catch {
+    protocol = null;
+  }
+  if (protocol !== 'http:' && protocol !== 'https:') {
+    throw new Error('PUBLIC_URL ist ungültig (erwartet http:// oder https://, z. B. https://rechnung.example.de)');
   }
   if (cfg.encryptionKey.length !== 32) {
     throw new Error('AUTH_ENCRYPTION_KEY fehlt oder ist nicht 32 Byte (base64) lang (erzeugen mit: openssl rand -base64 32)');

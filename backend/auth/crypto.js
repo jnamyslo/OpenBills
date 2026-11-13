@@ -29,7 +29,10 @@ export function decryptSecret(enc) {
   if (ivBuf.toString('base64') !== iv || tagBuf.toString('base64') !== tag || ctBuf.toString('base64') !== ct) {
     throw new Error('Ungültiges Secret-Format');
   }
-  const decipher = crypto.createDecipheriv('aes-256-gcm', getAuthConfig().encryptionKey, ivBuf);
+  if (ivBuf.length !== 12 || tagBuf.length !== 16) {
+    throw new Error('Ungültiges Secret-Format');
+  }
+  const decipher = crypto.createDecipheriv('aes-256-gcm', getAuthConfig().encryptionKey, ivBuf, { authTagLength: 16 });
   decipher.setAuthTag(tagBuf);
   return Buffer.concat([decipher.update(ctBuf), decipher.final()]).toString('utf8');
 }

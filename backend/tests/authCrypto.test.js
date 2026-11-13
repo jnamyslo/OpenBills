@@ -41,7 +41,41 @@ describe('encryptSecret / decryptSecret', () => {
   });
 });
 
+describe('decryptSecret Härtung', () => {
+  it('verändertes Ciphertext-Byte (kanonisches Base64) wirft per GCM-Authentifizierung', () => {
+    const [v, iv, tag, ct] = encryptSecret('JBSWY3DPEHPK3PXP').split(':');
+    const buf = Buffer.from(ct, 'base64');
+    buf[0] ^= 0x01;
+    expect(() => decryptSecret([v, iv, tag, buf.toString('base64')].join(':'))).toThrow();
+  });
+
+  it('verändertes Tag-Byte wirft', () => {
+    const [v, iv, tag, ct] = encryptSecret('JBSWY3DPEHPK3PXP').split(':');
+    const buf = Buffer.from(tag, 'base64');
+    buf[0] ^= 0x01;
+    expect(() => decryptSecret([v, iv, buf.toString('base64'), ct].join(':'))).toThrow();
+  });
+
+  it('falsche IV-/Tag-Länge wirft', () => {
+    const [v, iv, tag, ct] = encryptSecret('x').split(':');
+    const short = (b64) => Buffer.from(b64, 'base64').subarray(0, 8).toString('base64');
+    expect(() => decryptSecret([v, short(iv), tag, ct].join(':'))).toThrow(/Format/);
+    expect(() => decryptSecret([v, iv, short(tag), ct].join(':'))).toThrow(/Format/);
+  });
+
+  it('Müll wirft', () => {
+    expect(() => decryptSecret('garbage')).toThrow();
+  });
+});
+
 describe('config', () => {
+  it('assertAuthConfig wirft bei ungültiger PUBLIC_URL', () => {
+    vi.stubEnv('PUBLIC_URL', 'foo');
+    expect(() => assertAuthConfig()).toThrow(/PUBLIC_URL ist ungültig/);
+    vi.stubEnv('PUBLIC_URL', 'ftp://a.example');
+    expect(() => assertAuthConfig()).toThrow(/PUBLIC_URL ist ungültig/);
+  });
+
   it('assertAuthConfig wirft ohne PUBLIC_URL', () => {
     vi.stubEnv('PUBLIC_URL', '');
     expect(() => assertAuthConfig()).toThrow(/PUBLIC_URL/);
