@@ -32,8 +32,6 @@ export function createApp() {
   app.set('trust proxy', getAuthConfig().trustProxyHops);
 
   app.use(cookieParser());
-  app.use(express.json({ limit: '100mb' })); // Increase limit for PDF attachments
-  app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
   // Health check endpoint (ohne Login)
   app.get('/health', async (req, res) => {
@@ -64,6 +62,11 @@ export function createApp() {
   // Jede /api-Route braucht eine Session (Ausnahmen: PUBLIC_API_PATHS)
   app.use('/api', originCheck, loadSession, requireAuth, auditWrites);
 
+  // Bodies erst nach der Authentifizierung parsen; öffentliche Auth-Endpunkte nur kleine Bodies
+  app.use('/api/auth', express.json({ limit: '100kb' }), express.urlencoded({ limit: '100kb', extended: true }));
+  app.use(express.json({ limit: '100mb' })); // Increase limit for PDF attachments
+  app.use(express.urlencoded({ limit: '100mb', extended: true }));
+
   // API routes
   app.use('/api/auth', authRouter);
   app.use('/api/users', requireAdmin, usersRouter);
@@ -85,6 +88,9 @@ export function createApp() {
 
   // Error handling middleware
   app.use((err, req, res, next) => {
+    if (err.type === 'entity.too.large') {
+      return res.status(413).json({ error: 'Anfrage zu groß' });
+    }
     logger.error('Unhandled server error', { error: err.message, stack: err.stack, url: req.url, method: req.method });
     res.status(500).json({ error: 'Internal server error' });
   });

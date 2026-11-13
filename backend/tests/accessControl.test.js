@@ -99,6 +99,15 @@ describe.skipIf(!hasDb)('Zugriffskontrolle (DB)', () => {
     expect(bad.status).toBe(401);
   });
 
+  it('Bodies werden erst nach der Authentifizierung geparst', async () => {
+    const big = { data: 'x'.repeat(150 * 1024) };
+    const res = await request(app).post('/api/customers').set(ORIGIN).send(big);
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe('AUTH_REQUIRED');
+    const login = await request(app).post('/api/auth/login').set(ORIGIN).send(big);
+    expect(login.status).toBe(413);
+  });
+
   describe('als user', () => {
     let cookie;
     beforeEach(async () => {
