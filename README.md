@@ -186,6 +186,8 @@ Beispiel‑Portschema:
 | client2 | 5433 | 3002 | 8081 | http://localhost:8081 |
 | client3 | 5434 | 3003 | 8082 | http://localhost:8082 |
 
+DB- und API-Port sind nur an `127.0.0.1` gebunden (von außen nicht erreichbar). Öffentlicher Einstieg ist ausschließlich der Web-Port; Nginx leitet `/api` intern an das Backend weiter. Remote-Zugriff auf DB/API bei Bedarf per SSH-Tunnel, z. B. `ssh -L 5432:127.0.0.1:5432 <host>`.
+
 ### Instanzen verwalten
 
 ```bash
