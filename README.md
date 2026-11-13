@@ -120,7 +120,7 @@ Erleben Sie OpenBills in Aktion – hier sind einige Einblicke in die Benutzerob
 
 ### Reporting & Auswertungen
 <div align="center">
-  <img src="demo/Reportingh.png" alt="Reporting" width="800">
+  <img src="demo/Reporting.png" alt="Reporting" width="800">
   <p><em>Umfassende Auswertungen mit Zeitraum-Filtern, Umsatzstatistiken und Kunden-Toplisten</em></p>
 </div>
 
