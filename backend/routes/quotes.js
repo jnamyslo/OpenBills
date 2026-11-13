@@ -1,6 +1,8 @@
 import express from 'express';
 import { query } from '../database.js';
 import logger from '../utils/logger.js';
+import { requireFeature, sendPlanError } from '../utils/plan.js';
+import { stampDraftWatermark } from '../utils/draftWatermark.js';
 import { findAllQuotes, findQuoteById } from '../queries/quoteQueries.js';
 import { createQuote, updateQuote, deleteQuote, convertQuoteToInvoice } from '../services/quoteService.js';
 
@@ -47,6 +49,7 @@ router.post('/', async (req, res) => {
     const quote = await createQuote({ customerId, items, notes, attachments, issueDate, validUntil, status, globalDiscountType, globalDiscountValue, globalDiscountAmount });
     res.status(201).json(quote);
   } catch (error) {
+    if (sendPlanError(res, error)) return;
     logger.error('Failed to create quote', {
       error: error.message,
       stack: error.stack,
@@ -67,6 +70,7 @@ router.put('/:id', async (req, res) => {
     if (!quote) return res.status(404).json({ error: 'Quote not found' });
     res.json(quote);
   } catch (error) {
+    if (sendPlanError(res, error)) return;
     logger.error('Failed to update quote', {
       error: error.message,
       stack: error.stack,
@@ -99,7 +103,7 @@ router.delete('/:id', async (req, res) => {
 
 // Convert quote to invoice
 // Send quote via email
-router.post('/:id/send-email', async (req, res) => {
+router.post('/:id/send-email', requireFeature('email'), async (req, res) => {
   try {
     const { id } = req.params;
     const { customerEmails, customText, attachments, pdfBuffer } = req.body;
@@ -142,7 +146,10 @@ router.post('/:id/send-email', async (req, res) => {
       total: quote.total,
       status: quote.status,
       notes: quote.notes,
-      pdfBuffer: pdfBuffer, // PDF generated on frontend
+      // PDF generated on frontend; Entwürfe erhalten serverseitig das Wasserzeichen
+      pdfBuffer: quote.status === 'draft' && pdfBuffer
+        ? (await stampDraftWatermark(Buffer.from(pdfBuffer, 'base64'))).toString('base64')
+        : pdfBuffer,
     };
 
     // Note: Quote emails are simpler - just PDF, no ZUGFeRD/XRechnung

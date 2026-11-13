@@ -2,10 +2,14 @@ import express from 'express';
 import { query } from '../database.js';
 import logger from '../utils/logger.js';
 import PDFDocument from 'pdfkit';
+import { hasFeature, requireFeature } from '../utils/plan.js';
 
 const router = express.Router();
 
 // Get invoice journal data for reporting
+// Rechnungsjournal nur mit vollem Reporting (Professional+)
+router.use('/invoice-journal', requireFeature('reportingFull'));
+
 router.get('/invoice-journal', async (req, res) => {
   try {
     const { startDate, endDate, customerId } = req.query;
@@ -385,7 +389,10 @@ router.post('/invoice-journal/pdf', async (req, res) => {
 // Get reporting statistics
 router.get('/statistics', async (req, res) => {
   try {
-    const { year = new Date().getFullYear() } = req.query;
+    // Basis-Reporting: nur laufendes Jahr, keine Kunden-Auswertung
+    const fullReporting = hasFeature('reportingFull');
+    const currentYear = new Date().getFullYear();
+    const year = fullReporting ? (req.query.year ?? currentYear) : currentYear;
 
     // Monthly revenue statistics
     const monthlyRevenueResult = await query(`
@@ -470,7 +477,7 @@ router.get('/statistics', async (req, res) => {
         paidSum: parseFloat(row.paid_sum || 0),
         overdueSum: parseFloat(row.overdue_sum || 0)
       })),
-      topCustomers: customerStatsResult.rows.map(row => ({
+      topCustomers: !fullReporting ? [] : customerStatsResult.rows.map(row => ({
         customerId: row.customer_id,
         customerName: row.customer_name,
         invoiceCount: parseInt(row.invoice_count),

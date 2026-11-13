@@ -2,8 +2,18 @@ import express from 'express';
 import { query } from '../database.js';
 import { sendInvoiceEmail, sendInvoiceEmailMultiFormat, sendReminderEmail, testEmailConnection } from '../services/emailService.js';
 import logger from '../utils/logger.js';
+import { stampDraftWatermark } from '../utils/draftWatermark.js';
 
 const router = express.Router();
+
+const DRAFT_XRECHNUNG_MESSAGE = 'Entwürfe können nicht als XRechnung versendet werden. Bitte die Rechnung zuerst freigeben.';
+
+/** Status aus der DB – die vom Client gesendeten invoiceData sind nicht vertrauenswürdig. */
+async function loadInvoiceStatus(invoiceId) {
+  if (!invoiceId) return null;
+  const result = await query('SELECT status FROM invoices WHERE id = $1', [invoiceId]);
+  return result.rows[0]?.status ?? null;
+}
 
 // Test email configuration
 router.get('/test', async (req, res) => {
@@ -35,10 +45,19 @@ router.post('/send-invoice-multi', async (req, res) => {
     const companyResult = await query('SELECT primary_color, secondary_color FROM company WHERE id = 1');
     const companySettings = companyResult.rows[0] || { primary_color: '#2563eb', secondary_color: '#64748b' };
 
-    // Convert base64 PDFs to buffers
-    const processedFormats = invoiceFormats.map(({ format, content }) => ({
-      format,
-      content: Buffer.from(content, 'base64')
+    const status = await loadInvoiceStatus(invoiceData.id);
+    if (!status) {
+      return res.status(404).json({ success: false, message: 'Rechnung nicht gefunden' });
+    }
+    const isDraft = status === 'draft';
+    if (isDraft && invoiceFormats.some(f => f.format === 'xrechnung')) {
+      return res.status(400).json({ success: false, message: DRAFT_XRECHNUNG_MESSAGE });
+    }
+
+    // Convert base64 PDFs to buffers; Entwürfe erhalten serverseitig das Wasserzeichen
+    const processedFormats = await Promise.all(invoiceFormats.map(async ({ format, content }) => {
+      const buffer = Buffer.from(content, 'base64');
+      return { format, content: isDraft ? await stampDraftWatermark(buffer) : buffer };
     }));
     
     // Process additional attachments if provided
@@ -100,8 +119,18 @@ router.post('/send-invoice', async (req, res) => {
     const companyResult = await query('SELECT primary_color, secondary_color FROM company WHERE id = 1');
     const companySettings = companyResult.rows[0] || { primary_color: '#2563eb', secondary_color: '#64748b' };
 
-    // Convert base64 PDF to buffer
-    const pdfBuffer = Buffer.from(invoicePDF, 'base64');
+    const status = await loadInvoiceStatus(invoiceData.id);
+    if (!status) {
+      return res.status(404).json({ success: false, message: 'Rechnung nicht gefunden' });
+    }
+    const isDraft = status === 'draft';
+    if (isDraft && format === 'xrechnung') {
+      return res.status(400).json({ success: false, message: DRAFT_XRECHNUNG_MESSAGE });
+    }
+
+    // Convert base64 PDF to buffer; Entwürfe erhalten serverseitig das Wasserzeichen
+    const rawPdf = Buffer.from(invoicePDF, 'base64');
+    const pdfBuffer = isDraft ? await stampDraftWatermark(rawPdf) : rawPdf;
     
     // Process additional attachments if provided
     let processedAttachments = [];
