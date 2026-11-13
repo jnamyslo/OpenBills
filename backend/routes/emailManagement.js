@@ -6,6 +6,7 @@ import { query } from '../database.js';
 import logger from '../utils/logger.js';
 import { testEmailConnection } from '../services/emailService.js';
 import { parsePagination } from '../utils/routeHelpers.js';
+import { requireAdmin } from '../auth/middleware.js';
 
 const router = express.Router();
 
@@ -263,7 +264,7 @@ router.get('/statistics', async (req, res) => {
 });
 
 // Get SMTP settings
-router.get('/smtp-settings', async (req, res) => {
+router.get('/smtp-settings', requireAdmin, async (req, res) => {
   try {
     const result = await query('SELECT * FROM smtp_settings WHERE id = 1');
     
@@ -312,7 +313,7 @@ router.get('/smtp-settings', async (req, res) => {
 });
 
 // Update SMTP settings
-router.post('/smtp-settings', async (req, res) => {
+router.post('/smtp-settings', requireAdmin, async (req, res) => {
   try {
     const {
       smtp_host,
@@ -412,7 +413,7 @@ router.post('/smtp-settings', async (req, res) => {
 });
 
 // Debug environment and database configuration
-router.post('/debug-config', async (req, res) => {
+router.post('/debug-config', requireAdmin, async (req, res) => {
   try {
     // Get environment variables
     const envConfig = {
@@ -475,7 +476,7 @@ router.post('/debug-config', async (req, res) => {
 });
 
 // Diagnose SMTP settings
-router.post('/diagnose-smtp', async (req, res) => {
+router.post('/diagnose-smtp', requireAdmin, async (req, res) => {
   try {
     const result = await query('SELECT * FROM smtp_settings WHERE id = 1');
     
@@ -551,7 +552,7 @@ router.post('/diagnose-smtp', async (req, res) => {
 });
 
 // Test SMTP connection with database settings
-router.post('/test-smtp', async (req, res) => {
+router.post('/test-smtp', requireAdmin, async (req, res) => {
   try {
     const { use_database_settings = true, settings = null } = req.body;
 
@@ -661,7 +662,7 @@ router.post('/test-smtp', async (req, res) => {
 });
 
 // Test network connectivity to SMTP server
-router.post('/test-network', async (req, res) => {
+router.post('/test-network', requireAdmin, async (req, res) => {
   try {
     const { host, port } = req.body;
     
@@ -760,7 +761,7 @@ router.post('/test-network', async (req, res) => {
 });
 
 // Send test email
-router.post('/send-test-email', async (req, res) => {
+router.post('/send-test-email', requireAdmin, async (req, res) => {
   try {
     const { recipient_email, custom_subject, custom_message } = req.body;
 

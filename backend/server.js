@@ -1,93 +1,55 @@
-import express from 'express';
-import cors from 'cors';
 import dotenv from 'dotenv';
-import { createTables, pool, checkHealth } from './database.js';
+import { createTables, pool } from './database.js';
 import logger from './utils/logger.js';
-import customersRouter from './routes/customers.js';
-import invoicesRouter from './routes/invoices.js';
-import quotesRouter from './routes/quotes.js';
-import companyRouter from './routes/company.js';
-import emailRouter from './routes/email.js';
-import emailManagementRouter from './routes/emailManagement.js';
-import jobsRouter from './routes/jobs.js';
-import materialTemplatesRouter from './routes/materialTemplates.js';
-import hourlyRatesRouter from './routes/hourlyRates.js';
-import yearlyInvoiceStartNumbersRouter from './routes/yearlyInvoiceStartNumbers.js';
-import backupRouter from './routes/backup.js';
-import reportingRouter from './routes/reporting.js';
-import remindersRouter from './routes/reminders.js';
-import planRouter from './routes/plan.js';
-import { getPlanName, requireFeature } from './utils/plan.js';
+import { createApp } from './app.js';
+import { getPlanName } from './utils/plan.js';
+import { assertAuthConfig } from './auth/config.js';
+import { verifyDummyPassword } from './auth/password.js';
+import { cleanupSessions } from './auth/sessions.js';
+import { cleanupRateLimits } from './auth/rateLimit.js';
+import { cleanupAuditLog } from './auth/audit.js';
 
 dotenv.config();
 
-const app = express();
 const PORT = process.env.PORT || 3001;
+const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
 
-// Middleware
-app.use(cors());
-app.use(express.json({ limit: '100mb' })); // Increase limit for PDF attachments
-app.use(express.urlencoded({ limit: '100mb', extended: true }));
-
-// Health check endpoint
-app.get('/health', async (req, res) => {
-  const dbHealth = await checkHealth();
-  
-  if (dbHealth.healthy) {
-    res.json({ 
-      status: 'OK', 
-      message: 'Server is running',
-      database: {
-        status: 'connected',
-        poolStats: dbHealth.poolStats,
-      },
-    });
-  } else {
-    res.status(503).json({ 
-      status: 'DEGRADED', 
-      message: 'Server is running but database connection failed',
-      database: {
-        status: 'disconnected',
-        error: dbHealth.error,
-        poolStats: dbHealth.poolStats,
-      },
-    });
+async function runCleanup() {
+  for (const [name, fn] of [
+    ['sessions', cleanupSessions],
+    ['rate_limits', cleanupRateLimits],
+    ['audit_log', cleanupAuditLog],
+  ]) {
+    try {
+      await fn();
+    } catch (error) {
+      logger.error('Cleanup fehlgeschlagen', { job: name, error: error.message });
+    }
   }
-});
-
-// API routes
-app.use('/api/customers', customersRouter);
-app.use('/api/invoices', invoicesRouter);
-app.use('/api/quotes', quotesRouter);
-app.use('/api/company', companyRouter);
-app.use('/api/email', requireFeature('email'), emailRouter);
-app.use('/api/email-management', emailManagementRouter);
-app.use('/api/jobs', requireFeature('jobs', { allowRead: true }), jobsRouter);
-app.use('/api/material-templates', requireFeature('customerPricing', { allowRead: true }), materialTemplatesRouter);
-app.use('/api/hourly-rates', hourlyRatesRouter);
-app.use('/api/yearly-invoice-start-numbers', yearlyInvoiceStartNumbersRouter);
-app.use('/api/backup', backupRouter);
-app.use('/api/reporting', reportingRouter);
-app.use('/api/reminders', requireFeature('reminders', { allowRead: true }), remindersRouter);
-app.use('/api/plan', planRouter);
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-  logger.error('Unhandled server error', { error: err.message, stack: err.stack, url: req.url, method: req.method });
-  res.status(500).json({ error: 'Internal server error' });
-});
+}
 
 // Initialize database and start server
 async function startServer() {
+  try {
+    assertAuthConfig();
+  } catch (error) {
+    logger.error(error.message);
+    process.exit(1);
+  }
+
   try {
     logger.info('Plan', { plan: getPlanName() });
     logger.info('Connecting to database...');
     await createTables();
     logger.info('Database initialized successfully');
-    
-    app.listen(PORT, '0.0.0.0', () => {
+
+    await verifyDummyPassword('warmup');
+
+    createApp().listen(PORT, '0.0.0.0', () => {
       logger.info(`Server started`, { port: PORT, environment: process.env.NODE_ENV || 'development' });
     });
+
+    setInterval(runCleanup, CLEANUP_INTERVAL_MS).unref();
   } catch (error) {
     logger.error('Failed to start server', { error: error.message, stack: error.stack });
     process.exit(1);
