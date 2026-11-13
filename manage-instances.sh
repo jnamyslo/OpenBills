@@ -51,6 +51,8 @@ list_instances() {
                 DB_PORT=$(grep "DB_PORT=" "$env_file" | cut -d'=' -f2)
                 BACKEND_PORT=$(grep "BACKEND_PORT=" "$env_file" | cut -d'=' -f2)
                 FRONTEND_PORT=$(grep "FRONTEND_PORT=" "$env_file" | cut -d'=' -f2)
+                # Tarif aus der Backend-Konfiguration (leer/fehlend = self-hosted)
+                PLAN=$(grep -E '^BELEGO_PLAN=' ".env.backend.$instance_name" | tail -1 | cut -d'=' -f2- | tr -d '"'"'"'\r ')
                 
                 # Check if running
                 if docker ps --filter "name=belego-${instance_name}" --format "{{.Names}}" | grep -q "belego-${instance_name}"; then
@@ -59,7 +61,7 @@ list_instances() {
                     status="${RED}STOPPED${NC}"
                 fi
                 
-                echo -e "  ${BLUE}$instance_name${NC} - $status - Frontend:$FRONTEND_PORT Backend:$BACKEND_PORT DB:$DB_PORT"
+                echo -e "  ${BLUE}$instance_name${NC} - $status - Tarif:${PLAN:-self-hosted} - Frontend:$FRONTEND_PORT Backend:$BACKEND_PORT DB:$DB_PORT"
             fi
         fi
     done
