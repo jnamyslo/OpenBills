@@ -10,6 +10,7 @@ import {
 } from '../auth/users.js';
 import { createAuthToken, peekAuthToken, consumeAuthToken, revokeTokens, TOKEN_MESSAGES } from '../auth/tokens.js';
 import { getAuthConfig } from '../auth/config.js';
+import { isDemoMode, DEMO_EMAIL } from '../demo/index.js';
 import { isSmtpConfigured, sendPasswordResetMail } from '../services/authMailService.js';
 import { reserveAttempt, releaseAttempt, clearRateLimit, LIMITS } from '../auth/rateLimit.js';
 import {
@@ -57,6 +58,8 @@ function sendRateLimited(res, retryAfter) {
 
 // Zählt einen Fehlversuch für die Sperre und protokolliert eine neu ausgelöste Sperre.
 async function recordUserFailure(req, user) {
+  // Gemeinsamer Demo-Zugang darf nicht durch Fehlversuche anderer Besucher gesperrt werden.
+  if (isDemoMode() && user.email === DEMO_EMAIL) return;
   const { lockedUntil } = await recordLoginFailure(user.id);
   if (lockedUntil && !isLocked(user)) {
     await audit(req, { action: 'auth.locked', user, entityType: 'users', entityId: user.id });

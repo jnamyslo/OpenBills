@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import { isDemoMode, createDemoTransporter } from '../demo/index.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { query } from '../database.js';
@@ -50,6 +51,7 @@ const sanitizeFilename = (filename) => {
 
 // SMTP Configuration
 export const createTransporter = async () => {
+  if (isDemoMode()) return createDemoTransporter();
   // Hosted-Tarife ohne eigenes SMTP versenden Kundenmails über den Plattform-Relay
   if (await getMailRoute('customer') === 'platform') return createPlatformTransporter();
 

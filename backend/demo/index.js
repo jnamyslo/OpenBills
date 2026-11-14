@@ -1,3 +1,6 @@
+import nodemailer from 'nodemailer';
+import logger from '../utils/logger.js';
+
 /**
  * Demo-Modus (OPENBILLS_DEMO=true): öffentliche, abgeriegelte Demo-Instanz.
  * Siehe docs/superpowers/specs/2026-11-14-demo-mode-design.md
@@ -28,4 +31,18 @@ export function nextResetAt(now) {
     next.setHours(next.getHours() + 1);
   } while (next.getHours() % RESET_INTERVAL_HOURS !== 0);
   return next;
+}
+
+/** Transport, der nichts versendet (nodemailer jsonTransport) und nur protokolliert. */
+export function createDemoTransporter() {
+  const transport = nodemailer.createTransport({ jsonTransport: true });
+  return {
+    options: transport.options,
+    verify: async () => true,
+    sendMail: async (mail) => {
+      const info = await transport.sendMail(mail);
+      logger.info('Demo: Mail nicht versendet', { to: mail.to, subject: mail.subject });
+      return info;
+    },
+  };
 }

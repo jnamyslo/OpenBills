@@ -22,6 +22,7 @@ import reportingRouter from './routes/reporting.js';
 import remindersRouter from './routes/reminders.js';
 import planRouter from './routes/plan.js';
 import demoRouter from './routes/demo.js';
+import { demoGuard } from './demo/guard.js';
 import authRouter from './routes/auth.js';
 import usersRouter from './routes/users.js';
 import auditLogRouter from './routes/auditLog.js';
@@ -61,7 +62,7 @@ export function createApp() {
   });
 
   // Jede /api-Route braucht eine Session (Ausnahmen: PUBLIC_API_PATHS)
-  app.use('/api', originCheck, loadSession, requireAuth, auditWrites);
+  app.use('/api', originCheck, loadSession, requireAuth, demoGuard, auditWrites);
 
   // Bodies erst nach der Authentifizierung parsen; öffentliche Auth-Endpunkte nur kleine Bodies
   app.use('/api/auth', express.json({ limit: '100kb' }), express.urlencoded({ limit: '100kb', extended: true }));

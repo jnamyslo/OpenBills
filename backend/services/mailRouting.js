@@ -4,6 +4,7 @@
  * Siehe docs/superpowers/specs/2026-11-14-platform-mail-design.md
  */
 import nodemailer from 'nodemailer';
+import { isDemoMode, createDemoTransporter } from '../demo/index.js';
 import { query } from '../database.js';
 import { hasFeature, getPlanName, getUpgradeContact, PlanError, sendPlanError } from '../utils/plan.js';
 
@@ -36,6 +37,7 @@ export function assertPlatformMailConfig() {
 }
 
 export function createPlatformTransporter() {
+  if (isDemoMode()) return createDemoTransporter();
   return nodemailer.createTransport({
     host: process.env.PLATFORM_SMTP_HOST,
     port: Number.parseInt(process.env.PLATFORM_SMTP_PORT || '', 10) || 587,
