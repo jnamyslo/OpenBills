@@ -9,6 +9,8 @@ import { BackupManagement } from './BackupManagement';
 import { EmailManagement } from './EmailManagement';
 import { apiService } from '../services/api';
 import { updateFavicon, updatePageTitle } from '../utils/faviconUtils';
+import { UserManagement } from './UserManagement';
+import { AuditLogView } from './AuditLogView';
 import { YearlyInvoiceStartNumber, MaterialTemplate, HourlyRate } from '../types';
 
 export function Settings() {
@@ -1395,6 +1397,12 @@ export function Settings() {
             </div>
           </div>
         </div>
+
+        {/* Nutzerverwaltung */}
+        <UserManagement />
+
+        {/* Audit-Log */}
+        <AuditLogView />
 
         {/* Save Button */}
         <div className="flex justify-end">
