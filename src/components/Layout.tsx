@@ -80,19 +80,19 @@ export function Layout({ children, currentPage, onPageChange }: LayoutProps) {
               </button>
               
               <div className="flex items-center gap-2">
-              <UserMenu onOpenAccount={() => setIsAccountOpen(true)} />
-              {/* Mobile menu button */}
-              <button
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="lg:hidden p-2 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors touch-target"
-                aria-label={isMobileMenuOpen ? 'Menü schließen' : 'Menü öffnen'}
-              >
-                {isMobileMenuOpen ? (
-                  <X className="h-6 w-6" />
-                ) : (
-                  <Menu className="h-6 w-6" />
-                )}
-              </button>
+                <UserMenu onOpenAccount={() => setIsAccountOpen(true)} />
+                {/* Mobile menu button */}
+                <button
+                  onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                  className="lg:hidden p-2 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors touch-target"
+                  aria-label={isMobileMenuOpen ? 'Menü schließen' : 'Menü öffnen'}
+                >
+                  {isMobileMenuOpen ? (
+                    <X className="h-6 w-6" />
+                  ) : (
+                    <Menu className="h-6 w-6" />
+                  )}
+                </button>
               </div>
             </div>
           </div>

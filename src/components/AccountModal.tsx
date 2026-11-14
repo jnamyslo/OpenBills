@@ -50,6 +50,7 @@ export function AccountModal({ isOpen, onClose }: AccountModalProps) {
   };
 
   const handleClose = () => {
+    if (step === 'recovery') void refresh();
     resetTwoFactor();
     setCurrentPassword('');
     setNewPassword('');
