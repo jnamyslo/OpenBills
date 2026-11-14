@@ -27,6 +27,13 @@ instance_plan() {
     grep -E '^OPENBILLS_PLAN=' "$file" | tail -1 | cut -d'=' -f2- | tr -d '"'"'"'\r '
 }
 
+# is_demo_instance <name> → 0, wenn .env.backend.<name> OPENBILLS_DEMO=true setzt (öffentliche Demo, kein Onboarding/Support-Zugang)
+is_demo_instance() {
+    local file=".env.backend.$1"
+    [ -f "$file" ] || return 1
+    [ "$(grep -E '^OPENBILLS_DEMO=' "$file" | tail -1 | cut -d'=' -f2- | tr -d '"'"'"'\r ')" = "true" ]
+}
+
 # is_valid_platform_instance_name <name> → 0, wenn der Name als Absender <name>@openbills.de taugt
 is_valid_platform_instance_name() {
     [[ "$1" =~ $PLATFORM_INSTANCE_NAME_REGEX ]]

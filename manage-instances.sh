@@ -325,6 +325,11 @@ run_auth_script() {
         return 1
     fi
 
+    if is_demo_instance "$instance_name"; then
+        print_error "Demo-Instanz: kein Onboarding/Support-Zugang (Login: demo@openbills.de / demo)"
+        return 1
+    fi
+
     compose_cmd "$instance_name"
     local compose=("${COMPOSE[@]}")
     if [ -z "$("${compose[@]}" ps --status running -q backend 2>/dev/null)" ]; then

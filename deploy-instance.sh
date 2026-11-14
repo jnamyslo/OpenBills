@@ -85,16 +85,19 @@ prompt_plan() {
     echo "  3) Starter       –  25 Rechnungen/Angebote pro Monat,  50 Kunden, E-Mail, Mahnwesen"
     echo "  4) Professional  – 100 Rechnungen/Angebote pro Monat, 250 Kunden, alle Funktionen"
     echo "  5) Enterprise    – unbegrenzt, alle Funktionen"
+    echo "  6) Demo-Instanz  – öffentliche Demo, alle Funktionen, keine Mails, Reset alle 3 h"
+    OPENBILLS_DEMO=""
     while true; do
         local choice
-        choice=$(prompt_input "Tarif wählen (1-5)" "1")
+        choice=$(prompt_input "Tarif wählen (1-6)" "1")
         case "$choice" in
             1) OPENBILLS_PLAN=""; break ;;
             2) OPENBILLS_PLAN="free"; break ;;
             3) OPENBILLS_PLAN="starter"; break ;;
             4) OPENBILLS_PLAN="professional"; break ;;
             5) OPENBILLS_PLAN="enterprise"; break ;;
-            *) print_error "Bitte 1 bis 5 eingeben." ;;
+            6) OPENBILLS_PLAN=""; OPENBILLS_DEMO="true"; break ;;
+            *) print_error "Bitte 1 bis 6 eingeben." ;;
         esac
     done
 
@@ -134,6 +137,12 @@ prompt_public_url() {
 # Argument: Instanzname. Rückgabewert 1 bei Timeout oder Fehler.
 print_access_info() {
     local name="$1"
+    if is_demo_instance "$name"; then
+        echo
+        print_info "=== Zugang ==="
+        print_info "Demo-Instanz – Login: demo@openbills.de / demo (Reset alle 3 h, kein Onboarding/Support-Zugang)"
+        return 0
+    fi
     compose_cmd "$name"
     local compose=("${COMPOSE[@]}")
     local waited=0
@@ -307,6 +316,8 @@ NODE_ENV=production
 
 # Managed SaaS: free | starter | professional | enterprise (leer = self-hosted, unbegrenzt)
 OPENBILLS_PLAN=${OPENBILLS_PLAN}
+# Öffentliche Demo (true = abgeriegelt, keine Mails, Reset alle 3 h; nur auf leerer DB)
+OPENBILLS_DEMO=${OPENBILLS_DEMO}
 # Kontakt im Upgrade-Hinweis (E-Mail, Telefon oder URL)
 OPENBILLS_UPGRADE_CONTACT=${OPENBILLS_UPGRADE_CONTACT}
 
@@ -423,7 +434,7 @@ show_help() {
     echo
     echo "Legacy Modus (für Kompatibilität):"
     echo "  $0 --legacy <instance_name> [db_port] [backend_port] [frontend_port] [plan] [public_url]"
-    echo "      plan: free | starter | professional | enterprise (weglassen = self-hosted, "" zum Überspringen)"
+    echo "      plan: free | starter | professional | enterprise | demo (weglassen = self-hosted, "" zum Überspringen)"
     echo "      public_url: z.B. https://kunde.openbills.de (Standard: http://localhost:<frontend_port>)"
     echo
     echo "Beispiele:"
@@ -455,6 +466,11 @@ legacy_deploy() {
     FRONTEND_PORT=${4:-8080}
     OPENBILLS_PLAN=${5:-}
     OPENBILLS_UPGRADE_CONTACT=""
+    OPENBILLS_DEMO=""
+    if [ "$OPENBILLS_PLAN" = "demo" ]; then
+        OPENBILLS_PLAN=""
+        OPENBILLS_DEMO="true"
+    fi
 
     if ! PUBLIC_URL=$(normalize_public_url "${6:-http://localhost:$FRONTEND_PORT}"); then
         print_error "Ungültige öffentliche URL '$6'. Sie muss mit http:// oder https:// beginnen."
@@ -521,6 +537,8 @@ NODE_ENV=production
 
 # Managed SaaS: free | starter | professional | enterprise (leer = self-hosted, unbegrenzt)
 OPENBILLS_PLAN=${OPENBILLS_PLAN}
+# Öffentliche Demo (true = abgeriegelt, keine Mails, Reset alle 3 h; nur auf leerer DB)
+OPENBILLS_DEMO=${OPENBILLS_DEMO}
 # Kontakt im Upgrade-Hinweis (E-Mail, Telefon oder URL)
 OPENBILLS_UPGRADE_CONTACT=${OPENBILLS_UPGRADE_CONTACT}
 
