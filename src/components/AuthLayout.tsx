@@ -11,13 +11,21 @@ interface AuthLayoutProps {
 /** Zentrierte Karte für alle Seiten ohne Anmeldung (Login, Setup, Einladung, Reset). */
 export function AuthLayout({ title, subtitle, children }: AuthLayoutProps) {
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-12">
-      <div className="w-full max-w-md">
+    <div className="relative min-h-screen overflow-hidden bg-slate-950 flex items-center justify-center px-4 py-12">
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0">
+        <div className="auth-blob auth-blob-1" />
+        <div className="auth-blob auth-blob-2" />
+        <div className="auth-blob auth-blob-3" />
+        <div className="auth-grid absolute inset-0" />
+      </div>
+      <div className="auth-enter relative w-full max-w-md">
         <div className="flex items-center justify-center gap-3 mb-6">
-          <img src="/openbills-icon.png" alt="" className="h-10 w-10" />
-          <span className="text-2xl font-bold text-gray-900">OpenBills</span>
+          <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-white shadow-lg shadow-blue-950/50 ring-1 ring-white/20">
+            <img src="/openbills-icon.png" alt="" className="h-8 w-8" />
+          </span>
+          <span className="text-2xl font-bold text-white tracking-tight">OpenBills</span>
         </div>
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sm:p-8">
+        <div className="bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl shadow-blue-950/50 ring-1 ring-white/20 p-6 sm:p-8">
           <h1 className="text-xl font-semibold text-gray-900">{title}</h1>
           {subtitle && <p className="mt-1 text-sm text-gray-600">{subtitle}</p>}
           <div className="mt-6">{children}</div>
