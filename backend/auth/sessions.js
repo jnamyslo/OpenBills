@@ -27,8 +27,7 @@ export async function getSession(token) {
         AND s.expires_at > now()
         AND s.last_seen_at > now() - interval '12 hours'
         AND (NOT s.mfa_pending OR s.created_at > now() - interval '5 minutes')
-        AND u.is_active = true
-        AND (u.locked_until IS NULL OR u.locked_until <= now())`,
+        AND u.is_active = true`,
     [idHash]
   );
   if (!rows[0]) return null;

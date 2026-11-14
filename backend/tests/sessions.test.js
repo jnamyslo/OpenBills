@@ -54,11 +54,17 @@ describe.skipIf(!hasDb)('sessions (DB)', () => {
     expect(await getSession(t2)).toBeNull();
   });
 
-  it('inaktiver oder gesperrter Nutzer -> null', async () => {
+  it('Sperre beendet bestehende Sessions nicht', async () => {
     const t = await createSession(user.id, {});
     await pool.query('UPDATE users SET locked_until = now() + interval \'10 minutes\' WHERE id = $1', [user.id]);
-    expect(await getSession(t)).toBeNull();
-    await pool.query('UPDATE users SET locked_until = NULL, is_active = false WHERE id = $1', [user.id]);
+    const res = await getSession(t);
+    expect(res).not.toBeNull();
+    expect(res.user.id).toBe(user.id);
+  });
+
+  it('inaktiver Nutzer -> null', async () => {
+    const t = await createSession(user.id, {});
+    await pool.query('UPDATE users SET is_active = false WHERE id = $1', [user.id]);
     expect(await getSession(t)).toBeNull();
   });
 

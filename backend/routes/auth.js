@@ -27,14 +27,15 @@ const INVALID_LOGIN = { error: 'E-Mail oder Passwort falsch' };
 const ACCOUNT_LOCKED = { error: 'Konto vorübergehend gesperrt', code: 'ACCOUNT_LOCKED' };
 const INVALID_CODE = { error: 'Code ungültig', code: 'INVALID_CODE' };
 
-const loginUserKey = (email) => `login:user:${hashToken(email)}`;
+// Account+IP: ein Angreifer kann so nicht den Login des Kontos von anderen IPs blockieren.
+const loginUserKey = (email, req) => `login:user:${hashToken(email)}:${req.ip}`;
 const loginIpKey = (req) => `login:ip:${req.ip}`;
 const totpUserKey = (userId) => `totp:user:${userId}`;
 const passwordChangeKey = (userId) => `pwchange:user:${userId}`;
 
 const isLocked = (user) => Boolean(user.locked_until && new Date(user.locked_until) > new Date());
 
-// Reserviert den Versuch atomar vor der Prüfung für Account- und IP-Schlüssel.
+// Reserviert den Versuch atomar vor der Prüfung für Account+IP- und IP-Schlüssel.
 // Liefert Sekunden bis zum Ende der Sperre (0 = Versuch erlaubt).
 async function reserveAttempts(accountKey, ipKey) {
   const [account, ip] = await Promise.all([
@@ -44,7 +45,7 @@ async function reserveAttempts(accountKey, ipKey) {
   return Math.max(account, ip);
 }
 
-// Erfolg: Account-Zähler zurücksetzen, den IP-Versuch wieder freigeben.
+// Erfolg: Account+IP-Zähler zurücksetzen, den IP-Versuch wieder freigeben.
 async function releaseAttempts(accountKey, ipKey) {
   await Promise.all([clearRateLimit(accountKey), releaseAttempt(ipKey)]);
 }
@@ -79,7 +80,7 @@ router.post('/login', async (req, res) => {
       throw new AuthError(400, 'E-Mail und Passwort erforderlich', 'VALIDATION_ERROR');
     }
     const normalized = normalizeEmail(email);
-    const accountKey = loginUserKey(normalized);
+    const accountKey = loginUserKey(normalized, req);
     const ipKey = loginIpKey(req);
 
     const retryAfter = await reserveAttempts(accountKey, ipKey);

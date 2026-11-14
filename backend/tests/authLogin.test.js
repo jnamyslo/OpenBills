@@ -95,24 +95,40 @@ describe.skipIf(!hasDb)('POST /api/auth/login und Co.', () => {
     expect(res.body).toEqual({ error: 'E-Mail oder Passwort falsch' });
   });
 
-  it('6. Fehlversuch pro Account -> 429 mit Retry-After, auch bei wechselnder IP', async () => {
+  it('6. Fehlversuch pro Account+IP -> 429 mit Retry-After', async () => {
     await makeUser();
     for (let i = 1; i <= 5; i += 1) {
       const res = await post('/api/auth/login', { email: 'max@firma.de', password: WRONG })
-        .set('X-Forwarded-For', `10.0.0.${i}`);
+        .set('X-Forwarded-For', '10.0.0.1');
       expect(res.status).toBe(401);
     }
-    const res = await request(app).post('/api/auth/login').set(ORIGIN).set('X-Forwarded-For', '10.0.0.99')
-      .send({ email: 'max@firma.de', password: PASSWORD });
+    const res = await post('/api/auth/login', { email: 'max@firma.de', password: PASSWORD })
+      .set('X-Forwarded-For', '10.0.0.1');
     expect(res.status).toBe(429);
     expect(res.body.code).toBe('RATE_LIMITED');
     expect(Number(res.headers['retry-after'])).toBeGreaterThan(0);
   });
 
-  it('10 parallele Fehlversuche pro Account -> höchstens 5 ohne 429', async () => {
+  it('5 Fehlversuche von IP A blockieren nicht den Login desselben Kontos von IP B', async () => {
+    // Test-App: trust proxy = 2 (Default), daher bestimmt X-Forwarded-For req.ip.
     await makeUser();
-    const results = await Promise.all(Array.from({ length: 10 }, (_, i) =>
-      post('/api/auth/login', { email: 'max@firma.de', password: WRONG }).set('X-Forwarded-For', `10.1.0.${i}`)));
+    for (let i = 1; i <= 5; i += 1) {
+      const res = await post('/api/auth/login', { email: 'max@firma.de', password: WRONG })
+        .set('X-Forwarded-For', '10.0.0.1');
+      expect(res.status).toBe(401);
+    }
+    expect((await post('/api/auth/login', { email: 'max@firma.de', password: WRONG })
+      .set('X-Forwarded-For', '10.0.0.1')).status).toBe(429);
+    const res = await post('/api/auth/login', { email: 'max@firma.de', password: PASSWORD })
+      .set('X-Forwarded-For', '10.0.0.2');
+    expect(res.status).toBe(200);
+    expect(res.body.user.email).toBe('max@firma.de');
+  });
+
+  it('10 parallele Fehlversuche pro Account+IP -> höchstens 5 ohne 429', async () => {
+    await makeUser();
+    const results = await Promise.all(Array.from({ length: 10 }, () =>
+      post('/api/auth/login', { email: 'max@firma.de', password: WRONG }).set('X-Forwarded-For', '10.1.0.1')));
     expect(results.filter((r) => r.status !== 429).length).toBeLessThanOrEqual(5);
     expect(results.filter((r) => r.status === 429).length).toBeGreaterThanOrEqual(5);
   });
