@@ -527,6 +527,8 @@ export interface AuthUser {
   isOperator: boolean;
   isActive: boolean;
   totpEnabled: boolean;
+  /** Einrichtungsassistent abgeschlossen oder übersprungen. */
+  onboardingCompleted: boolean;
   lastLoginAt: string | null;
   createdAt: string;
   /** ISO-Zeitpunkt, nur gesetzt solange die Sperre noch läuft. */

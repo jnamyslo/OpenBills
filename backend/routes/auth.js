@@ -222,6 +222,23 @@ router.get('/me', (req, res) => {
   res.json({ user: toPublicUser(req.user) });
 });
 
+// Einrichtungsassistent: abgeschlossen/übersprungen bzw. erneut starten (nur für den eigenen Benutzer).
+router.post('/onboarding', async (req, res) => {
+  try {
+    const completed = req.body?.completed;
+    if (typeof completed !== 'boolean') {
+      return res.status(400).json({ error: 'completed (boolean) erforderlich' });
+    }
+    await query(
+      `UPDATE users SET onboarding_completed_at = ${completed ? 'now()' : 'NULL'}, updated_at = now() WHERE id = $1`,
+      [req.user.id]
+    );
+    return res.json({ user: toPublicUser(await findUserById(req.user.id)) });
+  } catch (err) {
+    return sendAuthError(res, err);
+  }
+});
+
 router.post('/password', async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body ?? {};

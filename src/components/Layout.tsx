@@ -122,6 +122,7 @@ export function Layout({ children, currentPage, onPageChange }: LayoutProps) {
                   return (
                     <li key={item.id}>
                       <button
+                        data-tour={`nav-${item.id}`}
                         onClick={() => handlePageChange(item.id)}
                         className={`w-full flex items-center px-4 py-3 text-left rounded-lg transition-colors ${
                           currentPage === item.id

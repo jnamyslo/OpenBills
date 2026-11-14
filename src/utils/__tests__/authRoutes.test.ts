@@ -10,6 +10,7 @@ const user = (role: 'admin' | 'user'): AuthUser => ({
   isOperator: false,
   isActive: true,
   totpEnabled: false,
+  onboardingCompleted: true,
   lastLoginAt: null,
   createdAt: '2026-11-13T00:00:00.000Z',
   lockedUntil: null,

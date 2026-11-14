@@ -17,10 +17,12 @@ import { useQuotes } from './context/QuoteContext';
 import { usePlan } from './context/PlanContext';
 import { PlanLockedNotice } from './components/PlanLockedNotice';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { DemoProvider } from './context/DemoContext';
+import { DemoProvider, useDemo } from './context/DemoContext';
 import { isAdmin, parsePublicAuthRoute } from './utils/authRoutes';
 import { LoginPage } from './components/LoginPage';
 import { SetupPage } from './components/SetupPage';
+import { OnboardingWizard } from './components/OnboardingWizard';
+import { DemoTour } from './components/DemoTour';
 import { AcceptInvitePage } from './components/AcceptInvitePage';
 import { ForgotPasswordPage } from './components/ForgotPasswordPage';
 import { ResetPasswordPage } from './components/ResetPasswordPage';
@@ -151,7 +153,10 @@ function AppContent({ currentPageState, handlePageChange }: AppContentProps) {
   const { quotes } = useQuotes();
   const { hasFeature } = usePlan();
   const { user } = useAuth();
+  const { demo } = useDemo();
   const userIsAdmin = isAdmin(user);
+  // In der Demo gibt es stattdessen die geführte Tour; Support-Zugang braucht keine Einrichtung.
+  const showWizard = !loading && !demo && !!user && !user.isOperator && !user.onboardingCompleted;
 
   // Redirect to settings when the current page's module is disabled.
   // Done as an effect (not during render) to avoid updating state while rendering.
@@ -264,6 +269,8 @@ function AppContent({ currentPageState, handlePageChange }: AppContentProps) {
       <Layout currentPage={currentPageState.page} onPageChange={(page) => handlePageChange(page)}>
         {renderPage()}
       </Layout>
+      {showWizard && <OnboardingWizard />}
+      <DemoTour ready={!loading} />
     </>
   );
 }

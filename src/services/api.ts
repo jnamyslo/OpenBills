@@ -783,6 +783,10 @@ class ApiService {
     return this.request('/auth/me', { skipAuthEvent: true, skipErrorLogging: true });
   }
 
+  async setOnboardingCompleted(completed: boolean): Promise<{ user: AuthUser }> {
+    return this.request('/auth/onboarding', { method: 'POST', body: JSON.stringify({ completed }) });
+  }
+
   async changePassword(currentPassword: string, newPassword: string): Promise<void> {
     await this.request<void>('/auth/password', {
       method: 'POST',

@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, KeyRound, LogOut, User } from 'lucide-react';
+import { ChevronDown, KeyRound, LogOut, Rocket, User } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useDemo } from '../context/DemoContext';
 
 interface UserMenuProps {
   onOpenAccount: () => void;
 }
 
 export function UserMenu({ onOpenAccount }: UserMenuProps) {
-  const { user, logout } = useAuth();
+  const { user, logout, setOnboardingCompleted } = useAuth();
+  const { demo } = useDemo();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -52,6 +54,16 @@ export function UserMenu({ onOpenAccount }: UserMenuProps) {
             <KeyRound className="h-4 w-4 mr-2" />
             Konto
           </button>
+          {!demo && !user.isOperator && (
+            <button
+              role="menuitem"
+              onClick={() => { setOpen(false); void setOnboardingCompleted(false); }}
+              className="w-full flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              <Rocket className="h-4 w-4 mr-2" />
+              Einrichtungsassistent
+            </button>
+          )}
           <button
             role="menuitem"
             onClick={() => { setOpen(false); void logout(); }}

@@ -11,6 +11,11 @@ interface AuthContextType {
   verifyTotp(code: string): Promise<void>;
   logout(): Promise<void>;
   refresh(): Promise<void>;
+  /** Einrichtungsassistent als abgeschlossen/übersprungen markieren (false = erneut starten). */
+  setOnboardingCompleted(completed: boolean): Promise<void>;
+  /** true, solange seit dem letzten aktiven Login noch keine Demo-Tour gestartet wurde. */
+  freshLogin: boolean;
+  consumeFreshLogin(): void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -26,6 +31,7 @@ export function useAuth(): AuthContextType {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [status, setStatus] = useState<AuthStatus>('loading');
+  const [freshLogin, setFreshLogin] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -47,6 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setUser(result.user);
     setStatus('authenticated');
+    setFreshLogin(true);
   }, []);
 
   const verifyTotp = useCallback(async (code: string) => {
@@ -54,6 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { user: me } = await apiService.loginTotp(code);
       setUser(me);
       setStatus('authenticated');
+      setFreshLogin(true);
     } catch (error) {
       // Pending-Session abgelaufen: Status neu laden, damit wieder das Login-Formular erscheint.
       if ((error as { code?: string }).code === 'MFA_NOT_PENDING') await refresh();
@@ -70,6 +78,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const setOnboardingCompleted = useCallback(async (completed: boolean) => {
+    const { user: me } = await apiService.setOnboardingCompleted(completed);
+    setUser(me);
+  }, []);
+
+  const consumeFreshLogin = useCallback(() => setFreshLogin(false), []);
+
   useEffect(() => {
     refresh();
   }, [refresh]);
@@ -85,8 +100,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ user, status, login, verifyTotp, logout, refresh }),
-    [user, status, login, verifyTotp, logout, refresh]
+    () => ({ user, status, login, verifyTotp, logout, refresh, setOnboardingCompleted, freshLogin, consumeFreshLogin }),
+    [user, status, login, verifyTotp, logout, refresh, setOnboardingCompleted, freshLogin, consumeFreshLogin]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
