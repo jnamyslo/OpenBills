@@ -15,16 +15,60 @@ export async function createOnboardingLink() {
   return `${getAuthConfig().publicUrl}/#setup/${token}`;
 }
 
+export function parseOnboardingArgs(argv) {
+  let sendTo = null;
+  let platformEnvFromStdin = false;
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === '--send-to') {
+      const value = argv[++i];
+      if (!value || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+        throw new Error('--send-to benötigt eine gültige E-Mail-Adresse.');
+      }
+      sendTo = value;
+    } else if (arg === '--platform-env-stdin') {
+      platformEnvFromStdin = true;
+    } else {
+      throw new Error(`Unbekannte Option: ${arg}`);
+    }
+  }
+  return { sendTo, platformEnvFromStdin };
+}
+
+async function readStdin() {
+  let data = '';
+  for await (const chunk of process.stdin) data += chunk;
+  return data;
+}
+
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
+    const { sendTo, platformEnvFromStdin } = parseOnboardingArgs(process.argv.slice(2));
     const { default: dotenv } = await import('dotenv');
     dotenv.config();
+    if (platformEnvFromStdin) {
+      const parsed = dotenv.parse(await readStdin());
+      for (const [key, value] of Object.entries(parsed)) {
+        if (key.startsWith('PLATFORM_SMTP_') && !process.env[key]) process.env[key] = value;
+      }
+    }
     const { assertAuthConfig } = await import('../auth/config.js');
     assertAuthConfig();
     const { createTables } = await import('../database.js');
     await createTables();
     const url = await createOnboardingLink();
     console.log(`Onboarding-Link (48 h gültig): ${url}`);
+    if (sendTo) {
+      const { getPlanName } = await import('../utils/plan.js');
+      const plan = getPlanName();
+      if (plan === 'selfhosted') {
+        throw new Error('Self-Hosted: kein Plattform-Versand, Link bitte manuell senden.');
+      }
+      const { sendOnboardingMail } = await import('../services/authMailService.js');
+      const { getPlatformInstanceSender } = await import('../services/mailRouting.js');
+      await sendOnboardingMail(sendTo, { link: url, plan, instanceSender: getPlatformInstanceSender() });
+      console.log(`Onboarding-Mail an ${sendTo} gesendet.`);
+    }
     await pool.end();
     process.exit(0);
   } catch (err) {
