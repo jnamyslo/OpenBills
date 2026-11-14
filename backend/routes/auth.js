@@ -8,7 +8,7 @@ import {
   findUserByEmail, findUserById, normalizeEmail, recordLoginFailure, recordLoginSuccess, toPublicUser,
   createUser, hasCustomerAdmin,
 } from '../auth/users.js';
-import { createAuthToken, peekAuthToken, consumeAuthToken, revokeTokens } from '../auth/tokens.js';
+import { createAuthToken, peekAuthToken, consumeAuthToken, revokeTokens, TOKEN_MESSAGES } from '../auth/tokens.js';
 import { getAuthConfig } from '../auth/config.js';
 import { isSmtpConfigured, sendPasswordResetMail } from '../services/authMailService.js';
 import { reserveAttempt, releaseAttempt, clearRateLimit, LIMITS } from '../auth/rateLimit.js';
@@ -257,6 +257,7 @@ const INVALID_LINK = 'Der Link ist ungültig.';
 const setupIpKey = (req) => `setup:ip:${req.ip}`;
 const inviteIpKey = (req) => `invite:ip:${req.ip}`;
 const resetIpKey = (req) => `reset:ip:${req.ip}`;
+const resetCompleteIpKey = (req) => `resetcomplete:ip:${req.ip}`;
 const resetUserKey = (email) => `reset:user:${hashToken(email)}`;
 
 const reserveIp = (key) => reserveAttempt(key, LIMITS.perIp.limit, LIMITS.perIp.windowMs);
@@ -424,6 +425,13 @@ router.get('/password-reset/:token', async (req, res) => {
 
 router.post('/password-reset/:token', async (req, res) => {
   try {
+    const ipKey = resetCompleteIpKey(req);
+    const retryAfter = await reserveIp(ipKey);
+    if (retryAfter > 0) return sendRateLimited(res, retryAfter);
+    // Vorabprüfung ohne Sperre: ungültige Tokens kosten keinen argon2-Hash.
+    const { status } = await peekAuthToken(req.params.token, 'password_reset');
+    if (status !== 'valid') throw new AuthError(400, TOKEN_MESSAGES[status], `token_${status}`);
+
     const passwordHash = await hashPassword(requireStrongPassword(req.body?.password));
     const user = await inTransaction(async (client) => {
       const reset = await consumeAuthToken(client, req.params.token, 'password_reset');
@@ -436,6 +444,7 @@ router.post('/password-reset/:token', async (req, res) => {
       if (!rows[0]) throw new AuthError(400, INVALID_LINK, 'token_invalid');
       return rows[0];
     });
+    await releaseAttempt(ipKey);
     await deleteUserSessions(user.id);
     await audit(req, { action: 'auth.password_reset_completed', user, entityType: 'users', entityId: user.id });
     return res.status(204).end();
@@ -450,6 +459,18 @@ router.post('/totp/setup', async (req, res) => {
   try {
     const user = await findUserById(req.user.id);
     if (user.totp_enabled_at) throw new AuthError(409, TOTP_ALREADY_ENABLED, 'TOTP_ALREADY_ENABLED');
+    // Step-up: Einrichtung nur mit Passwort; teilt sich das Limit mit der Passwortänderung.
+    const pwKey = passwordChangeKey(user.id);
+    const retryAfter = await reserveAccount(pwKey);
+    if (retryAfter > 0) return sendRateLimited(res, retryAfter);
+    const { password } = req.body ?? {};
+    const passwordOk = typeof password === 'string'
+      && password.length > 0
+      && password.length <= MAX_PASSWORD_LENGTH
+      && await verifyPassword(user.password_hash, password);
+    if (!passwordOk) throw new AuthError(400, 'Passwort ist falsch', 'INVALID_PASSWORD');
+    await clearRateLimit(pwKey);
+
     const secret = generateTotpSecret();
     await query('UPDATE users SET totp_pending_enc = $2, updated_at = now() WHERE id = $1', [user.id, encryptSecret(secret)]);
     return res.json({ secret, otpauthUri: otpauthUri(secret, user.email) });

@@ -28,7 +28,7 @@ export async function peekAuthToken(token, kind) {
   return { status: statusOf(rows[0]), row: rows[0] };
 }
 
-const MESSAGES = {
+export const TOKEN_MESSAGES = {
   invalid: 'Der Link ist ungültig.',
   expired: 'Der Link ist abgelaufen.',
   used: 'Der Link wurde bereits verwendet.',
@@ -40,7 +40,7 @@ export async function consumeAuthToken(client, token, kind) {
     [hashToken(String(token ?? '')), kind]
   );
   const status = rows[0] ? statusOf(rows[0]) : 'invalid';
-  if (status !== 'valid') throw new AuthError(400, MESSAGES[status], `token_${status}`);
+  if (status !== 'valid') throw new AuthError(400, TOKEN_MESSAGES[status], `token_${status}`);
   const { rows: updated } = await client.query(
     'UPDATE auth_tokens SET used_at = now() WHERE token_hash = $1 RETURNING *',
     [rows[0].token_hash]

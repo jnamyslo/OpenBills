@@ -15,6 +15,12 @@ const mail = vi.hoisted(() => ({
   sendInviteMail: vi.fn(async () => {}),
 }));
 vi.mock('../services/authMailService.js', () => mail);
+const hashSpy = vi.hoisted(() => ({ fn: null }));
+vi.mock('../auth/password.js', async (importOriginal) => {
+  const actual = await importOriginal();
+  hashSpy.fn = vi.fn(actual.hashPassword);
+  return { ...actual, hashPassword: hashSpy.fn };
+});
 
 const { createApp } = await import('../app.js');
 
@@ -230,6 +236,24 @@ describe.skipIf(!hasDb)('Auth-Flows: Setup, Einladung, Reset, 2FA', () => {
       }
     });
 
+    it('ungültiger Token -> 400 ohne argon2-Hash', async () => {
+      hashSpy.fn.mockClear();
+      const res = await post('/api/auth/password-reset/unbekannter-token', { password: NEW_PASSWORD });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('token_invalid');
+      expect(hashSpy.fn).not.toHaveBeenCalled();
+    });
+
+    it('21. Abschluss-Versuch pro IP -> 429', async () => {
+      for (let i = 0; i < 20; i += 1) {
+        const res = await post(`/api/auth/password-reset/falsch-${i}`, { password: NEW_PASSWORD }).set('X-Forwarded-For', '10.3.0.1');
+        expect(res.status).toBe(400);
+      }
+      const res = await post('/api/auth/password-reset/falsch-x', { password: NEW_PASSWORD }).set('X-Forwarded-For', '10.3.0.1');
+      expect(res.status).toBe(429);
+      expect(res.headers['retry-after']).toBeDefined();
+    });
+
     it('6. Anfrage pro E-Mail -> 429, auch für unbekannte E-Mail', async () => {
       for (const email of ['max@firma.de', 'niemand@firma.de']) {
         for (let i = 0; i < 5; i += 1) {
@@ -255,7 +279,7 @@ describe.skipIf(!hasDb)('Auth-Flows: Setup, Einladung, Reset, 2FA', () => {
       await makeUser();
       const cookie = sessionCookie(await login('max@firma.de', PASSWORD));
 
-      const setup = await post('/api/auth/totp/setup', {}, cookie);
+      const setup = await post('/api/auth/totp/setup', { password: PASSWORD }, cookie);
       expect(setup.status).toBe(200);
       const { secret, otpauthUri } = setup.body;
       expect(secret).toMatch(/^[A-Z2-7]{32}$/);
@@ -299,23 +323,44 @@ describe.skipIf(!hasDb)('Auth-Flows: Setup, Einladung, Reset, 2FA', () => {
       await makeUser();
       const cookie = sessionCookie(await login('max@firma.de', PASSWORD));
       expect((await post('/api/auth/totp/enable', { code: '123456' }, cookie)).status).toBe(400);
-      const { secret } = (await post('/api/auth/totp/setup', {}, cookie)).body;
+      const { secret } = (await post('/api/auth/totp/setup', { password: PASSWORD }, cookie)).body;
       expect((await post('/api/auth/totp/enable', { code: totpCode(secret, Date.now()) }, cookie)).status).toBe(200);
-      expect((await post('/api/auth/totp/setup', {}, cookie)).status).toBe(409);
+      expect((await post('/api/auth/totp/setup', { password: PASSWORD }, cookie)).status).toBe(409);
     });
 
     it('6. falscher Code bei enable -> 429', async () => {
       await makeUser();
       const cookie = sessionCookie(await login('max@firma.de', PASSWORD));
-      const { secret } = (await post('/api/auth/totp/setup', {}, cookie)).body;
+      const { secret } = (await post('/api/auth/totp/setup', { password: PASSWORD }, cookie)).body;
       for (let i = 0; i < 5; i += 1) {
         expect((await post('/api/auth/totp/enable', { code: wrongCode(secret) }, cookie)).status).toBe(400);
       }
       expect((await post('/api/auth/totp/enable', { code: totpCode(secret, Date.now()) }, cookie)).status).toBe(429);
     });
 
+    it('setup verlangt Passwort', async () => {
+      await makeUser();
+      const cookie = sessionCookie(await login('max@firma.de', PASSWORD));
+      const missing = await post('/api/auth/totp/setup', {}, cookie);
+      expect(missing.status).toBe(400);
+      expect(missing.body.error).toBe('Passwort ist falsch');
+      expect((await post('/api/auth/totp/setup', { password: 'falsches-passwort-1' }, cookie)).status).toBe(400);
+      expect((await post('/api/auth/totp/setup', { password: 'x'.repeat(129) }, cookie)).status).toBe(400);
+      const { rows: [before] } = await pool.query('SELECT totp_pending_enc FROM users');
+      expect(before.totp_pending_enc).toBeNull();
+      const ok = await post('/api/auth/totp/setup', { password: PASSWORD }, cookie);
+      expect(ok.status).toBe(200);
+      expect(ok.body.secret).toMatch(/^[A-Z2-7]{32}$/);
+      expect(ok.body.otpauthUri).toContain(`secret=${ok.body.secret}`);
+      // Erfolg setzt den Zähler zurück: 5 weitere Fehlversuche sind wieder 400, erst der 6. ist 429
+      for (let i = 0; i < 5; i += 1) {
+        expect((await post('/api/auth/totp/setup', { password: 'falsches-passwort-1' }, cookie)).status).toBe(400);
+      }
+      expect((await post('/api/auth/totp/setup', { password: PASSWORD }, cookie)).status).toBe(429);
+    });
+
     it('ohne Session -> 401', async () => {
-      expect((await post('/api/auth/totp/setup', {})).status).toBe(401);
+      expect((await post('/api/auth/totp/setup', { password: PASSWORD })).status).toBe(401);
     });
   });
 });
