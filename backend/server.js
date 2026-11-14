@@ -4,7 +4,8 @@ import logger from './utils/logger.js';
 import { createApp } from './app.js';
 import { getPlanName } from './utils/plan.js';
 import { assertAuthConfig } from './auth/config.js';
-import { assertDemoConfig } from './demo/index.js';
+import { assertDemoConfig, isDemoMode } from './demo/index.js';
+import { resetDemo, scheduleDemoResets } from './demo/reset.js';
 import { assertPlatformMailConfig } from './services/mailRouting.js';
 import { verifyDummyPassword } from './auth/password.js';
 import { cleanupSessions } from './auth/sessions.js';
@@ -46,6 +47,12 @@ async function startServer() {
     logger.info('Connecting to database...');
     await createTables();
     logger.info('Database initialized successfully');
+
+    if (isDemoMode()) {
+      // Wirft DemoRefusedError bei echten Daten ohne Demo-Markierung -> Start bricht ab.
+      await resetDemo();
+      scheduleDemoResets();
+    }
 
     await verifyDummyPassword('warmup');
 

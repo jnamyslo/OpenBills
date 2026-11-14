@@ -35,4 +35,5 @@ export const EXCLUDED_TABLES = [
   'auth_tokens',
   'rate_limits',
   'audit_log',
+  'demo_marker',         // Kennzeichnung als Demo-DB (darf nie per Restore übertragen werden)
 ];
