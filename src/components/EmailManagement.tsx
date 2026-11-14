@@ -56,6 +56,8 @@ interface SmtpSettings {
 
 interface EmailManagementProps {
   onClose?: () => void;
+  /** Im Einstellungsbereich statt als Vollbild-Overlay darstellen. */
+  embedded?: boolean;
 }
 
 /** Hinweis zum Versand über den OpenBills-Relay (Hosted-Tarife). */
@@ -74,17 +76,18 @@ function PlatformMailNotice({ title, text, upgradeContact }: { title: string; te
   );
 }
 
-export function EmailManagement({ onClose }: EmailManagementProps) {
+export function EmailManagement({ onClose, embedded = false }: EmailManagementProps) {
   const { plan, hasFeature } = usePlan();
   // Free/Starter: kein eigener Mailserver, Versand über OpenBills. Professional: eigener Mailserver nur für Kundenmails.
   const ownSmtpAllowed = hasFeature('ownSmtp');
   const ownSystemSmtpAllowed = hasFeature('ownSystemSmtp');
 
   useEffect(() => {
+    if (embedded) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = prev; };
-  }, []);
+  }, [embedded]);
 
   const [activeTab, setActiveTab] = useState<'history' | 'settings' | 'test' | 'statistics'>('history');
   
@@ -328,8 +331,8 @@ export function EmailManagement({ onClose }: EmailManagementProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-white rounded-lg shadow-xl max-w-7xl w-full max-h-[95vh] overflow-hidden flex flex-col">
+    <div className={embedded ? '' : 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto'}>
+      <div className={embedded ? 'bg-white rounded-xl shadow-sm border border-gray-100 h-[calc(100vh-8rem)] overflow-hidden flex flex-col' : 'bg-white rounded-lg shadow-xl max-w-7xl w-full max-h-[95vh] overflow-hidden flex flex-col'}>
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200 flex-shrink-0">
           <div className="flex items-center">

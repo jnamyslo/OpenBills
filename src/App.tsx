@@ -247,7 +247,9 @@ function AppContent({ currentPageState, handlePageChange }: AppContentProps) {
         }
         return <ReminderManagement />;
       case 'settings':
-        return userIsAdmin ? <Settings /> : <Dashboard onNavigate={handlePageChange} />;
+        return userIsAdmin
+          ? <Settings section={currentPageState.filter} onNavigate={(id) => handlePageChange('settings', id)} />
+          : <Dashboard onNavigate={handlePageChange} />;
       default:
         return <Dashboard onNavigate={handlePageChange} />;
     }

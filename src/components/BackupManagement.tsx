@@ -30,13 +30,15 @@ interface BackupInfo {
 
 interface BackupManagementProps {
   onClose?: () => void;
+  /** Im Einstellungsbereich statt als Vollbild-Overlay darstellen. */
+  embedded?: boolean;
 }
 
 function errorText(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
-export function BackupManagement({ onClose }: BackupManagementProps) {
+export function BackupManagement({ onClose, embedded = false }: BackupManagementProps) {
   const [zipBackups, setZipBackups] = useState<BackupInfo[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isCreatingZipBackup, setIsCreatingZipBackup] = useState(false);
@@ -199,8 +201,8 @@ export function BackupManagement({ onClose }: BackupManagementProps) {
   const inputClass = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-custom';
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+    <div className={embedded ? '' : 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4'}>
+      <div className={embedded ? 'bg-white rounded-xl shadow-sm border border-gray-100' : 'bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto'}>
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <div className="flex items-center">
             <Database className="h-6 w-6 text-primary-custom mr-3" />
