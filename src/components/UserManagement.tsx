@@ -16,6 +16,7 @@ interface PendingAction {
 }
 
 const formatDate = (value: string | null) => (value ? new Date(value).toLocaleString('de-DE') : 'nie');
+const isLocked = (u: AuthUser) => Boolean(u.lockedUntil && new Date(u.lockedUntil) > new Date());
 
 function LinkBox({ title, link, emailed }: { title: string; link: string; emailed?: boolean }) {
   const [copied, setCopied] = useState(false);
@@ -164,6 +165,9 @@ export function UserManagement() {
       run: () => run(() => apiService.revokeUserSessions(u.id)),
     });
 
+  // Nicht destruktiv: keine Bestätigung nötig.
+  const unlock = (u: AuthUser) => run(() => apiService.unlockUser(u.id));
+
   const linkBtn = 'text-xs text-primary-custom hover:underline disabled:opacity-50';
 
   return (
@@ -221,12 +225,22 @@ export function UserManagement() {
                   </td>
                   <td className="py-2 pr-4">{u.totpEnabled ? 'Aktiv' : 'Aus'}</td>
                   <td className="py-2 pr-4 whitespace-nowrap">{formatDate(u.lastLoginAt)}</td>
-                  <td className="py-2 pr-4">{u.isActive ? 'Aktiv' : 'Deaktiviert'}</td>
+                  <td className="py-2 pr-4">
+                    {u.isActive ? 'Aktiv' : 'Deaktiviert'}
+                    {isLocked(u) && (
+                      <div className="text-xs text-red-700 whitespace-nowrap">Gesperrt bis {formatDate(u.lockedUntil)}</div>
+                    )}
+                  </td>
                   <td className="py-2">
                     <div className="flex flex-wrap gap-x-3 gap-y-1">
                       <button type="button" disabled={busy} onClick={() => toggleActive(u)} className={linkBtn}>
                         {u.isActive ? 'Deaktivieren' : 'Aktivieren'}
                       </button>
+                      {isLocked(u) && (
+                        <button type="button" disabled={busy} onClick={() => void unlock(u)} className={linkBtn}>
+                          Sperre aufheben
+                        </button>
+                      )}
                       <button type="button" disabled={busy} onClick={() => resetLink(u)} className={linkBtn}>
                         Reset-Link
                       </button>

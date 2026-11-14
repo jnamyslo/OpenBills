@@ -68,5 +68,6 @@ export function toPublicUser(row) {
     totpEnabled: Boolean(row.totp_enabled_at),
     lastLoginAt: row.last_login_at,
     createdAt: row.created_at,
+    lockedUntil: row.locked_until && new Date(row.locked_until) > new Date() ? new Date(row.locked_until).toISOString() : null,
   };
 }

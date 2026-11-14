@@ -517,6 +517,8 @@ export interface AuthUser {
   totpEnabled: boolean;
   lastLoginAt: string | null;
   createdAt: string;
+  /** ISO-Zeitpunkt, nur gesetzt solange die Sperre noch läuft. */
+  lockedUntil: string | null;
 }
 
 export type TokenStatus = 'valid' | 'expired' | 'used' | 'invalid' | 'done';

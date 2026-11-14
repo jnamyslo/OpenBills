@@ -5,6 +5,7 @@ import { createAuthToken, revokeTokens } from '../auth/tokens.js';
 import { normalizeEmail, toPublicUser, findUserByEmail } from '../auth/users.js';
 import { deleteUserSessions } from '../auth/sessions.js';
 import { audit } from '../auth/audit.js';
+import { hashToken } from '../auth/crypto.js';
 import { AuthError, sendAuthError } from '../auth/errors.js';
 import { getAuthConfig } from '../auth/config.js';
 import { isSmtpConfigured, sendInviteMail } from '../services/authMailService.js';
@@ -182,6 +183,29 @@ router.post('/:id/totp/reset', async (req, res) => {
       await client.query('DELETE FROM user_recovery_codes WHERE user_id = $1', [target.id]);
     });
     await audit(req, { action: 'auth.totp_reset', entityType: 'users', entityId: target.id });
+    res.status(204).end();
+  } catch (err) {
+    sendAuthError(res, err);
+  }
+});
+
+// Hebt Sperre und Fehlversuchs-Limits auf; Passwort und Sessions bleiben unverändert.
+router.post('/:id/unlock', async (req, res) => {
+  try {
+    const target = await loadTarget(req);
+    const loginPrefix = `login:user:${hashToken(normalizeEmail(target.email))}:`;
+    await inTransaction(async (client) => {
+      await client.query(
+        'UPDATE users SET failed_login_count = 0, locked_until = NULL, updated_at = now() WHERE id = $1',
+        [target.id]
+      );
+      // Präfixvergleich statt LIKE: keine Wildcard-Escapes nötig.
+      await client.query(
+        'DELETE FROM rate_limits WHERE left(key, length($1)) = $1 OR key = ANY($2)',
+        [loginPrefix, [`totp:user:${target.id}`, `pwchange:user:${target.id}`]]
+      );
+    });
+    await audit(req, { action: 'user.unlocked', entityType: 'users', entityId: target.id });
     res.status(204).end();
   } catch (err) {
     sendAuthError(res, err);

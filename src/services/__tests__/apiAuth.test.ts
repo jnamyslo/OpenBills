@@ -62,6 +62,13 @@ describe('api auth handling', () => {
     });
   });
 
+  it('unlockUser sendet POST /users/:id/unlock', async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await apiService.unlockUser(5);
+    expect(fetchMock).toHaveBeenCalledWith('/api/users/5/unlock', expect.objectContaining({ method: 'POST' }));
+  });
+
   it('lässt PlanError unverändert', async () => {
     vi.stubGlobal('fetch', vi.fn(async () =>
       jsonResponse(402, { error: 'Limit', code: 'PLAN_LIMIT_REACHED', plan: 'free', upgradeContact: null })));

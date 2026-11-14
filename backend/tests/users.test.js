@@ -6,6 +6,8 @@ import { ORIGIN, loginAs, waitForAudit } from './helpers/auth.js';
 import { createUser } from '../auth/users.js';
 import { createSession } from '../auth/sessions.js';
 import { createAuthToken } from '../auth/tokens.js';
+import { hashPassword } from '../auth/password.js';
+import { hashToken } from '../auth/crypto.js';
 
 const mail = vi.hoisted(() => ({
   isSmtpConfigured: vi.fn(async () => false),
@@ -162,6 +164,47 @@ describe.skipIf(!hasDb)('users API', () => {
     });
   });
 
+  describe('unlock', () => {
+    const PW = 'korrektes-pferd-batterie';
+    const login = (password) => request(app).post('/api/auth/login').set(ORIGIN)
+      .set('X-Forwarded-For', '10.9.0.1').send({ email: 'bob@firma.de', password });
+
+    it('hebt Sperre und Login-Limits auf, Passwort und Sessions bleiben', async () => {
+      const admin = await loginAs('admin');
+      const bob = await createUser(pool, { email: 'bob@firma.de', name: 'Bob', passwordHash: await hashPassword(PW), role: 'user' });
+      const bobCookie = await sessionFor(bob);
+      for (let i = 0; i < 10; i += 1) {
+        if (i === 5) await pool.query('DELETE FROM rate_limits');
+        expect((await login('falsches-passwort-123')).status).toBe(401);
+      }
+      expect((await login(PW)).status).toBe(429);
+      const listed = (await call('get', '/api/users', admin.cookie)).body.users.find((u) => u.id === bob.id);
+      expect(new Date(listed.lockedUntil).getTime()).toBeGreaterThan(Date.now());
+      await pool.query(
+        `INSERT INTO rate_limits (key, window_start, count) VALUES ($1, now(), 5), ($2, now(), 5), ($3, now(), 5)`,
+        [`totp:user:${bob.id}`, `pwchange:user:${bob.id}`, `login:user:${hashToken('other@firma.de')}:10.9.0.1`]
+      );
+
+      const res = await call('post', `/api/users/${bob.id}/unlock`, admin.cookie, {});
+      expect(res.status).toBe(204);
+      const { rows: keys } = await pool.query('SELECT key FROM rate_limits ORDER BY key');
+      expect(keys.map((r) => r.key)).toEqual([`login:ip:10.9.0.1`, `login:user:${hashToken('other@firma.de')}:10.9.0.1`]);
+      const [row] = await waitForAudit('user.unlocked');
+      expect(row).toMatchObject({ entity_type: 'users', entity_id: String(bob.id) });
+      expect((await call('get', '/api/plan', bobCookie)).status).toBe(200);
+
+      const ok = await login(PW);
+      expect(ok.status).toBe(200);
+      expect(ok.body.user.lockedUntil).toBeNull();
+    });
+
+    it('is forbidden for plain users', async () => {
+      const user = await loginAs('user');
+      const bob = await createUser(pool, { email: 'bob@firma.de', name: 'Bob', passwordHash: 'x', role: 'user' });
+      expect((await call('post', `/api/users/${bob.id}/unlock`, user.cookie, {})).status).toBe(403);
+    });
+  });
+
   describe('operator and bad ids', () => {
     it('404 for operator on every :id route, unknown and malformed ids', async () => {
       const admin = await loginAs('admin');
@@ -171,6 +214,9 @@ describe.skipIf(!hasDb)('users API', () => {
         ['post', `/api/users/${op.id}/password-reset-link`],
         ['post', `/api/users/${op.id}/totp/reset`],
         ['delete', `/api/users/${op.id}/sessions`],
+        ['post', `/api/users/${op.id}/unlock`],
+        ['post', '/api/users/abc/unlock'],
+        ['post', '/api/users/99999/unlock'],
         ['put', '/api/users/99999', { role: 'user' }],
         ['put', '/api/users/abc', { role: 'user' }],
         ['put', '/api/users/99999999999999', { role: 'user' }],

@@ -881,6 +881,10 @@ class ApiService {
     await this.request<void>(`/users/${id}/sessions`, { method: 'DELETE' });
   }
 
+  async unlockUser(id: number): Promise<void> {
+    await this.request<void>(`/users/${id}/unlock`, { method: 'POST' });
+  }
+
   // --------------------------------------------------------------------------
   // Audit-Log API (Admin)
   // --------------------------------------------------------------------------

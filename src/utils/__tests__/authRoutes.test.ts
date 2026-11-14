@@ -12,6 +12,7 @@ const user = (role: 'admin' | 'user'): AuthUser => ({
   totpEnabled: false,
   lastLoginAt: null,
   createdAt: '2026-11-13T00:00:00.000Z',
+  lockedUntil: null,
 });
 
 describe('parsePublicAuthRoute', () => {
