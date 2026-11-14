@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, KeyRound, LogOut, Rocket, User } from 'lucide-react';
+import { ChevronDown, Compass, KeyRound, LogOut, Rocket, User } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useDemo } from '../context/DemoContext';
 
@@ -8,7 +8,7 @@ interface UserMenuProps {
 }
 
 export function UserMenu({ onOpenAccount }: UserMenuProps) {
-  const { user, logout, setOnboardingCompleted } = useAuth();
+  const { user, logout, setOnboardingCompleted, requestDemoTour } = useAuth();
   const { demo } = useDemo();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -27,6 +27,7 @@ export function UserMenu({ onOpenAccount }: UserMenuProps) {
   return (
     <div className="relative" ref={ref}>
       <button
+        data-tour="user-menu"
         onClick={() => setOpen(!open)}
         className="flex items-center gap-2 px-3 py-2 rounded-md text-gray-700 hover:bg-gray-100 transition-colors"
         aria-haspopup="menu"
@@ -62,6 +63,16 @@ export function UserMenu({ onOpenAccount }: UserMenuProps) {
             >
               <Rocket className="h-4 w-4 mr-2" />
               Einrichtungsassistent
+            </button>
+          )}
+          {demo && (
+            <button
+              role="menuitem"
+              onClick={() => { setOpen(false); requestDemoTour(); }}
+              className="w-full flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              <Compass className="h-4 w-4 mr-2" />
+              Demo-Tour
             </button>
           )}
           <button

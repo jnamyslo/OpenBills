@@ -22,6 +22,8 @@ export function getOnboardingSteps(
 export interface DemoTourStep {
   /** CSS-Selektor des hervorgehobenen Elements; ohne = zentrierter Dialog. */
   selector?: string;
+  /** Popover-Seite auf dem Desktop (Standard: rechts); mobil immer unten. */
+  side?: 'right' | 'bottom';
   title: string;
   description: string;
 }
@@ -41,7 +43,12 @@ export const DEMO_TOUR_STEPS: DemoTourStep[] = [
   { selector: '[data-tour="nav-reminders"]', title: 'Mahnwesen', description: 'Überfällige Rechnungen erkennen und Zahlungserinnerungen in drei Stufen versenden.' },
   { selector: '[data-tour="nav-settings"]', title: 'Einstellungen', description: 'Firmenprofil, Zahlungsdaten, Nummernkreise, Mahnwesen, E-Mail und Benutzer konfigurieren.' },
   {
+    selector: '[data-tour="user-menu"]',
+    side: 'bottom',
     title: 'Viel Spaß beim Ausprobieren!',
-    description: 'Die Demo wird regelmäßig zurückgesetzt. E-Mails werden nicht wirklich versendet.',
+    description: 'Diese Tour können Sie jederzeit über Ihr Profil oben rechts unter „Demo-Tour“ erneut starten. Die Demo wird regelmäßig zurückgesetzt, E-Mails werden nicht wirklich versendet.',
   },
 ];
+
+/** Event an `Layout`: mobiles Seitenmenü für die Demo-Tour öffnen/schließen (detail: boolean). */
+export const DEMO_TOUR_MOBILE_NAV_EVENT = 'openbills:demo-tour-mobile-nav';

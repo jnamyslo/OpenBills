@@ -92,7 +92,7 @@ Three Docker services per instance: `database` (PostgreSQL 15), `backend`, `fron
 - Onboarding/Support-Zugang: `backend/scripts/onboarding.js`, `operator.js`; Aufruf über `deploy-instance.sh` und `manage-instances.sh onboarding-link|operator-reset`.
 - Kundenanfragen: `deploy-instance.sh --auto <name> <tarif> <public_url> [--send-onboarding <email>]` (ohne Rückfragen, nächste freie Ports, gibt Frontend-Port für Nginx Proxy Manager aus).
 - Onboarding-Mail optional: `deploy-instance.sh --auto|--legacy … --send-onboarding <email>` (interaktiv: Abfrage nach dem Deploy) und `manage-instances.sh onboarding-link <name> --send-to <email>`; `.env.platform` wird dafür per stdin an `onboarding.js --platform-env-stdin` gereicht (nur Tarif-Instanzen, nicht Demo/self-hosted).
-- Einrichtungsassistent: `users.onboarding_completed_at` (je Benutzer, Migration 010), `POST /api/auth/onboarding {completed}`; Frontend `OnboardingWizard.tsx` (Schritte je Rolle/Tarif aus `src/utils/onboarding.ts`), nicht in Demo/Support-Zugang. Demo: `DemoTour.tsx` (driver.js, Anker `data-tour` in `Layout.tsx`), startet nach jedem aktiven Login.
+- Einrichtungsassistent: `users.onboarding_completed_at` (je Benutzer, Migration 010), `POST /api/auth/onboarding {completed}`; Frontend `OnboardingWizard.tsx` (Schritte je Rolle/Tarif aus `src/utils/onboarding.ts`), nicht in Demo/Support-Zugang. Demo: `DemoTour.tsx` (driver.js, Anker `data-tour` in `Layout.tsx`), startet nach jedem aktiven Login und über Benutzermenü „Demo-Tour“; mobil öffnet sie das Seitenmenü per Event `DEMO_TOUR_MOBILE_NAV_EVENT`.
 - Spec: `docs/superpowers/specs/2026-11-13-auth.md`.
 
 ### PDF Generation

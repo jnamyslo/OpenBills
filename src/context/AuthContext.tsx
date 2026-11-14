@@ -13,9 +13,11 @@ interface AuthContextType {
   refresh(): Promise<void>;
   /** Einrichtungsassistent als abgeschlossen/übersprungen markieren (false = erneut starten). */
   setOnboardingCompleted(completed: boolean): Promise<void>;
-  /** true, solange seit dem letzten aktiven Login noch keine Demo-Tour gestartet wurde. */
+  /** true, solange seit dem letzten aktiven Login (oder requestDemoTour) noch keine Demo-Tour gestartet wurde. */
   freshLogin: boolean;
   consumeFreshLogin(): void;
+  /** Demo-Tour erneut starten (Benutzermenü). */
+  requestDemoTour(): void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -84,6 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const consumeFreshLogin = useCallback(() => setFreshLogin(false), []);
+  const requestDemoTour = useCallback(() => setFreshLogin(true), []);
 
   useEffect(() => {
     refresh();
@@ -100,8 +103,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ user, status, login, verifyTotp, logout, refresh, setOnboardingCompleted, freshLogin, consumeFreshLogin }),
-    [user, status, login, verifyTotp, logout, refresh, setOnboardingCompleted, freshLogin, consumeFreshLogin]
+    () => ({ user, status, login, verifyTotp, logout, refresh, setOnboardingCompleted, freshLogin, consumeFreshLogin, requestDemoTour }),
+    [user, status, login, verifyTotp, logout, refresh, setOnboardingCompleted, freshLogin, consumeFreshLogin, requestDemoTour]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

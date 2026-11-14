@@ -1,4 +1,4 @@
-import React, { ReactNode, useState } from 'react';
+import React, { ReactNode, useEffect, useState } from 'react';
 import { FileText, Users, Settings, BarChart3, Building2, Menu, X, Briefcase, Calendar, Home, FileCheck, Bell, Lock } from 'lucide-react';
 import { DynamicColors } from './DynamicColors';
 import { useCompany } from '../context/CompanyContext';
@@ -11,6 +11,7 @@ import { UserMenu } from './UserMenu';
 import { AccountModal } from './AccountModal';
 import { TwoFactorBanner } from './TwoFactorBanner';
 import { DemoBanner } from './DemoBanner';
+import { DEMO_TOUR_MOBILE_NAV_EVENT } from '../utils/onboarding';
 
 interface LayoutProps {
   children: ReactNode;
@@ -24,7 +25,14 @@ export function Layout({ children, currentPage, onPageChange }: LayoutProps) {
   const { user } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isAccountOpen, setIsAccountOpen] = useState(false);
-  
+
+  // Demo-Tour blendet auf kleinen Bildschirmen das Seitenmenü ein, damit die Navigation sichtbar ist.
+  useEffect(() => {
+    const handle = (event: Event) => setIsMobileMenuOpen((event as CustomEvent<boolean>).detail);
+    window.addEventListener(DEMO_TOUR_MOBILE_NAV_EVENT, handle);
+    return () => window.removeEventListener(DEMO_TOUR_MOBILE_NAV_EVENT, handle);
+  }, []);
+
   // Module, die einen höheren Tarif erfordern: in der Navigation mit Schloss markiert
   const requiredFeature: Record<string, PlanFeature> = { jobs: 'jobs', calendar: 'jobs', reminders: 'reminders' };
 
