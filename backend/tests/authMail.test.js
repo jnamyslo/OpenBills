@@ -130,4 +130,23 @@ describe('Auth-Mails', () => {
     await sendOnboardingMail('k@firma.de', { link: 'https://x/#setup/t', plan: 'free', instanceSender: 'f@openbills.de' });
     expect(platformSendMail.mock.calls[0][0].text).toContain('ab Starter');
   });
+
+  it('sendOnboardingMail: HTML mit Schritte-Kasten und Tarif-Hinweis wie die anderen Mails', async () => {
+    await sendOnboardingMail('k@firma.de', { link: 'https://x/#setup/t', plan: 'professional', instanceSender: 'p@openbills.de' });
+    const { html } = platformSendMail.mock.calls[0][0];
+    expect(html).toContain('class="details"');
+    expect(html).toContain('<td class="num">5.</td><td>Erste Rechnung schreiben</td>');
+    expect(html).toContain('eigenen Mailserver');
+    expect(html).not.toContain('So starten Sie: 1.');
+    expect(html.match(/class="info-box"/g)).toHaveLength(2);
+  });
+});
+
+describe('renderAuthMail ohne Zusatzblöcke', () => {
+  it('bleibt für Einladung/Reset unverändert schlank', async () => {
+    const { renderAuthMail } = await import('../services/authMailLayout.js');
+    const html = renderAuthMail({ heading: 'H', paragraphs: ['P'], buttonLabel: 'B', link: 'https://x', note: 'N' });
+    expect(html).not.toContain('class="details"');
+    expect(html.match(/class="info-box"/g)).toHaveLength(1);
+  });
 });

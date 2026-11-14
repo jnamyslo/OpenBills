@@ -95,11 +95,10 @@ const onboardingPlanSentence = (plan, instanceSender) => {
 export const sendOnboardingMail = async (to, { link, plan, instanceSender }) => {
   const note = 'Der Link ist 48 Stunden gültig und kann nur einmal verwendet werden.';
   const planSentence = onboardingPlanSentence(plan, instanceSender);
-  const intro = 'Ihre OpenBills-Instanz ist bereit. Richten Sie über den folgenden Button Ihr Konto ein.';
-  const closing = 'Fragen? support@openbills.de';
+  const closing = 'Bei Fragen erreichen Sie uns unter support@openbills.de.';
   const text = [
     'Hallo,',
-    intro.replace('über den folgenden Button', 'über folgenden Link'),
+    'Ihre OpenBills-Instanz ist bereit. Richten Sie über folgenden Link Ihr Konto ein.',
     `Konto einrichten:\n${link}`,
     `So starten Sie:\n${ONBOARDING_STEPS.map((s, i) => `${i + 1}. ${s}`).join('\n')}`,
     planSentence,
@@ -108,16 +107,12 @@ export const sendOnboardingMail = async (to, { link, plan, instanceSender }) => 
   ].filter(Boolean).join('\n\n') + '\n';
   const html = renderAuthMail({
     heading: 'Willkommen bei OpenBills',
-    paragraphs: [
-      'Hallo,',
-      intro,
-      `So starten Sie: ${ONBOARDING_STEPS.map((s, i) => `${i + 1}. ${s}`).join(' ')}`,
-      planSentence,
-      closing,
-    ].filter(Boolean),
+    paragraphs: ['Hallo,', 'Ihre OpenBills-Instanz ist bereit. Richten Sie über den folgenden Button Ihr Konto ein.'],
     buttonLabel: 'Konto einrichten',
     link,
-    note,
+    steps: { title: 'So starten Sie', items: ONBOARDING_STEPS },
+    hint: planSentence,
+    note: `${note} ${closing}`,
   });
   const transporter = createPlatformTransporter();
   await transporter.sendMail({
