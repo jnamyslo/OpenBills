@@ -179,7 +179,7 @@ print_access_info() {
             echo "$onboarding_out"
             echo
             print_error "Onboarding-Mail wurde NICHT gesendet (siehe Ausgabe oben)."
-            print_info "Erneut versuchen: ./manage-instances.sh onboarding-link ${name} --send-to ${email}"
+            print_info "Erneut versuchen: ./manage-instances.sh onboarding-link ${name} --send-to '${email}'"
             print_warning "Support-Zugang jetzt im Passwortmanager ablegen."
             return 1
         fi
