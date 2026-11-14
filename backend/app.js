@@ -21,10 +21,10 @@ import reportingRouter from './routes/reporting.js';
 import remindersRouter from './routes/reminders.js';
 import planRouter from './routes/plan.js';
 import authRouter from './routes/auth.js';
+import usersRouter from './routes/users.js';
 import { requireFeature } from './utils/plan.js';
 
-// Platzhalter bis Task 11 (users) und 12 (audit-log) die echten Router liefern.
-const usersRouter = express.Router();
+// Platzhalter bis Task 12 (audit-log) den echten Router liefert.
 const auditLogRouter = express.Router();
 
 export function createApp() {
