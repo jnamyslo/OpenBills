@@ -67,6 +67,17 @@ describe('Limits und Features', () => {
   });
 });
 
+describe('Mail-Features', () => {
+  it.each([
+    ['', true, true], ['enterprise', true, true], ['professional', true, false],
+    ['starter', false, false], ['free', false, false],
+  ])('Plan "%s": ownSmtp=%s ownSystemSmtp=%s', (plan, own, ownSystem) => {
+    vi.stubEnv('OPENBILLS_PLAN', plan);
+    expect(hasFeature('ownSmtp')).toBe(own);
+    expect(hasFeature('ownSystemSmtp')).toBe(ownSystem);
+  });
+});
+
 describe('currentPeriod', () => {
   it('nutzt deutsche Zeit am Monatswechsel', () => {
     // 31.10. 23:30 UTC = 01.11. 00:30 in Berlin (MEZ)

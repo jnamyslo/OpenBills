@@ -478,7 +478,7 @@ export type UpdateInput<T> = Partial<Omit<T, 'id'>> & { id: UUID };
 // ============================================================================
 
 export type PlanName = 'selfhosted' | 'free' | 'starter' | 'professional' | 'enterprise';
-export type PlanFeature = 'email' | 'reminders' | 'jobs' | 'customerPricing' | 'reportingFull';
+export type PlanFeature = 'email' | 'reminders' | 'jobs' | 'customerPricing' | 'reportingFull' | 'ownSmtp' | 'ownSystemSmtp';
 export type PlanLimitKind = 'invoices' | 'quotes' | 'customers';
 
 export interface PlanInfo {
