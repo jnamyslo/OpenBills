@@ -17,7 +17,7 @@ import { useQuotes } from './context/QuoteContext';
 import { usePlan } from './context/PlanContext';
 import { PlanLockedNotice } from './components/PlanLockedNotice';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { parsePublicAuthRoute } from './utils/authRoutes';
+import { isAdmin, parsePublicAuthRoute } from './utils/authRoutes';
 import { LoginPage } from './components/LoginPage';
 import { SetupPage } from './components/SetupPage';
 import { AcceptInvitePage } from './components/AcceptInvitePage';
@@ -147,6 +147,8 @@ function AppContent({ currentPageState, handlePageChange }: AppContentProps) {
   const { company } = useCompany();
   const { quotes } = useQuotes();
   const { hasFeature } = usePlan();
+  const { user } = useAuth();
+  const userIsAdmin = isAdmin(user);
 
   // Redirect to settings when the current page's module is disabled.
   // Done as an effect (not during render) to avoid updating state while rendering.
@@ -158,9 +160,10 @@ function AppContent({ currentPageState, handlePageChange }: AppContentProps) {
       (currentPageState.page === 'reminders' && !company.remindersEnabled);
 
     if (isDisabled) {
-      handlePageChange('settings');
+      handlePageChange(userIsAdmin ? 'settings' : 'dashboard');
     }
   }, [
+    userIsAdmin,
     currentPageState.page,
     company.jobTrackingEnabled,
     company.quotesEnabled,
@@ -244,7 +247,7 @@ function AppContent({ currentPageState, handlePageChange }: AppContentProps) {
         }
         return <ReminderManagement />;
       case 'settings':
-        return <Settings />;
+        return userIsAdmin ? <Settings /> : <Dashboard onNavigate={handlePageChange} />;
       default:
         return <Dashboard onNavigate={handlePageChange} />;
     }

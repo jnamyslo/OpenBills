@@ -5,6 +5,11 @@ import { useCompany } from '../context/CompanyContext';
 import { usePlan } from '../context/PlanContext';
 import { PlanUsage } from './PlanUsage';
 import { PlanFeature } from '../types';
+import { useAuth } from '../context/AuthContext';
+import { isAdmin } from '../utils/authRoutes';
+import { UserMenu } from './UserMenu';
+import { AccountModal } from './AccountModal';
+import { TwoFactorBanner } from './TwoFactorBanner';
 
 interface LayoutProps {
   children: ReactNode;
@@ -15,7 +20,9 @@ interface LayoutProps {
 export function Layout({ children, currentPage, onPageChange }: LayoutProps) {
   const { company } = useCompany();
   const { hasFeature } = usePlan();
+  const { user } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isAccountOpen, setIsAccountOpen] = useState(false);
   
   // Module, die einen höheren Tarif erfordern: in der Navigation mit Schloss markiert
   const requiredFeature: Record<string, PlanFeature> = { jobs: 'jobs', calendar: 'jobs', reminders: 'reminders' };
@@ -40,7 +47,7 @@ export function Layout({ children, currentPage, onPageChange }: LayoutProps) {
     ...(company.jobTrackingEnabled ? [jobNavItem, calendarNavItem] : []),
     ...(company.reportingEnabled ? [reportingNavItem] : []),
     ...(company.remindersEnabled ? [remindersNavItem] : []),
-    settingsNavItem,
+    ...(isAdmin(user) ? [settingsNavItem] : []),
   ];
 
   const handlePageChange = (page: string) => {
@@ -72,6 +79,8 @@ export function Layout({ children, currentPage, onPageChange }: LayoutProps) {
                 <h1 className="text-lg lg:text-2xl font-bold text-gray-900">OpenBills</h1>
               </button>
               
+              <div className="flex items-center gap-2">
+              <UserMenu onOpenAccount={() => setIsAccountOpen(true)} />
               {/* Mobile menu button */}
               <button
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -84,6 +93,7 @@ export function Layout({ children, currentPage, onPageChange }: LayoutProps) {
                   <Menu className="h-6 w-6" />
                 )}
               </button>
+              </div>
             </div>
           </div>
         </header>
@@ -146,9 +156,11 @@ export function Layout({ children, currentPage, onPageChange }: LayoutProps) {
 
           {/* Main Content */}
           <main className="flex-1 p-3 sm:p-4 lg:p-6 lg:ml-0 min-h-screen safe-area-bottom">
+            <TwoFactorBanner onSetup={() => setIsAccountOpen(true)} />
             {children}
           </main>
         </div>
+        <AccountModal isOpen={isAccountOpen} onClose={() => setIsAccountOpen(false)} />
       </div>
     </>
   );
