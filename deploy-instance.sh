@@ -172,7 +172,15 @@ print_access_info() {
     fi
     if [ -n "$email" ]; then
         if ! onboarding_out=$("${compose[@]}" exec -T -e LOG_LEVEL=WARN backend node scripts/onboarding.js --send-to "$email" $send_args < "$PLATFORM_ENV_FILE" 2>&1); then
-            print_error "Onboarding-Mail konnte nicht gesendet werden: $onboarding_out"
+            echo
+            print_info "=== Zugang ==="
+            echo "$operator_out"
+            echo
+            echo "$onboarding_out"
+            echo
+            print_error "Onboarding-Mail wurde NICHT gesendet (siehe Ausgabe oben)."
+            print_info "Erneut versuchen: ./manage-instances.sh onboarding-link ${name} --send-to ${email}"
+            print_warning "Support-Zugang jetzt im Passwortmanager ablegen."
             return 1
         fi
     elif ! onboarding_out=$("${compose[@]}" exec -T -e LOG_LEVEL=WARN backend node scripts/onboarding.js 2>&1); then
