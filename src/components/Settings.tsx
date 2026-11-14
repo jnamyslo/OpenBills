@@ -87,9 +87,9 @@ export function Settings({ section, onNavigate }: SettingsProps) {
       confirmedRef.current = false;
       return;
     }
-    if (resolveSection(section) !== activeId) {
-      window.history.replaceState(null, '', `#settings/${activeId}`);
-    }
+    // Nach Browser-Zurück zeigt der Hash schon den neuen Bereich: zurück auf den aktiven setzen,
+    // über die App-Navigation, damit App-Zustand und Hash synchron bleiben.
+    if (resolveSection(section) !== activeId) onNavigate(activeId);
     setPendingId(null);
   };
 

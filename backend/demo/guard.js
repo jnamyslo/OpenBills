@@ -23,10 +23,28 @@ export const DEMO_BLOCKED = [
 
 const DEMO_DISABLED = { error: 'In der Demo deaktiviert', code: 'DEMO_DISABLED' };
 
+// Express-Router matchen ohne Groß-/Kleinschreibung und tolerieren `/` am Ende sowie `//`.
+// Deshalb vor dem Vergleich normalisieren, sonst wäre die Sperre per `/auth/password/` umgehbar.
+function normalizePath(path) {
+  return path.toLowerCase().replace(/\/{2,}/g, '/').replace(/(.)\/+$/, '$1');
+}
+
 /** Muss in der /api-Kette nach requireAuth und vor den Routern hängen. */
 export function demoGuard(req, res, next) {
   if (!isDemoMode()) return next();
-  if (DEMO_BLOCKED.some((p) => p.method === req.method && p.pattern.test(req.path))) {
+  const path = normalizePath(req.path);
+  if (DEMO_BLOCKED.some((p) => p.method === req.method && p.pattern.test(path))) {
+    return res.status(403).json(DEMO_DISABLED);
+  }
+  next();
+}
+
+/**
+ * Zusätzliche Absicherung auf Router-Ebene (Express-Mount-Matching, also robust gegen Pfadvarianten):
+ * in der Demo sind hier alle schreibenden Aufrufe gesperrt – u. a. SMTP-Tests, die ausgehende Verbindungen öffnen.
+ */
+export function demoBlockWrites(req, res, next) {
+  if (isDemoMode() && !['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
     return res.status(403).json(DEMO_DISABLED);
   }
   next();

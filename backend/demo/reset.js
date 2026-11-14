@@ -69,16 +69,22 @@ export async function resetDemo({ now = new Date(), backupDir = DEFAULT_BACKUP_D
   logger.info('Demo zurückgesetzt', { nextResetAt: nextResetAt(now).toISOString() });
 }
 
-/** Plant den nächsten Reset (volle Stunde, durch 3 teilbar) und danach immer wieder. */
-export function scheduleDemoResets() {
+const RETRY_DELAY_MS = 60 * 1000;
+
+/**
+ * Plant den nächsten Reset (volle Stunde, durch 3 teilbar) und danach immer wieder.
+ * Schlägt ein Reset fehl (z. B. Deadlock mit einem Besucher-Request), folgt nach einer Minute ein neuer Versuch.
+ */
+export function scheduleDemoResets({ reset = resetDemo, delayMs } = {}) {
   if (!isDemoMode()) return;
-  const delay = Math.max(nextResetAt(new Date()).getTime() - Date.now(), 1000);
+  const delay = delayMs ?? Math.max(nextResetAt(new Date()).getTime() - Date.now(), 1000);
   setTimeout(async () => {
     try {
-      await resetDemo();
+      await reset();
+      scheduleDemoResets({ reset });
     } catch (error) {
-      logger.error('Demo-Reset fehlgeschlagen', { error: error.message });
+      logger.error('Demo-Reset fehlgeschlagen, neuer Versuch in 1 Minute', { error: error.message });
+      scheduleDemoResets({ reset, delayMs: RETRY_DELAY_MS });
     }
-    scheduleDemoResets();
   }, delay);
 }

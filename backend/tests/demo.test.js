@@ -2,12 +2,13 @@ import { describe, it, expect, afterEach, afterAll, beforeAll, beforeEach, vi } 
 import request from 'supertest';
 import { pool } from '../database.js';
 import { hasDb, migrateTestDb, resetAuthTables } from './helpers/db.js';
-import { ORIGIN } from './helpers/auth.js';
+import { ORIGIN, loginAs } from './helpers/auth.js';
 import { createUser } from '../auth/users.js';
 import { hashPassword } from '../auth/password.js';
 import { demoGuard } from '../demo/guard.js';
 import { createTransporter } from '../services/emailService.js';
 import { createPlatformTransporter } from '../services/mailRouting.js';
+import { scheduleDemoResets } from '../demo/reset.js';
 import { createApp } from '../app.js';
 import { PUBLIC_API_PATHS } from '../auth/middleware.js';
 import { isDemoMode, assertDemoConfig, nextResetAt, DEMO_EMAIL, DEMO_PASSWORD } from '../demo/index.js';
@@ -139,6 +140,22 @@ describe('demoGuard', () => {
     }
   });
 
+  it('lässt sich nicht per Schrägstrich, Großschreibung oder // umgehen', () => {
+    vi.stubEnv('OPENBILLS_DEMO', 'true');
+    for (const [method, path] of [
+      ['POST', '/auth/password/'],
+      ['POST', '/AUTH/Password'],
+      ['POST', '/auth//password'],
+      ['POST', '/auth/totp/enable/'],
+      ['POST', '/email-management/smtp-settings/'],
+      ['POST', '/Email-Management/test-network'],
+      ['POST', '/backup/restore-zip/'],
+      ['POST', '/users//invite'],
+    ]) {
+      expect(run(method, path).status, `${method} ${path}`).toBe(403);
+    }
+  });
+
   it('ist ohne Demo-Modus inaktiv', () => {
     vi.stubEnv('OPENBILLS_DEMO', '');
     for (const [method, path] of BLOCKED) expect(run(method, path).nextCalled).toBe(true);
@@ -187,7 +204,6 @@ describe.skipIf(!hasDb)('Demo-User: keine Kontosperre', () => {
 
   beforeAll(migrateTestDb);
   beforeEach(resetAuthTables);
-  afterAll(() => pool.end());
 
   it('Fehlversuche sperren den Demo-User nicht', async () => {
     vi.stubEnv('OPENBILLS_DEMO', 'true');
@@ -210,5 +226,48 @@ describe.skipIf(!hasDb)('Demo-User: keine Kontosperre', () => {
     await request(app).post('/api/auth/login').set(ORIGIN).send({ email: DEMO_EMAIL, password: 'falsch' });
     const { rows } = await pool.query('SELECT locked_until FROM users WHERE id = $1', [user.id]);
     expect(rows[0].locked_until).not.toBeNull();
+  });
+});
+
+describe.skipIf(!hasDb)('Demo-Sperre über echte Express-Routen', () => {
+  const app = createApp();
+
+  beforeAll(migrateTestDb);
+  beforeEach(resetAuthTables);
+
+  it('Pfad-Varianten erreichen die Handler nicht', async () => {
+    vi.stubEnv('OPENBILLS_DEMO', 'true');
+    const { cookie } = await loginAs('admin');
+    for (const path of [
+      '/api/auth/password/',
+      '/api/AUTH/Password',
+      '/api/email-management/test-network/',
+      '/api/EMAIL-MANAGEMENT/send-test-email',
+      '/api/users/1/unlock/',
+    ]) {
+      const res = await request(app).post(path).set(ORIGIN).set('Cookie', cookie).send({});
+      expect(res.status, path).toBe(403);
+      expect(res.body.code, path).toBe('DEMO_DISABLED');
+    }
+  });
+});
+
+afterAll(async () => {
+  if (hasDb) await pool.end();
+});
+
+describe('scheduleDemoResets', () => {
+  it('wiederholt einen fehlgeschlagenen Reset nach einer Minute', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 10, 14, 2, 59, 0));
+    vi.stubEnv('OPENBILLS_DEMO', 'true');
+    const reset = vi.fn().mockRejectedValueOnce(new Error('deadlock')).mockResolvedValue(undefined);
+    scheduleDemoResets({ reset });
+    await vi.advanceTimersByTimeAsync(60 * 1000);
+    expect(reset).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(60 * 1000);
+    expect(reset).toHaveBeenCalledTimes(2);
+    vi.clearAllTimers();
+    vi.useRealTimers();
   });
 });

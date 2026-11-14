@@ -22,7 +22,7 @@ import reportingRouter from './routes/reporting.js';
 import remindersRouter from './routes/reminders.js';
 import planRouter from './routes/plan.js';
 import demoRouter from './routes/demo.js';
-import { demoGuard } from './demo/guard.js';
+import { demoGuard, demoBlockWrites } from './demo/guard.js';
 import authRouter from './routes/auth.js';
 import usersRouter from './routes/users.js';
 import auditLogRouter from './routes/auditLog.js';
@@ -71,7 +71,7 @@ export function createApp() {
 
   // API routes
   app.use('/api/auth', authRouter);
-  app.use('/api/users', requireAdmin, usersRouter);
+  app.use('/api/users', requireAdmin, demoBlockWrites, usersRouter);
   app.use('/api/audit-log', requireAdmin, auditLogRouter);
   app.use('/api/customers', customersRouter);
   app.use('/api/invoices', invoicesRouter);
@@ -80,7 +80,7 @@ export function createApp() {
   // Rechnungsvorlagen pflegen auch Nutzer (Rechnungseditor); übrige Firmendaten bleiben admin-only.
   app.use('/api/invoice-templates', invoiceTemplatesRouter);
   app.use('/api/email', requireFeature('email'), enforcePlatformMailLimit, emailRouter);
-  app.use('/api/email-management', emailManagementRouter);
+  app.use('/api/email-management', demoBlockWrites, emailManagementRouter);
   app.use('/api/jobs', requireFeature('jobs', { allowRead: true }), jobsRouter);
   app.use('/api/material-templates', requireFeature('customerPricing', { allowRead: true }), requireAdminForWrites, materialTemplatesRouter);
   app.use('/api/hourly-rates', requireAdminForWrites, hourlyRatesRouter);
