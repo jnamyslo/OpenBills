@@ -157,6 +157,59 @@ EOF
     fi
 }
 
+# Baut Backend- und Frontend-Image einmal und startet alle laufenden Instanzen damit neu.
+# Die Images haben keine instanzspezifischen Build-Args, daher genügt ein Build; er wird auf die
+# Compose-Standardnamen <projekt>-backend/-frontend jeder Instanz getaggt.
+restart_all() {
+    local names=() env_file name
+    for env_file in .env.*; do
+        [[ "$env_file" == .env.backend.* ]] && continue
+        name=${env_file#.env.}
+        [ -f ".env.backend.$name" ] || continue
+        compose_cmd "$name"
+        if [ -n "$("${COMPOSE[@]}" ps --status running -q 2>/dev/null)" ]; then
+            names+=("$name")
+        fi
+    done
+
+    if [ ${#names[@]} -eq 0 ]; then
+        print_warning "Keine laufenden Instanzen gefunden."
+        return 0
+    fi
+    print_info "Laufende Instanzen: ${names[*]}"
+
+    for name in "${names[@]}"; do
+        check_platform_ready "$name" || return 1
+    done
+
+    print_info "Baue Backend-Image..."
+    docker build -t openbills-build-backend ./backend || { print_error "Backend-Build fehlgeschlagen"; return 1; }
+    print_info "Baue Frontend-Image..."
+    docker build -t openbills-build-frontend . || { print_error "Frontend-Build fehlgeschlagen"; return 1; }
+
+    local failed=() project
+    for name in "${names[@]}"; do
+        print_info "Starte Instanz '$name' mit neuem Image neu..."
+        project=$(grep -E '^COMPOSE_PROJECT_NAME=' ".env.${name}" | tail -1 | cut -d'=' -f2- | tr -d '"'"'"'\r ')
+        project=${project:-openbills-$name}
+        docker tag openbills-build-backend "${project}-backend"
+        docker tag openbills-build-frontend "${project}-frontend"
+        compose_cmd "$name"
+        if "${COMPOSE[@]}" up -d --no-build --force-recreate; then
+            print_success "Instanz '$name' neu gestartet"
+        else
+            print_error "Fehler beim Neustart von '$name'"
+            failed+=("$name")
+        fi
+    done
+
+    if [ ${#failed[@]} -gt 0 ]; then
+        print_error "Fehlgeschlagen: ${failed[*]}"
+        return 1
+    fi
+    print_success "Alle ${#names[@]} Instanzen neu gestartet"
+}
+
 # Function to remove an instance completely
 remove_instance() {
     local instance_name=$1
@@ -380,7 +433,9 @@ case "$1" in
         stop_instance $2
         ;;
     restart)
-        if [ -n "$2" ]; then
+        if [ "$2" = "all" ]; then
+            restart_all || exit 1
+        elif [ -n "$2" ]; then
             print_info "Starte Instanz '$2' neu..."
             check_platform_ready "$2" || exit 1
             stop_instance $2
@@ -418,6 +473,7 @@ case "$1" in
         echo "  start <instance>        - Instanz starten"
         echo "  stop <instance>         - Instanz stoppen"
         echo "  restart <instance>      - Instanz neu starten"
+        echo "  restart all             - Einmal bauen, alle laufenden Instanzen mit neuem Image neu starten"
         echo "  remove <instance>       - Instanz löschen (⚠️  Datenverlust!)"
         echo "  logs <instance> [svc]   - Logs anzeigen"
         echo "  backup <instance>       - Datenbank-Backup erstellen"
