@@ -11,7 +11,7 @@ Managed-SaaS-Instanzen bekommen einen Plan (Free, Starter, Professional, Enterpr
 - **Kein Lizenzkey.** Der Betreiber steuert jede Instanz selbst. Plan per Env-Var `OPENBILLS_PLAN` in `.env.backend.<name>`.
 - `OPENBILLS_PLAN` fehlt → Plan `selfhosted` = alles unlimited, alle Features.
 - Plan-Definitionen als Konstante im Code (`backend/utils/plan.js`), nicht in Env.
-- Auth unverändert (Authentik + NPM Forward-Auth). Plan gilt pro Instanz.
+- Auth: lokale Anmeldung, siehe `docs/superpowers/specs/2026-11-13-auth.md` (ersetzt Authentik + NPM Forward-Auth). Plan gilt pro Instanz.
 
 ## Tier-Matrix
 

@@ -167,12 +167,14 @@ Interaktiv (empfohlen):
 ./deploy-instance.sh
 ```
 Was passiert:
-- Instanzname, Port‑Erkennung, Tarif‑Auswahl, sichere Passwörter, Konfigurationstest
+- Instanzname, Port‑Erkennung, Tarif‑Auswahl, öffentliche URL, sichere Passwörter, Konfigurationstest
+- Nach dem Start: Ausgabe von Support‑Zugang und Onboarding‑Link (siehe „Anmeldung & Nutzer“)
 
 Schnell‑Deployment (ohne E‑Mail‑Setup):
 ```bash
-./deploy-instance.sh --legacy client1 5432 3001 8080 [tarif]
-#                           ^name   ^db   ^api ^web  ^optional, siehe „Tarife“
+./deploy-instance.sh --legacy client1 5432 3001 8080 [tarif] [url]
+#                           ^name   ^db   ^api ^web  ^optional, siehe „Tarife“ ("" = überspringen)
+#                                                          ^öffentliche URL, Standard http://localhost:<web>
 ```
 
 # Zugriff
@@ -199,10 +201,42 @@ DB- und API-Port sind nur an `127.0.0.1` gebunden (von außen nicht erreichbar).
 ./manage-instances.sh logs client1 [backend]
 ./manage-instances.sh backup client1
 ./manage-instances.sh config client1
+./manage-instances.sh onboarding-link client1   # neuer Onboarding-Link
+./manage-instances.sh operator-reset client1    # Support-Zugang (neu) anlegen
 ./manage-instances.sh remove client1   # ⚠️ löscht Daten
 ```
 
-`list` zeigt pro Instanz Status, Tarif und Ports.
+`list` zeigt pro Instanz Status, Tarif, öffentliche URL und Ports.
+
+---
+
+## 🔐 Anmeldung & Nutzer
+
+OpenBills hat eine eigene Anmeldung (E‑Mail + Passwort, optional 2FA); ein vorgeschalteter Identity‑Provider ist nicht nötig.
+
+- **Onboarding:** Beim Deployment wird ein Onboarding‑Link (`<PUBLIC_URL>/#setup/<token>`, 48 h gültig, einmalig) ausgegeben. Der Kunde legt darüber den ersten Admin an. Neuer Link: `./manage-instances.sh onboarding-link <name>` (nur solange noch kein Kunden‑Admin existiert).
+- **Support‑Zugang:** `support@openbills.de` (Rolle Admin) wird beim Deployment mit zufälligem Passwort angelegt; Zugangsdaten werden einmalig ausgegeben und gehören in den Passwortmanager. Neues Passwort (setzt Sessions und 2FA des Zugangs zurück): `./manage-instances.sh operator-reset <name>`.
+- **Rollen:** `admin` (Einstellungen, Nutzerverwaltung, Audit‑Log) und `user` (Tagesgeschäft ohne Einstellungen).
+- **Nutzer:** Admins laden Nutzer per Einladungslink ein (48 h gültig), ändern Rollen, deaktivieren Nutzer und setzen 2FA zurück.
+- **2FA:** TOTP per Authenticator‑App (QR‑Code) mit 10 Recovery‑Codes; für Admins empfohlen.
+- **Passwort vergessen:** Reset‑Link per E‑Mail bzw. durch einen Admin erzeugt (1 h gültig, einmalig).
+- **Audit‑Log:** Anmeldungen und Änderungen werden protokolliert und 90 Tage aufbewahrt (Einstellungen → Audit‑Log).
+- **Backups:** Nutzerdaten sind nicht Teil des App‑Backups und werden beim Restore nicht angefasst. Vollständige Sicherung inkl. Nutzern: `./manage-instances.sh backup <name>` (DB‑Dump).
+
+Wichtige Backend‑Variablen in `.env.backend.<name>`: `PUBLIC_URL`, `AUTH_ENCRYPTION_KEY` (32 Byte base64, nicht ändern/verlieren, sonst sind hinterlegte 2FA‑Secrets unbrauchbar), `TRUST_PROXY_HOPS`.
+
+### Umstellung von Authentik
+
+Bestehende Instanzen (bisher Authentik + NPM Forward‑Auth) werden in‑place umgestellt:
+
+1. Backup erstellen (`./manage-instances.sh backup <name>`).
+2. `PUBLIC_URL` (z. B. `https://kunde.openbills.de`) und `AUTH_ENCRYPTION_KEY` (`openssl rand -base64 32`) per `./manage-instances.sh config <name>` in `.env.backend.<name>` ergänzen, `git pull`, Instanz neu starten. Die Migration legt leere Auth‑Tabellen an, Fachdaten bleiben unverändert.
+3. `./manage-instances.sh operator-reset <name>` und `./manage-instances.sh onboarding-link <name>` ausführen; den Link an den Kunden senden.
+4. Authentik bleibt bis zum Abschluss des Onboardings vor der Instanz. Danach Forward‑Auth im NPM entfernen.
+
+Zwischen Schritt 2 und dem Onboarding ist die API geschlossen (ohne Session 401).
+
+Hinweis: `scripts/seed-demo.mjs` funktioniert ohne Login nicht mehr (die API verlangt eine Session).
 
 ---
 

@@ -54,6 +54,8 @@ list_instances() {
                 # Tarif aus der Backend-Konfiguration (leer/fehlend = self-hosted)
                 PLAN=$(grep -E '^OPENBILLS_PLAN=' ".env.backend.$instance_name" | tail -1 | cut -d'=' -f2- | tr -d '"'"'"'\r ')
                 
+                PUBLIC_URL=$(grep -E '^PUBLIC_URL=' ".env.backend.$instance_name" | tail -1 | cut -d'=' -f2- | tr -d '"'"'"'\r ')
+
                 # Check if running
                 if docker ps --filter "name=openbills-${instance_name}" --format "{{.Names}}" | grep -q "openbills-${instance_name}"; then
                     status="${GREEN}RUNNING${NC}"
@@ -61,7 +63,7 @@ list_instances() {
                     status="${RED}STOPPED${NC}"
                 fi
                 
-                echo -e "  ${BLUE}$instance_name${NC} - $status - Tarif:${PLAN:-self-hosted} - Frontend:$FRONTEND_PORT Backend:$BACKEND_PORT DB:$DB_PORT"
+                echo -e "  ${BLUE}$instance_name${NC} - $status - Tarif:${PLAN:-self-hosted} - URL:${PUBLIC_URL:--} - Frontend:$FRONTEND_PORT Backend:$BACKEND_PORT DB:$DB_PORT"
             fi
         fi
     done
@@ -291,6 +293,41 @@ edit_config() {
     fi
 }
 
+# Führt ein Auth-Skript im Backend-Container aus (onboarding.js / operator.js)
+run_auth_script() {
+    local instance_name=$1
+    local script=$2
+    local usage=$3
+    if [ -z "$instance_name" ]; then
+        print_error "Bitte geben Sie den Instanznamen an"
+        echo "Usage: $0 $usage <instance_name>"
+        return 1
+    fi
+
+    if [ ! -f ".env.${instance_name}" ]; then
+        print_error "Instanz '$instance_name' nicht gefunden"
+        return 1
+    fi
+
+    local compose=(docker compose --env-file ".env.${instance_name}" -f docker-compose.yml)
+    if [ -z "$("${compose[@]}" ps --status running -q backend 2>/dev/null)" ]; then
+        print_error "Das Backend von Instanz '$instance_name' läuft nicht. Zuerst starten: $0 start $instance_name"
+        return 1
+    fi
+
+    "${compose[@]}" exec -T -e LOG_LEVEL=WARN backend node "scripts/${script}.js"
+}
+
+# Neuen Onboarding-Link erzeugen
+onboarding_link() {
+    run_auth_script "$1" onboarding onboarding-link
+}
+
+# Support-Zugang anlegen bzw. Passwort zurücksetzen
+operator_reset() {
+    run_auth_script "$1" operator operator-reset
+}
+
 # Main script logic
 case "$1" in
     list|ls)
@@ -323,6 +360,12 @@ case "$1" in
     config|edit)
         edit_config $2
         ;;
+    onboarding-link)
+        onboarding_link $2
+        ;;
+    operator-reset)
+        operator_reset $2
+        ;;
     --help|-h|help)
         echo
         print_info "=== OpenBills Instance Manager ==="
@@ -338,6 +381,8 @@ case "$1" in
         echo "  logs <instance> [svc]   - Logs anzeigen"
         echo "  backup <instance>       - Datenbank-Backup erstellen"
         echo "  config <instance>       - Konfiguration bearbeiten"
+        echo "  onboarding-link <inst>  - Neuen Onboarding-Link für den Kunden erzeugen"
+        echo "  operator-reset <inst>   - Support-Zugang anlegen / Passwort zurücksetzen"
         echo "  help                    - Diese Hilfe anzeigen"
         echo
         echo "Beispiele:"
@@ -346,6 +391,7 @@ case "$1" in
         echo "  $0 logs client1 backend"
         echo "  $0 backup client1"
         echo "  $0 config client1"
+        echo "  $0 onboarding-link client1"
         echo
         ;;
     *)

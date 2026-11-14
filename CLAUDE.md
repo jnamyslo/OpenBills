@@ -81,6 +81,14 @@ Three Docker services per instance: `database` (PostgreSQL 15), `backend`, `fron
 - Drafts always get an "ENTWURF" watermark and no embedded ZUGFeRD/XRechnung; send/download "as sent" releases first via `src/utils/releaseForOutput.ts`.
 - Spec: `docs/superpowers/specs/2026-11-13-plan-tiers.md`.
 
+### Auth (lokal, Session-Cookie)
+
+- Module in `backend/auth/` (users, sessions, password, totp, tokens, rateLimit, audit, middleware, config). Backend startet nur mit `PUBLIC_URL` und `AUTH_ENCRYPTION_KEY`.
+- Globales Auth-Gate in `backend/auth/middleware.js`; öffentliche Routen stehen in der Whitelist dort. Neue Routen sind automatisch geschützt — nur bewusst in die Whitelist aufnehmen.
+- Rollen `admin`/`user`; Support-Zugang `support@openbills.de` (`is_operator`). Auth-Tabellen sind nicht im App-Backup.
+- Onboarding/Support-Zugang: `backend/scripts/onboarding.js`, `operator.js`; Aufruf über `deploy-instance.sh` und `manage-instances.sh onboarding-link|operator-reset`.
+- Spec: `docs/superpowers/specs/2026-11-13-auth.md`.
+
 ### PDF Generation
 
 Three libraries in use — pick by context:
