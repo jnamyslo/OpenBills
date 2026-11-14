@@ -488,7 +488,11 @@ export interface PlanInfo {
   limits: { invoicesPerMonth: number | null; quotesPerMonth: number | null; customers: number | null };
   usage: { period: string; invoices: number; quotes: number; customers: number };
   upgradeContact: string | null;
+  /** Versandweg je Mailart: Plattform-Relay oder eigenes SMTP. */
+  mailRoutes: { system: MailRoute; customer: MailRoute };
 }
+
+export type MailRoute = 'platform' | 'own';
 
 /** Antwort-Body des Backends bei 402 (Limit), 403 (Feature nicht im Plan) bzw. 429 (Tageslimit Plattform-Mails). */
 export interface PlanErrorBody {
