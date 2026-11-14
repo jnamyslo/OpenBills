@@ -10,6 +10,7 @@ import { isAdmin } from '../utils/authRoutes';
 import { UserMenu } from './UserMenu';
 import { AccountModal } from './AccountModal';
 import { TwoFactorBanner } from './TwoFactorBanner';
+import { DemoBanner } from './DemoBanner';
 
 interface LayoutProps {
   children: ReactNode;
@@ -156,6 +157,7 @@ export function Layout({ children, currentPage, onPageChange }: LayoutProps) {
 
           {/* Main Content */}
           <main className="flex-1 p-3 sm:p-4 lg:p-6 lg:ml-0 min-h-screen safe-area-bottom">
+            <DemoBanner />
             <TwoFactorBanner onSetup={() => setIsAccountOpen(true)} />
             {children}
           </main>

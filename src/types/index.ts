@@ -481,6 +481,14 @@ export type PlanName = 'selfhosted' | 'free' | 'starter' | 'professional' | 'ent
 export type PlanFeature = 'email' | 'reminders' | 'jobs' | 'customerPricing' | 'reportingFull' | 'ownSmtp' | 'ownSystemSmtp';
 export type PlanLimitKind = 'invoices' | 'quotes' | 'customers';
 
+/** GET /api/demo – öffentliche Demo-Instanz (OPENBILLS_DEMO). */
+export interface DemoInfo {
+  demo: boolean;
+  email?: string;
+  password?: string;
+  nextResetAt?: string;
+}
+
 export interface PlanInfo {
   plan: PlanName;
   label: string;

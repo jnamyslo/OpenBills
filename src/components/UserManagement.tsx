@@ -4,6 +4,8 @@ import { apiService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { errorMessage } from '../utils/authRoutes';
 import { ConfirmationModal } from './ConfirmationModal';
+import { DemoDisabledNotice } from './DemoDisabledNotice';
+import { useDemo } from '../context/DemoContext';
 import type { AuthRole, AuthUser } from '../types';
 
 type Operator = { active: boolean; lastLoginAt: string | null };
@@ -57,6 +59,7 @@ function LinkBox({ title, link, emailed }: { title: string; link: string; emaile
 }
 
 export function UserManagement() {
+  const { demo } = useDemo();
   const { user: me, refresh } = useAuth();
   const [users, setUsers] = useState<AuthUser[]>([]);
   const [operator, setOperator] = useState<Operator | null>(null);
@@ -177,7 +180,8 @@ export function UserManagement() {
         <h3 className="text-lg font-semibold text-gray-900">Nutzerverwaltung</h3>
       </div>
 
-      <div className="space-y-4">
+      <fieldset disabled={demo} className="space-y-4 min-w-0">
+        <DemoDisabledNotice />
         {error && (
           <div role="alert" className="bg-red-50 border border-red-200 text-red-800 text-sm rounded-lg p-3">
             {error}
@@ -297,7 +301,7 @@ export function UserManagement() {
             </button>
           </div>
         </div>
-      </div>
+      </fieldset>
 
       <ConfirmationModal
         isOpen={pending !== null}

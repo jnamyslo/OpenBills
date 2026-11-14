@@ -17,6 +17,7 @@ import { useQuotes } from './context/QuoteContext';
 import { usePlan } from './context/PlanContext';
 import { PlanLockedNotice } from './components/PlanLockedNotice';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { DemoProvider } from './context/DemoContext';
 import { isAdmin, parsePublicAuthRoute } from './utils/authRoutes';
 import { LoginPage } from './components/LoginPage';
 import { SetupPage } from './components/SetupPage';
@@ -34,7 +35,9 @@ interface PageState {
 function App() {
   return (
     <AuthProvider>
-      <AuthGate />
+      <DemoProvider>
+        <AuthGate />
+      </DemoProvider>
     </AuthProvider>
   );
 }

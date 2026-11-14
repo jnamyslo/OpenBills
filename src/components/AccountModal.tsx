@@ -5,6 +5,8 @@ import { useAuth } from '../context/AuthContext';
 import { apiService } from '../services/api';
 import { errorMessage, newPasswordProblem } from '../utils/authRoutes';
 import { usePasswordMinLength } from '../hooks/usePasswordMinLength';
+import { useDemo } from '../context/DemoContext';
+import { DemoDisabledNotice } from './DemoDisabledNotice';
 
 interface AccountModalProps {
   isOpen: boolean;
@@ -19,6 +21,7 @@ const secondaryClass = 'px-4 py-2 rounded-md border border-gray-300 text-gray-70
 
 export function AccountModal({ isOpen, onClose }: AccountModalProps) {
   const minLength = usePasswordMinLength();
+  const { demo } = useDemo();
   const { user, refresh } = useAuth();
 
   const [currentPassword, setCurrentPassword] = useState('');
@@ -165,6 +168,8 @@ export function AccountModal({ isOpen, onClose }: AccountModalProps) {
             <p>{user.email}</p>
           </div>
 
+          <DemoDisabledNotice />
+          <fieldset disabled={demo} className="space-y-8 min-w-0">
           <section>
             <h4 className="text-base font-semibold text-gray-900 mb-3">Passwort ändern</h4>
             <form onSubmit={submitPassword} className="space-y-3">
@@ -269,6 +274,7 @@ export function AccountModal({ isOpen, onClose }: AccountModalProps) {
               </form>
             )}
           </section>
+          </fieldset>
         </div>
       </div>
     </div>

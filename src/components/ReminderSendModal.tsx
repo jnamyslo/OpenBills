@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { demoMailNote } from '../utils/demo';
 import { X, Download, Mail, Eye } from 'lucide-react';
 import { Invoice, Customer } from '../types';
 import { useCustomers } from '../context/CustomerContext';
@@ -318,7 +319,7 @@ export function ReminderSendModal({
       }
 
       if (successCount > 0) {
-        alert(`${successCount} Mahnung(en) erfolgreich versendet!`);
+        alert(`${successCount} Mahnung(en) erfolgreich versendet!${demoMailNote()}`);
         onSuccess();
         onClose();
       } else {

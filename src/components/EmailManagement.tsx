@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { useDemo } from '../context/DemoContext';
+import { DemoDisabledNotice } from './DemoDisabledNotice';
 import logger from '../utils/logger';
 import { usePlan } from '../context/PlanContext';
 import { Mail, Send, Settings, TestTube, RefreshCw, Search, Calendar, User, FileText, CheckCircle, XCircle, Clock, AlertTriangle, Eye, X, TrendingUp, Database, Lock } from 'lucide-react';
@@ -77,6 +79,7 @@ function PlatformMailNotice({ title, text, upgradeContact }: { title: string; te
 }
 
 export function EmailManagement({ onClose, embedded = false }: EmailManagementProps) {
+  const { demo } = useDemo();
   const { plan, hasFeature } = usePlan();
   // Free/Starter: kein eigener Mailserver, Versand über OpenBills. Professional: eigener Mailserver nur für Kundenmails.
   const ownSmtpAllowed = hasFeature('ownSmtp');
@@ -670,7 +673,8 @@ export function EmailManagement({ onClose, embedded = false }: EmailManagementPr
           )}
 
           {activeTab === 'settings' && ownSmtpAllowed && (
-            <div className="p-6">
+            <fieldset disabled={demo} className="p-6 min-w-0">
+              <DemoDisabledNotice />
               <div className="max-w-2xl mx-auto space-y-6">
                 {!ownSystemSmtpAllowed && (
                   <PlatformMailNotice
@@ -855,12 +859,13 @@ export function EmailManagement({ onClose, embedded = false }: EmailManagementPr
                   </div>
                 </div>
               </div>
-            </div>
+            </fieldset>
           )}
 
           {/* Test Email Tab */}
           {activeTab === 'test' && ownSmtpAllowed && (
-            <div className="p-6">
+            <fieldset disabled={demo} className="p-6 min-w-0">
+              <DemoDisabledNotice />
               <div className="max-w-2xl mx-auto space-y-6">
                 <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                   <div className="flex items-start">
@@ -941,7 +946,7 @@ export function EmailManagement({ onClose, embedded = false }: EmailManagementPr
                   </div>
                 </div>
               </div>
-            </div>
+            </fieldset>
           )}
         </div>
 

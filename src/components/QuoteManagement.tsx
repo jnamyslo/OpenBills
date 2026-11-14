@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { demoMailNote } from '../utils/demo';
 import logger from '../utils/logger';
 import { withQuoteContent } from '../utils/attachmentContent';
 import { Plus, Edit, Trash2, Search, Download, FileText, Send, Check, Eye, FileCheck, Mail, X, CheckCircle } from 'lucide-react';
@@ -536,9 +537,9 @@ export function QuoteManagement({ onNavigate }: QuoteManagementProps = {}) {
         setSelectedQuoteIds([]);
 
         if (errorCount === 0) {
-          alert(`Alle ${successCount} Angebote erfolgreich per E-Mail versendet!`);
+          alert(`Alle ${successCount} Angebote erfolgreich per E-Mail versendet!${demoMailNote()}`);
         } else {
-          alert(`${successCount} Angebote erfolgreich versendet, ${errorCount} Fehler aufgetreten.`);
+          alert(`${successCount} Angebote erfolgreich versendet, ${errorCount} Fehler aufgetreten.${demoMailNote()}`);
         }
         
         setEmailModal({ isOpen: false, quote: null, customer: null, isBulkMode: false, bulkQuotes: [] });
@@ -622,7 +623,7 @@ export function QuoteManagement({ onNavigate }: QuoteManagementProps = {}) {
         ? ` mit ${totalAttachments} Anhang${totalAttachments > 1 ? 'en' : ''}`
         : '';
       
-      alert(`Angebot erfolgreich per E-Mail versendet!${attachmentInfo}`);
+      alert(`Angebot erfolgreich per E-Mail versendet!${attachmentInfo}${demoMailNote()}`);
       setEmailModal({ isOpen: false, quote: null, customer: null });
     } catch (error) {
       logger.error('Error sending quote email:', error);

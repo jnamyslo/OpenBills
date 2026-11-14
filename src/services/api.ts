@@ -1,4 +1,4 @@
-import { Customer, Invoice, Quote, Company, JobEntry, MaterialTemplate, InvoiceTemplate, HourlyRate, YearlyInvoiceStartNumber, InvoiceJournalResponse, ReportingStatistics, ReminderEligibility, PlanInfo, PlanErrorBody, AuthUser, AuthRole, TokenStatus, AuditLogFilters, AuditLogPage } from '../types';
+import { Customer, Invoice, Quote, Company, JobEntry, MaterialTemplate, InvoiceTemplate, HourlyRate, YearlyInvoiceStartNumber, InvoiceJournalResponse, ReportingStatistics, ReminderEligibility, DemoInfo, PlanInfo, PlanErrorBody, AuthUser, AuthRole, TokenStatus, AuditLogFilters, AuditLogPage } from '../types';
 import logger from '../utils/logger';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
@@ -750,6 +750,10 @@ class ApiService {
   // --------------------------------------------------------------------------
   // Auth API
   // --------------------------------------------------------------------------
+
+  async getDemoInfo(): Promise<DemoInfo> {
+    return this.request<DemoInfo>('/demo', { skipAuthEvent: true, skipErrorLogging: true });
+  }
 
   async getPasswordPolicy(): Promise<{ minLength: number; maxLength: number }> {
     return this.request('/auth/password-policy', { skipAuthEvent: true, skipErrorLogging: true });

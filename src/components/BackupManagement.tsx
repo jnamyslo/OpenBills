@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useDemo } from '../context/DemoContext';
 import logger from '../utils/logger';
 import {
   Save,
@@ -39,6 +40,7 @@ function errorText(error: unknown, fallback: string): string {
 }
 
 export function BackupManagement({ onClose, embedded = false }: BackupManagementProps) {
+  const { demo } = useDemo();
   const [zipBackups, setZipBackups] = useState<BackupInfo[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isCreatingZipBackup, setIsCreatingZipBackup] = useState(false);
@@ -299,6 +301,7 @@ export function BackupManagement({ onClose, embedded = false }: BackupManagement
                 <AlertTriangle className="h-4 w-4 inline mr-1" />
                 <strong>Warnung:</strong> Dies überschreibt alle vorhandenen Daten!
               </p>
+              {demo && <p className="text-sm text-amber-800">In der Demo deaktiviert</p>}
             </div>
 
             <div className="flex items-center space-x-4">
@@ -306,6 +309,8 @@ export function BackupManagement({ onClose, embedded = false }: BackupManagement
                 <input
                   type="file"
                   accept=".zip"
+                  disabled={demo}
+                  title={demo ? 'In der Demo deaktiviert' : undefined}
                   onChange={handleFileSelect}
                   className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
                 />
@@ -392,8 +397,9 @@ export function BackupManagement({ onClose, embedded = false }: BackupManagement
                         </button>
                         <button
                           onClick={() => deleteBackup(backup.filename)}
-                          className="text-red-600 hover:text-red-800 transition-colors p-2 rounded-lg hover:bg-red-50"
-                          title="Löschen"
+                          disabled={demo}
+                          className="text-red-600 hover:text-red-800 transition-colors p-2 rounded-lg hover:bg-red-50 disabled:opacity-40"
+                          title={demo ? 'In der Demo deaktiviert' : 'Löschen'}
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
