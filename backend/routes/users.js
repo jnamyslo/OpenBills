@@ -9,6 +9,7 @@ import { hashToken } from '../auth/crypto.js';
 import { AuthError, sendAuthError } from '../auth/errors.js';
 import { getAuthConfig } from '../auth/config.js';
 import { isSmtpConfigured, sendInviteMail } from '../services/authMailService.js';
+import { platformInviteLimitReached } from '../services/mailRouting.js';
 
 const router = express.Router();
 
@@ -80,7 +81,8 @@ router.post('/invite', async (req, res) => {
     const link = `${getAuthConfig().publicUrl}/#invite/${token}`;
 
     let emailed = false;
-    if (await isSmtpConfigured()) {
+    // Über dem Plattform-Tageslimit nur den Link zurückgeben (Admin gibt ihn selbst weiter).
+    if (await isSmtpConfigured() && !(await platformInviteLimitReached())) {
       try {
         await sendInviteMail(normalized, { link, inviterName: req.user.name || 'Ein Administrator' });
         emailed = true;
@@ -89,7 +91,7 @@ router.post('/invite', async (req, res) => {
       }
     }
 
-    await audit(req, { action: 'user.invited', entityType: 'users', details: { role } });
+    await audit(req, { action: 'user.invited', entityType: 'users', details: { role, emailed } });
     res.status(201).json({ link, emailed });
   } catch (err) {
     sendAuthError(res, err);

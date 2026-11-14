@@ -91,6 +91,27 @@ describe.skipIf(!hasDb)('users API', () => {
     });
   });
 
+  describe('invite – Plattform-Limit', () => {
+    it('Free: ab 10 per Mail versendeten Einladungen heute nur noch Link, keine Mail', async () => {
+      vi.stubEnv('OPENBILLS_PLAN', 'free');
+      try {
+        const admin = await loginAs('admin');
+        mail.isSmtpConfigured.mockImplementation(async () => true);
+        for (let i = 0; i < 10; i += 1) {
+          const r = await call('post', '/api/users/invite', admin.cookie, { email: `p${i}@firma.de`, role: 'user' });
+          expect(r.body.emailed).toBe(true);
+        }
+        const over = await call('post', '/api/users/invite', admin.cookie, { email: 'p10@firma.de', role: 'user' });
+        expect(over.status).toBe(201);
+        expect(over.body.emailed).toBe(false);
+        expect(over.body.link).toContain('#invite/');
+        expect(mail.sendInviteMail).toHaveBeenCalledTimes(10);
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+  });
+
   describe('update', () => {
     it('updates name and role, audits without name value', async () => {
       const admin = await loginAs('admin');

@@ -1018,7 +1018,8 @@ ${companySettings.name}
 
     // Send email
     const info = await transporter.sendMail({
-      from: `"${senderInfo.name}" <${senderInfo.email}>`,
+      // Objektform: nodemailer kodiert den Namen selbst (Firmenname kann Anführungszeichen enthalten)
+      from: { name: senderInfo.name, address: senderInfo.email },
       replyTo: senderInfo.replyTo,
       to: validEmails.join(', '),
       subject: `Angebot ${quoteData.quoteNumber} - ${companySettings.name}`,
@@ -1332,7 +1333,8 @@ ${senderInfo.name}
     
     // Prepare email options
     const mailOptions = {
-      from: `"${senderInfo.name}" <${senderInfo.email}>`,
+      // Objektform: nodemailer kodiert den Namen selbst (Firmenname kann Anführungszeichen enthalten)
+      from: { name: senderInfo.name, address: senderInfo.email },
       replyTo: senderInfo.replyTo,
       to: customerEmails.join(', '),
       subject: subject,

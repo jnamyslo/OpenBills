@@ -80,7 +80,18 @@ describe('Kundenmails – Routing', () => {
     }, { name: 'Muster GmbH', primary_color: '#2563eb', secondary_color: '#64748b' });
     expect(result.success).toBe(true);
     const m = sendMail.mock.calls[0][0];
-    expect(m.from).toContain('muster@openbills.de');
+    expect(m.from).toEqual({ name: 'Muster GmbH', address: 'muster@openbills.de' });
     expect(m.replyTo).toBe('info@muster.de');
   });
+
+  it('Firmenname mit Anführungszeichen landet nicht roh im From-Header', async () => {
+    stubStarter();
+    db.company = { name: 'X" <ceo@bank.de>, "Y', email: 'info@muster.de' };
+    await sendQuoteEmail(['kunde@example.de'], {
+      quoteNumber: 'A-1', customerName: 'Kunde', issueDate: '2026-11-14', validUntil: '2026-12-14', total: 10,
+      pdfBuffer: Buffer.from('%PDF').toString('base64'),
+    }, { name: 'Muster GmbH', primary_color: '#2563eb', secondary_color: '#64748b' });
+    expect(sendMail.mock.calls[0][0].from).toEqual({ name: 'X" <ceo@bank.de>, "Y', address: 'muster@openbills.de' });
+  });
 });
+

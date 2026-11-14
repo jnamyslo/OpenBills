@@ -67,12 +67,14 @@ export async function getMailRoute(kind) {
 /** Tageslimit für Kundenmails über den Plattform-Relay (schützt Brevo-Account und Domain-Reputation). */
 export const PLATFORM_MAIL_DAILY_LIMIT = 20;
 
-/** Heute (Europe/Berlin) erfolgreich über die Plattform versendete Kundenmails. */
+const BERLIN_DAY_START = "(date_trunc('day', now() AT TIME ZONE 'Europe/Berlin') AT TIME ZONE 'Europe/Berlin')";
+
+/** Heute (Europe/Berlin) erfolgreich über die Plattform versendete Kundenmails, gezählt pro Empfänger. */
 export async function countPlatformCustomerMailsToday() {
   const result = await query(
-    `SELECT COUNT(*) AS count FROM email_history
+    `SELECT COALESCE(SUM(array_length(string_to_array(recipient_email, ','), 1)), 0) AS count FROM email_history
      WHERE sender_email = $1 AND status = 'sent'
-       AND sent_at >= (date_trunc('day', now() AT TIME ZONE 'Europe/Berlin') AT TIME ZONE 'Europe/Berlin')`,
+       AND sent_at >= ${BERLIN_DAY_START}`,
     [getPlatformInstanceSender()]
   );
   return Number(result.rows[0]?.count ?? 0);
@@ -82,7 +84,9 @@ export async function countPlatformCustomerMailsToday() {
 export async function enforcePlatformMailLimit(req, res, next) {
   try {
     if (req.method === 'GET' || await getMailRoute('customer') !== 'platform') return next();
-    if (await countPlatformCustomerMailsToday() < PLATFORM_MAIL_DAILY_LIMIT) return next();
+    // Ein Request kann mehrere Empfänger haben (customerEmails); jeder zählt einzeln.
+    const recipients = Array.isArray(req.body?.customerEmails) ? req.body.customerEmails.length : 1;
+    if (await countPlatformCustomerMailsToday() + recipients <= PLATFORM_MAIL_DAILY_LIMIT) return next();
     sendPlanError(res, new PlanError(429, {
       error: `Tageslimit für den E-Mail-Versand über OpenBills erreicht (${PLATFORM_MAIL_DAILY_LIMIT} pro Tag). Für mehr bitte Ihren Tarif upgraden.`,
       code: 'PLATFORM_MAIL_LIMIT',
@@ -93,4 +97,20 @@ export async function enforcePlatformMailLimit(req, res, next) {
   } catch (error) {
     next(error);
   }
+}
+
+/** Tageslimit für Einladungsmails über support@openbills.de (Inhalt teils vom Instanz-Admin bestimmt). */
+export const PLATFORM_INVITE_DAILY_LIMIT = 10;
+
+/**
+ * true, wenn heute schon PLATFORM_INVITE_DAILY_LIMIT Einladungen per Plattform-Mail verschickt wurden.
+ * Zählt über audit_log (nicht im Backup, daher nicht per Restore zurücksetzbar).
+ */
+export async function platformInviteLimitReached() {
+  if (await getMailRoute('system') !== 'platform') return false;
+  const result = await query(
+    `SELECT COUNT(*) AS count FROM audit_log
+     WHERE action = 'user.invited' AND details->>'emailed' = 'true' AND at >= ${BERLIN_DAY_START}`
+  );
+  return Number(result.rows[0]?.count ?? 0) >= PLATFORM_INVITE_DAILY_LIMIT;
 }

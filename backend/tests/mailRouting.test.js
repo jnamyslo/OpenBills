@@ -123,11 +123,11 @@ describe('Plattform-Transport und Absender', () => {
 });
 
 describe('enforcePlatformMailLimit', () => {
-  const run = async (method = 'POST') => {
+  const run = async (method = 'POST', body = {}) => {
     const { enforcePlatformMailLimit } = await import('../services/mailRouting.js');
     const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
     const next = vi.fn();
-    await enforcePlatformMailLimit({ method }, res, next);
+    await enforcePlatformMailLimit({ method, body }, res, next);
     return { res, next };
   };
   const countSql = () => queryMock.mock.calls.map(c => c[0]).find(sql => sql.includes('email_history'));
@@ -182,4 +182,57 @@ describe('enforcePlatformMailLimit', () => {
     expect(next).toHaveBeenCalled();
     expect(countSql()).toBeUndefined();
   });
+
+  it('zählt Empfänger: 15 heute + 6 Empfänger im Request → 429', async () => {
+    vi.stubEnv('OPENBILLS_PLAN', 'starter');
+    stubPlatformEnv();
+    queryMock.mockResolvedValue({ rows: [{ count: '15' }] });
+    const { res, next } = await run('POST', { customerEmails: ['a@x.de', 'b@x.de', 'c@x.de', 'd@x.de', 'e@x.de', 'f@x.de'] });
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(429);
+  });
+
+  it('zählt Empfänger: 15 heute + 5 Empfänger → weiter', async () => {
+    vi.stubEnv('OPENBILLS_PLAN', 'starter');
+    stubPlatformEnv();
+    queryMock.mockResolvedValue({ rows: [{ count: '15' }] });
+    const { next } = await run('POST', { customerEmails: ['a@x.de', 'b@x.de', 'c@x.de', 'd@x.de', 'e@x.de'] });
+    expect(next).toHaveBeenCalled();
+  });
+
+  it('Zählung summiert Empfänger pro Historien-Eintrag (kommagetrennt)', async () => {
+    vi.stubEnv('OPENBILLS_PLAN', 'starter');
+    stubPlatformEnv();
+    queryMock.mockResolvedValue({ rows: [{ count: '0' }] });
+    await run();
+    expect(countSql()).toMatch(/string_to_array\(recipient_email, ','\)/);
+  });
 });
+
+describe('platformInviteLimitReached', () => {
+  it('Plattform-Route: 10 heute per Mail versendete Einladungen → erreicht', async () => {
+    const { platformInviteLimitReached } = await import('../services/mailRouting.js');
+    vi.stubEnv('OPENBILLS_PLAN', 'free');
+    queryMock.mockResolvedValue({ rows: [{ count: '10' }] });
+    expect(await platformInviteLimitReached()).toBe(true);
+    const sql = queryMock.mock.calls.find(c => c[0].includes('audit_log'))[0];
+    expect(sql).toMatch(/user\.invited/);
+    expect(sql).toMatch(/emailed/);
+    expect(sql).toMatch(/Europe\/Berlin/);
+  });
+
+  it('Plattform-Route: 9 → nicht erreicht', async () => {
+    const { platformInviteLimitReached } = await import('../services/mailRouting.js');
+    vi.stubEnv('OPENBILLS_PLAN', 'starter');
+    queryMock.mockResolvedValue({ rows: [{ count: '9' }] });
+    expect(await platformInviteLimitReached()).toBe(false);
+  });
+
+  it('Eigenes SMTP (Enterprise) → nie erreicht, keine Zählung', async () => {
+    const { platformInviteLimitReached } = await import('../services/mailRouting.js');
+    vi.stubEnv('OPENBILLS_PLAN', 'enterprise');
+    expect(await platformInviteLimitReached()).toBe(false);
+    expect(queryMock).not.toHaveBeenCalled();
+  });
+});
+
