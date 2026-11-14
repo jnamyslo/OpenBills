@@ -4,6 +4,7 @@ import logger from './utils/logger.js';
 import { createApp } from './app.js';
 import { getPlanName } from './utils/plan.js';
 import { assertAuthConfig } from './auth/config.js';
+import { assertPlatformMailConfig } from './services/mailRouting.js';
 import { verifyDummyPassword } from './auth/password.js';
 import { cleanupSessions } from './auth/sessions.js';
 import { cleanupRateLimits } from './auth/rateLimit.js';
@@ -32,6 +33,7 @@ async function runCleanup() {
 async function startServer() {
   try {
     assertAuthConfig();
+    assertPlatformMailConfig();
   } catch (error) {
     logger.error(error.message);
     process.exit(1);
