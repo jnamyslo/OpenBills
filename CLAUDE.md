@@ -72,14 +72,25 @@ Three Docker services per instance: `database` (PostgreSQL 15), `backend`, `fron
 
 - Env files: `.env.<instance>` for Docker Compose vars, `.env.backend.<instance>` for backend runtime.
 - `COMPOSE_PROJECT_NAME=openbills-<name>` scopes all containers, networks, and volumes per instance.
-- Nginx proxies `/api` → backend; `client_max_body_size 100M` for attachments.
+- Nginx proxies `/api` → backend; `client_max_body_size 500M` (attachments, ZIP backup restore).
 
 ### Plan-Tiers (Managed SaaS)
 
 - `OPENBILLS_PLAN` in `.env.backend.<name>` (free | starter | professional | enterprise; empty = selfhosted, unlimited). Matrix in `backend/utils/plan.js`; frontend reads it via `GET /api/plan` (`PlanContext`).
 - Backend enforces: `requireFeature()` middleware (403), quota counting on first non-draft status in `services/quotaService.js` (402). Frontend gating is UX only.
 - Drafts always get an "ENTWURF" watermark and no embedded ZUGFeRD/XRechnung; send/download "as sent" releases first via `src/utils/releaseForOutput.ts`.
+- Mailversand: free/starter/professional senden Systemmails (Einladung, PW-Reset) über den Plattform-Relay als `support@openbills.de`; Kundenmails bei Starter (und Pro ohne eigenes SMTP) als `<instanz>@openbills.de` mit Reply-To Firmen-Mail, max. 20/Tag. Routing in `backend/services/mailRouting.js` (Features `ownSmtp`/`ownSystemSmtp`).
+- Plattform-Zugang nur in `.env.platform` (Host, nie im Repo), per `docker-compose.platform.yml` nur an Plattform-Tarife; Logik für Skripte in `scripts/platform.sh`. Backend startet bei Plattform-Tarif nicht ohne `PLATFORM_SMTP_*`.
 - Spec: `docs/superpowers/specs/2026-11-13-plan-tiers.md`.
+- Spec Mailversand: `docs/superpowers/specs/2026-11-14-platform-mail-design.md`.
+
+### Auth (lokal, Session-Cookie)
+
+- Module in `backend/auth/` (users, sessions, password, totp, tokens, rateLimit, audit, middleware, config). Backend startet nur mit `PUBLIC_URL` und `AUTH_ENCRYPTION_KEY`.
+- Globales Auth-Gate in `backend/auth/middleware.js`; öffentliche Routen stehen in der Whitelist dort. Neue Routen sind automatisch geschützt — nur bewusst in die Whitelist aufnehmen.
+- Rollen `admin`/`user`; Support-Zugang `support@openbills.de` (`is_operator`). Auth-Tabellen sind nicht im App-Backup.
+- Onboarding/Support-Zugang: `backend/scripts/onboarding.js`, `operator.js`; Aufruf über `deploy-instance.sh` und `manage-instances.sh onboarding-link|operator-reset`.
+- Spec: `docs/superpowers/specs/2026-11-13-auth.md`.
 
 ### PDF Generation
 

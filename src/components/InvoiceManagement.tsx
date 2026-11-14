@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { demoMailNote } from '../utils/demo';
 import logger from '../utils/logger';
 import { withInvoiceContent } from '../utils/attachmentContent';
 import { Plus, Edit, Trash2, Search, Download, FileText, Send, Check, Mail, Eye } from 'lucide-react';
@@ -550,7 +551,7 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
           ? ` mit ${attachments.length} zusätzlichen Anhang${attachments.length > 1 ? 'en' : ''}`
           : '';
         
-        alert(`${successCount} Rechnung(en) erfolgreich versendet! (${formatLabels.join(', ')})${attachmentInfo}${errorCount > 0 ? ` - ${errorCount} Fehler` : ''}`);
+        alert(`${successCount} Rechnung(en) erfolgreich versendet! (${formatLabels.join(', ')})${attachmentInfo}${errorCount > 0 ? ` - ${errorCount} Fehler` : ''}${demoMailNote()}`);
         
         // Clear selection and close modal
         setSelectedInvoiceIds([]);
@@ -647,7 +648,7 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
         ? ` mit ${attachments.length} zusätzlichen Anhang${attachments.length > 1 ? 'en' : ''}`
         : '';
       
-      alert(`Rechnung erfolgreich per E-Mail versendet! (${formatLabels.join(', ')})${attachmentInfo}`);
+      alert(`Rechnung erfolgreich per E-Mail versendet! (${formatLabels.join(', ')})${attachmentInfo}${demoMailNote()}`);
       
       // Close email dialog
       setEmailModal({ isOpen: false, invoice: null, customer: null, isBulkMode: false, bulkInvoices: [] });

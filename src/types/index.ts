@@ -478,8 +478,16 @@ export type UpdateInput<T> = Partial<Omit<T, 'id'>> & { id: UUID };
 // ============================================================================
 
 export type PlanName = 'selfhosted' | 'free' | 'starter' | 'professional' | 'enterprise';
-export type PlanFeature = 'email' | 'reminders' | 'jobs' | 'customerPricing' | 'reportingFull';
+export type PlanFeature = 'email' | 'reminders' | 'jobs' | 'customerPricing' | 'reportingFull' | 'ownSmtp' | 'ownSystemSmtp';
 export type PlanLimitKind = 'invoices' | 'quotes' | 'customers';
+
+/** GET /api/demo – öffentliche Demo-Instanz (OPENBILLS_DEMO). */
+export interface DemoInfo {
+  demo: boolean;
+  email?: string;
+  password?: string;
+  nextResetAt?: string;
+}
 
 export interface PlanInfo {
   plan: PlanName;
@@ -488,15 +496,68 @@ export interface PlanInfo {
   limits: { invoicesPerMonth: number | null; quotesPerMonth: number | null; customers: number | null };
   usage: { period: string; invoices: number; quotes: number; customers: number };
   upgradeContact: string | null;
+  /** Versandweg je Mailart: Plattform-Relay oder eigenes SMTP. */
+  mailRoutes: { system: MailRoute; customer: MailRoute };
 }
 
-/** Antwort-Body des Backends bei 402 (Limit) bzw. 403 (Feature nicht im Plan). */
+export type MailRoute = 'platform' | 'own';
+
+/** Antwort-Body des Backends bei 402 (Limit), 403 (Feature nicht im Plan) bzw. 429 (Tageslimit Plattform-Mails). */
 export interface PlanErrorBody {
   error: string;
-  code: 'PLAN_LIMIT_REACHED' | 'FEATURE_NOT_IN_PLAN';
+  code: 'PLAN_LIMIT_REACHED' | 'FEATURE_NOT_IN_PLAN' | 'PLATFORM_MAIL_LIMIT';
   plan: PlanName;
   upgradeContact: string | null;
   kind?: PlanLimitKind;
   limit?: number;
   feature?: PlanFeature;
+}
+
+// ============================================================================
+// Auth Types
+// ============================================================================
+
+export type AuthRole = 'admin' | 'user';
+
+export interface AuthUser {
+  id: number;
+  email: string;
+  name: string;
+  role: AuthRole;
+  isOperator: boolean;
+  isActive: boolean;
+  totpEnabled: boolean;
+  lastLoginAt: string | null;
+  createdAt: string;
+  /** ISO-Zeitpunkt, nur gesetzt solange die Sperre noch läuft. */
+  lockedUntil: string | null;
+}
+
+export type TokenStatus = 'valid' | 'expired' | 'used' | 'invalid' | 'done';
+
+export interface AuditEntry {
+  id: number;
+  at: string;
+  actorLabel: string | null;
+  isOperator: boolean;
+  action: string;
+  entityType: string | null;
+  entityId: string | null;
+  details: Record<string, unknown> | null;
+  ip: string | null;
+}
+
+export interface AuditLogFilters {
+  from?: string;
+  to?: string;
+  userId?: string;
+  action?: string;
+  page?: number;
+}
+
+export interface AuditLogPage {
+  entries: AuditEntry[];
+  total: number;
+  page: number;
+  pageSize: number;
 }

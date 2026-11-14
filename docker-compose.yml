@@ -30,6 +30,8 @@ services:
       # Override specific container networking settings
       - DB_HOST=database
       - DB_PORT=5432
+      # Absender <instanz>@openbills.de für Plattform-Mailversand
+      - OPENBILLS_INSTANCE=${INSTANCE_NAME:-}
       # Fallback environment variables if env_file doesn't exist
       - PORT=3001
       - NODE_ENV=production

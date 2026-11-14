@@ -11,7 +11,7 @@ Managed-SaaS-Instanzen bekommen einen Plan (Free, Starter, Professional, Enterpr
 - **Kein Lizenzkey.** Der Betreiber steuert jede Instanz selbst. Plan per Env-Var `OPENBILLS_PLAN` in `.env.backend.<name>`.
 - `OPENBILLS_PLAN` fehlt → Plan `selfhosted` = alles unlimited, alle Features.
 - Plan-Definitionen als Konstante im Code (`backend/utils/plan.js`), nicht in Env.
-- Auth unverändert (Authentik + NPM Forward-Auth). Plan gilt pro Instanz.
+- Auth: lokale Anmeldung, siehe `docs/superpowers/specs/2026-11-13-auth.md` (ersetzt Authentik + NPM Forward-Auth). Plan gilt pro Instanz.
 
 ## Tier-Matrix
 
@@ -81,5 +81,5 @@ Unbekannter Wert in `OPENBILLS_PLAN` → Startfehler (kein stilles Fallback auf 
 
 ## Nicht im Scope
 
-- Eigene SMTP / Absenderdomain als Feature-Gate: gestrichen. Alle Tiers mit E-Mail-Versand nutzen eigenes SMTP.
+- ~~Eigene SMTP / Absenderdomain als Feature-Gate: gestrichen.~~ Überholt durch `2026-11-14-platform-mail-design.md` (Plattform-Mailversand, eigener Mailserver ab Professional, eigener Systemabsender ab Enterprise).
 - Lizenzkeys, Billing, Self-Service-Upgrade.

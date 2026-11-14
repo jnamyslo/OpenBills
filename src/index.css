@@ -230,3 +230,83 @@
     backface-visibility: hidden;
   }
 }
+
+/* Animierter Hintergrund der Auth-Seiten (AuthLayout) */
+.auth-blob {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(80px);
+  opacity: 0.55;
+  will-change: transform;
+}
+
+.auth-blob-1 {
+  width: 38rem;
+  height: 38rem;
+  top: -12rem;
+  left: -10rem;
+  background: radial-gradient(circle, #2563eb 0%, transparent 70%);
+  animation: auth-drift-1 22s ease-in-out infinite alternate;
+}
+
+.auth-blob-2 {
+  width: 32rem;
+  height: 32rem;
+  bottom: -10rem;
+  right: -8rem;
+  background: radial-gradient(circle, #7c3aed 0%, transparent 70%);
+  animation: auth-drift-2 26s ease-in-out infinite alternate;
+}
+
+.auth-blob-3 {
+  width: 26rem;
+  height: 26rem;
+  top: 40%;
+  left: 55%;
+  background: radial-gradient(circle, #06b6d4 0%, transparent 70%);
+  opacity: 0.4;
+  animation: auth-drift-3 30s ease-in-out infinite alternate;
+}
+
+.auth-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+}
+
+.auth-enter {
+  animation: auth-enter 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes auth-drift-1 {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(18vw, 12vh) scale(1.15); }
+  100% { transform: translate(8vw, 30vh) scale(0.95); }
+}
+
+@keyframes auth-drift-2 {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-20vw, -10vh) scale(1.1); }
+  100% { transform: translate(-6vw, -28vh) scale(1.2); }
+}
+
+@keyframes auth-drift-3 {
+  0% { transform: translate(-50%, -50%) scale(1); }
+  50% { transform: translate(-90%, -20%) scale(1.25); }
+  100% { transform: translate(-30%, -80%) scale(0.9); }
+}
+
+@keyframes auth-enter {
+  from { opacity: 0; transform: translateY(16px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-blob,
+  .auth-enter {
+    animation: none;
+  }
+}

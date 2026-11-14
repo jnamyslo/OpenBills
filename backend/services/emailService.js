@@ -1,15 +1,18 @@
 import nodemailer from 'nodemailer';
+import { isDemoMode, createDemoTransporter } from '../demo/index.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { query } from '../database.js';
 import logger from '../utils/logger.js';
+import { decryptSmtpPass } from '../utils/smtpPassword.js';
+import { getMailRoute, createPlatformTransporter, getPlatformInstanceSender } from './mailRouting.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Escape HTML special characters to prevent HTML injection when embedding
 // user-supplied text (e.g. customText) into outbound email HTML.
-const escapeHtml = (text) => {
+export const escapeHtml = (text) => {
   if (!text) return text;
   return text
     .replace(/&/g, '&amp;')
@@ -47,7 +50,11 @@ const sanitizeFilename = (filename) => {
 };
 
 // SMTP Configuration
-const createTransporter = async () => {
+export const createTransporter = async () => {
+  if (isDemoMode()) return createDemoTransporter();
+  // Hosted-Tarife ohne eigenes SMTP versenden Kundenmails über den Plattform-Relay
+  if (await getMailRoute('customer') === 'platform') return createPlatformTransporter();
+
   // Try to get SMTP settings from database first
   try {
     const result = await query('SELECT * FROM smtp_settings WHERE id = 1 AND is_enabled = true');
@@ -60,7 +67,7 @@ const createTransporter = async () => {
         secure: settings.smtp_secure,
         auth: {
           user: settings.smtp_user,
-          pass: settings.smtp_pass,
+          pass: decryptSmtpPass(settings.smtp_pass),
         },
         connectionTimeout: 10000, // 10 seconds
         greetingTimeout: 10000, // 10 seconds
@@ -243,7 +250,21 @@ const saveEmailToHistory = async (emailData, status = 'sent', errorMessage = nul
 };
 
 // Function to get sender info from database settings or fallback to env
-const getSenderInfo = async () => {
+export const getSenderInfo = async () => {
+  if (await getMailRoute('customer') === 'platform') {
+    let company = null;
+    try {
+      company = (await query('SELECT name, email FROM company WHERE id = 1')).rows[0] ?? null;
+    } catch (error) {
+      logger.warn('Could not load company for platform sender:', error.message);
+    }
+    return {
+      email: getPlatformInstanceSender(),
+      name: company?.name || 'OpenBills',
+      replyTo: company?.email || undefined,
+    };
+  }
+
   try {
     const result = await query('SELECT email_from, email_from_name, smtp_user FROM smtp_settings WHERE id = 1 AND is_enabled = true');
     
@@ -522,6 +543,7 @@ export const sendInvoiceEmailMultiFormat = async (customerEmail, invoiceFormats,
         name: senderInfo.name,
         address: senderInfo.email
       },
+      replyTo: senderInfo.replyTo,
       to: customerEmail,
       subject: `Rechnung ${invoiceData.invoiceNumber}`,
       html: emailHTML,
@@ -709,6 +731,7 @@ export const sendInvoiceEmail = async (customerEmail, invoicePDF, invoiceData, f
         name: senderInfo.name,
         address: senderInfo.email
       },
+      replyTo: senderInfo.replyTo,
       to: customerEmail,
       subject: `Rechnung ${invoiceData.invoiceNumber}`,
       html: emailHTML,
@@ -997,7 +1020,9 @@ ${companySettings.name}
 
     // Send email
     const info = await transporter.sendMail({
-      from: `"${senderInfo.name}" <${senderInfo.email}>`,
+      // Objektform: nodemailer kodiert den Namen selbst (Firmenname kann Anführungszeichen enthalten)
+      from: { name: senderInfo.name, address: senderInfo.email },
+      replyTo: senderInfo.replyTo,
       to: validEmails.join(', '),
       subject: `Angebot ${quoteData.quoteNumber} - ${companySettings.name}`,
       text: defaultText,
@@ -1310,7 +1335,9 @@ ${senderInfo.name}
     
     // Prepare email options
     const mailOptions = {
-      from: `"${senderInfo.name}" <${senderInfo.email}>`,
+      // Objektform: nodemailer kodiert den Namen selbst (Firmenname kann Anführungszeichen enthalten)
+      from: { name: senderInfo.name, address: senderInfo.email },
+      replyTo: senderInfo.replyTo,
       to: customerEmails.join(', '),
       subject: subject,
       text: plainBody,

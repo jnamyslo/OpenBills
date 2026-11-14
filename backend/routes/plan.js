@@ -2,6 +2,7 @@ import express from 'express';
 import logger from '../utils/logger.js';
 import { getPlan, getPlanName, getUpgradeContact } from '../utils/plan.js';
 import { getUsage } from '../services/quotaService.js';
+import { getMailRoute } from '../services/mailRouting.js';
 
 const router = express.Router();
 
@@ -16,6 +17,7 @@ router.get('/', async (req, res) => {
       limits: plan.limits,
       usage: await getUsage(),
       upgradeContact: getUpgradeContact(),
+      mailRoutes: { system: await getMailRoute('system'), customer: await getMailRoute('customer') },
     });
   } catch (error) {
     logger.error('Failed to fetch plan', { error: error.message });

@@ -76,7 +76,7 @@ No test framework is configured. No automated test suites exist.
 - Backend is ES modules (`"type": "module"` in `package.json`)
 - Strict TypeScript: `noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch`
 - `react-refresh/only-export-components` is a **warn** (not error) in ESLint
-- Nginx `client_max_body_size 100M` for email attachments
+- Nginx `client_max_body_size 500M` for email attachments and ZIP backup restore
 - Backend `express.json({ limit: '100mb' })` for PDF attachments
 - Backend `.gitignore` excludes all `.env*` files
 - `lucide-react` is excluded from Vite optimisation

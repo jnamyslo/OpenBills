@@ -235,6 +235,12 @@ export function CompanyProvider({
   // Invoice Template Methods
   // --------------------------------------------------------------------------
 
+  // Eigener Endpunkt: PUT /api/company ist admin-only, Vorlagen pflegen auch Nutzer.
+  const saveInvoiceTemplates = useCallback(async (invoiceTemplates: InvoiceTemplate[]): Promise<void> => {
+    const saved = await apiService.updateInvoiceTemplates(invoiceTemplates);
+    setCompany(prev => ({ ...prev, invoiceTemplates: saved }));
+  }, []);
+
   const addInvoiceTemplate = useCallback(async (templateData: Omit<InvoiceTemplate, 'id' | 'createdAt' | 'updatedAt'>): Promise<void> => {
     const newTemplate: InvoiceTemplate = {
       id: generateUUID(),
@@ -246,12 +252,12 @@ export function CompanyProvider({
     const updatedInvoiceTemplates = [...(company.invoiceTemplates || []), newTemplate];
 
     try {
-      await updateCompanyData({ invoiceTemplates: updatedInvoiceTemplates });
+      await saveInvoiceTemplates(updatedInvoiceTemplates);
     } catch (error) {
       logger.error('Error adding invoice template:', error);
       throw error;
     }
-  }, [company.invoiceTemplates, updateCompanyData]);
+  }, [company.invoiceTemplates, saveInvoiceTemplates]);
 
   const updateInvoiceTemplateData = useCallback(async (id: string, templateData: Partial<InvoiceTemplate>): Promise<void> => {
     const updatedInvoiceTemplates = (company.invoiceTemplates || []).map(template =>
@@ -261,23 +267,23 @@ export function CompanyProvider({
     );
 
     try {
-      await updateCompanyData({ invoiceTemplates: updatedInvoiceTemplates });
+      await saveInvoiceTemplates(updatedInvoiceTemplates);
     } catch (error) {
       logger.error('Error updating invoice template:', error);
       throw error;
     }
-  }, [company.invoiceTemplates, updateCompanyData]);
+  }, [company.invoiceTemplates, saveInvoiceTemplates]);
 
   const deleteInvoiceTemplateData = useCallback(async (id: string): Promise<void> => {
     const updatedInvoiceTemplates = (company.invoiceTemplates || []).filter(template => template.id !== id);
 
     try {
-      await updateCompanyData({ invoiceTemplates: updatedInvoiceTemplates });
+      await saveInvoiceTemplates(updatedInvoiceTemplates);
     } catch (error) {
       logger.error('Error deleting invoice template:', error);
       throw error;
     }
-  }, [company.invoiceTemplates, updateCompanyData]);
+  }, [company.invoiceTemplates, saveInvoiceTemplates]);
 
   const getInvoiceTemplates = useCallback((): InvoiceTemplate[] => {
     return company.invoiceTemplates || [];

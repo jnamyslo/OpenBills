@@ -8,3 +8,4 @@ export { QuoteProvider, useQuotes } from './QuoteContext';
 export { JobProvider, useJobs } from './JobContext';
 export { CompanyProvider, useCompany, defaultCompany } from './CompanyContext';
 
+export { AuthProvider, useAuth } from './AuthContext';

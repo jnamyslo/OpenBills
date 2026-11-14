@@ -4,7 +4,9 @@
  * Siehe docs/superpowers/specs/2026-11-13-plan-tiers.md
  */
 
-export const FEATURES = ['email', 'reminders', 'jobs', 'customerPricing', 'reportingFull'];
+// ownSmtp: eigener Mailserver für Kundenmails; ownSystemSmtp: eigener Absender auch für Systemmails.
+// Ohne diese Features läuft der Versand über den Plattform-Relay (services/mailRouting.js).
+export const FEATURES = ['email', 'reminders', 'jobs', 'customerPricing', 'reportingFull', 'ownSmtp', 'ownSystemSmtp'];
 
 const STARTER_FEATURES = ['email', 'reminders'];
 
@@ -27,7 +29,7 @@ export const PLANS = {
   professional: {
     label: 'Professional',
     limits: { invoicesPerMonth: 100, quotesPerMonth: 100, customers: 250 },
-    features: FEATURES,
+    features: FEATURES.filter(f => f !== 'ownSystemSmtp'),
   },
   enterprise: {
     label: 'Enterprise',
