@@ -19,14 +19,17 @@ import { apiService, isPlanError } from '../services/api';
 import { formatCurrency } from '../utils/formatters';
 import { blobToBase64, base64ToBlob } from '../utils/blobUtils';
 import { releaseForOutput } from '../utils/releaseForOutput';
+import { clearCreateRoute } from '../utils/quickActions';
 
 interface InvoiceManagementProps {
   initialFilter?: string;
   initialSearchTerm?: string;
   onNavigate?: (page: string) => void;
+  /** Über Dashboard-Schnellaktion (#invoices/new): Editor für neue Rechnung direkt öffnen. */
+  autoCreate?: boolean;
 }
 
-export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate }: InvoiceManagementProps = {}) {
+export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate, autoCreate }: InvoiceManagementProps = {}) {
   const { customers, addCustomer } = useCustomers();
   const { invoices, deleteInvoice, updateInvoice } = useInvoices();
   const { company } = useCompany();
@@ -197,6 +200,13 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
       setIsEditorOpen(true);
     }
   };
+
+  // Dashboard-Schnellaktion: direkt neu anlegen
+  useEffect(() => {
+    if (!autoCreate) return;
+    handleOpenEditor();
+    clearCreateRoute('invoices');
+  }, [autoCreate]);
 
   const handleCloseEditor = () => {
     setIsEditorOpen(false);

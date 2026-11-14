@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ShieldAlert } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useDemo } from '../context/DemoContext';
 import { isAdmin } from '../utils/authRoutes';
 
 const DISMISS_KEY = 'openbills.twofactorBannerDismissed';
@@ -19,9 +20,11 @@ interface TwoFactorBannerProps {
 
 export function TwoFactorBanner({ onSetup }: TwoFactorBannerProps) {
   const { user } = useAuth();
+  const { demo } = useDemo();
   const [dismissed, setDismissed] = useState(readDismissed);
 
-  if (!user || !isAdmin(user) || user.totpEnabled || dismissed) return null;
+  // In der Demo ergibt 2FA keinen Sinn (Daten werden beim Abmelden verworfen)
+  if (demo || !user || !isAdmin(user) || user.totpEnabled || dismissed) return null;
 
   const dismiss = () => {
     try {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import logger from '../utils/logger';
 import { Plus, Edit, Trash2, Search, Mail, Phone, MapPin, X, Clock, Package } from 'lucide-react';
 import { useCustomers } from '../context/CustomerContext';
@@ -7,8 +7,14 @@ import { PlanLockedNotice } from './PlanLockedNotice';
 import { Customer, CustomerEmail, HourlyRate, MaterialTemplate } from '../types';
 import { apiService } from '../services/api';
 import { findDuplicateCustomer, showDuplicateCustomerAlert, formatCustomerNumber } from '../utils/customerUtils';
+import { clearCreateRoute } from '../utils/quickActions';
 
-export function CustomerManagement() {
+interface CustomerManagementProps {
+  /** Über Dashboard-Schnellaktion (#customers/new): Formular für neuen Kunden direkt öffnen. */
+  autoCreate?: boolean;
+}
+
+export function CustomerManagement({ autoCreate }: CustomerManagementProps = {}) {
   const { customers, addCustomer, updateCustomer, deleteCustomer, refreshCustomers } = useCustomers();
   const { hasFeature } = usePlan();
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -135,6 +141,14 @@ export function CustomerManagement() {
     });
     setIsModalOpen(true);
   };
+
+  // Dashboard-Schnellaktion: direkt neu anlegen
+  useEffect(() => {
+    if (!autoCreate) return;
+    handleOpenModal();
+    clearCreateRoute('customers');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoCreate]);
 
   const handleCloseModal = () => {
     setIsModalOpen(false);

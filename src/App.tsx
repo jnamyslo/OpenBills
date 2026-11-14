@@ -197,7 +197,7 @@ function AppContent({ currentPageState, handlePageChange }: AppContentProps) {
       case 'dashboard':
         return <Dashboard onNavigate={handlePageChange} />;
       case 'customers':
-        return <CustomerManagement />;
+        return <CustomerManagement autoCreate={currentPageState.filter === 'new'} />;
       case 'jobs':
         // Disabled if job tracking is not enabled; effect above redirects to settings
         if (!company.jobTrackingEnabled) {
@@ -206,7 +206,7 @@ function AppContent({ currentPageState, handlePageChange }: AppContentProps) {
         if (!hasFeature('jobs')) {
           return <PlanLockedNotice feature="jobs" />;
         }
-        return <JobManagement onNavigate={handlePageChange} />;
+        return <JobManagement onNavigate={handlePageChange} autoCreate={currentPageState.filter === 'new'} />;
       case 'calendar':
         // Disabled if job tracking is not enabled; effect above redirects to settings
         if (!company.jobTrackingEnabled) {
@@ -217,7 +217,14 @@ function AppContent({ currentPageState, handlePageChange }: AppContentProps) {
         }
         return <Calendar onNavigate={handlePageChange} />;
       case 'invoices':
-        return <InvoiceManagement initialFilter={currentPageState.filter} initialSearchTerm={currentPageState.searchTerm} onNavigate={handlePageChange} />;
+        return (
+          <InvoiceManagement
+            initialFilter={currentPageState.filter === 'new' ? undefined : currentPageState.filter}
+            initialSearchTerm={currentPageState.searchTerm}
+            onNavigate={handlePageChange}
+            autoCreate={currentPageState.filter === 'new'}
+          />
+        );
       case 'quotes':
         // Disabled if quotes module is not enabled; effect above redirects to settings
         if (!company.quotesEnabled) {

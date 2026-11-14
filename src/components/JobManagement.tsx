@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import logger from '../utils/logger';
 import { withJobContent } from '../utils/attachmentContent';
 import { Plus, Edit, Trash2, Clock, User, Calendar, FileText, Search, Timer, CheckCircle, AlertTriangle, Briefcase, Download, Eye, PenTool } from 'lucide-react';
@@ -14,12 +14,15 @@ import { DocumentPreview, PreviewDocument } from './DocumentPreview';
 import { createJobAttachmentPreviewDocuments } from '../utils/previewDocuments';
 import { generateJobPDF, downloadBlob } from '../utils/pdfGenerator';
 import { calculateTotalHours } from '../utils/jobUtils';
+import { clearCreateRoute } from '../utils/quickActions';
 
 interface JobManagementProps {
   onNavigate?: (page: string) => void;
+  /** Über Dashboard-Schnellaktion (#jobs/new): Formular für neuen Auftrag direkt öffnen. */
+  autoCreate?: boolean;
 }
 
-export function JobManagement({ onNavigate }: JobManagementProps = {}) {
+export function JobManagement({ onNavigate, autoCreate }: JobManagementProps = {}) {
   const { customers, addCustomer, refreshCustomers } = useCustomers();
   const { jobEntries, addJobEntry, updateJobEntry, deleteJobEntry, refreshJobEntries, addJobSignature } = useJobs();
   const { company } = useCompany();
@@ -73,6 +76,13 @@ export function JobManagement({ onNavigate }: JobManagementProps = {}) {
     documents: [],
     initialIndex: 0
   });
+
+  // Dashboard-Schnellaktion: direkt neu anlegen
+  useEffect(() => {
+    if (!autoCreate) return;
+    setShowForm(true);
+    clearCreateRoute('jobs');
+  }, [autoCreate]);
 
   // Get locale from company settings
   const locale = company?.locale || 'de-DE';
