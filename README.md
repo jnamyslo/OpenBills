@@ -70,7 +70,7 @@ Suchbegriffe (SEO): Rechnungssoftware, Rechnungsprogramm, eRechnung, ZUGFeRD, XR
 
 ### 🔁 Multi‑Instanz & Backups
 - Beliebig viele Mandanten auf einem Server (getrennte Datenbanken/Ports)
-- **JSON‑Backups** und **Vollbackups (ZIP)** inkl. Dateien und Metadaten
+- **Vollbackups (ZIP)**, verschlüsselt mit Backup‑Passwort, inkl. Anhängen und Metadaten
 
 ---
 
@@ -297,9 +297,9 @@ Beispiele (typische Provider):
 
 ## 💾 Backups & Restore
 
-- JSON‑Backups aller Tabellen
-- Voll‑Backups als ZIP (inkl. Datenbank‑Dump im JSON‑Format + Metadaten)
-- Download/Upload/Restore direkt in der App (mit Kompatibilitäts‑Fixes)
+- Voll‑Backups als ZIP (alle Fachdaten inkl. Anhängen + Metadaten)
+- Daten im ZIP mit einem beim Erstellen vergebenen Backup‑Passwort verschlüsselt (AES‑256‑GCM, scrypt). Das Passwort wird nicht gespeichert – ohne Passwort keine Wiederherstellung. Ältere, unverschlüsselte ZIP‑Backups lassen sich weiterhin einspielen.
+- Download/Upload/Restore direkt in der App (mit Kompatibilitäts‑Fixes), Upload bis 500 MB
 
 ### Umzug von Belego
 

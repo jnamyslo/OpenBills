@@ -7,6 +7,7 @@ import logger from '../utils/logger.js';
 import { testEmailConnection } from '../services/emailService.js';
 import { parsePagination } from '../utils/routeHelpers.js';
 import { requireAdmin } from '../auth/middleware.js';
+import { encryptSmtpPass, decryptSmtpPass } from '../utils/smtpPassword.js';
 
 const router = express.Router();
 
@@ -347,7 +348,7 @@ router.post('/smtp-settings', requireAdmin, async (req, res) => {
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
       `, [
         1, smtp_host, smtp_port || 587, smtp_secure || false,
-        smtp_user, smtp_pass, email_from, email_from_name,
+        smtp_user, encryptSmtpPass(smtp_pass), email_from, email_from_name,
         is_enabled || false, test_email
       ]);
     } else {
@@ -389,7 +390,7 @@ router.post('/smtp-settings', requireAdmin, async (req, res) => {
         `;
         params = [
           smtp_host, smtp_port || 587, smtp_secure || false,
-          smtp_user, smtp_pass, email_from, email_from_name,
+          smtp_user, encryptSmtpPass(smtp_pass), email_from, email_from_name,
           is_enabled || false, test_email
         ];
       }
@@ -576,7 +577,7 @@ router.post('/test-smtp', requireAdmin, async (req, res) => {
         secure: dbSettings.smtp_secure,
         auth: {
           user: dbSettings.smtp_user,
-          pass: dbSettings.smtp_pass,
+          pass: decryptSmtpPass(dbSettings.smtp_pass),
         },
       };
     } else if (settings) {
@@ -792,7 +793,7 @@ router.post('/send-test-email', requireAdmin, async (req, res) => {
       secure: dbSettings.smtp_secure,
       auth: {
         user: dbSettings.smtp_user,
-        pass: dbSettings.smtp_pass,
+        pass: decryptSmtpPass(dbSettings.smtp_pass),
       },
       connectionTimeout: 10000, // 10 seconds
       greetingTimeout: 10000, // 10 seconds

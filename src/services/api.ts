@@ -79,6 +79,7 @@ interface BackupInfo {
   size: number;
   tableCount: number;
   totalRecords: number;
+  encrypted: boolean;
   created: string;
 }
 
@@ -603,44 +604,11 @@ class ApiService {
   // Backup API
   // --------------------------------------------------------------------------
 
-  async createBackup(): Promise<{
-    success: boolean;
-    message: string;
-    filename: string;
-    timestamp: string;
-    tableCount: number;
-    totalRecords: number;
-  }> {
-    return this.request('/backup/create', { method: 'POST' });
-  }
-
-  async listBackups(): Promise<{ success: boolean; backups: BackupInfo[] }> {
-    return this.request('/backup/list');
-  }
-
-  async downloadBackup(filename: string): Promise<void> {
-    await this.downloadFile(`${this.baseUrl}/backup/download/${filename}`, filename);
-  }
-
-  async restoreBackup(backupData: unknown): Promise<{
-    success: boolean;
-    message: string;
-    restoredTables: number;
-    restoredRecords: number;
-    timestamp: string;
-  }> {
-    return this.request('/backup/restore', {
-      method: 'POST',
-      body: JSON.stringify({ backupData }),
-    });
-  }
-
   async deleteBackup(filename: string): Promise<{ success: boolean; message: string }> {
     return this.request(`/backup/delete/${filename}`, { method: 'DELETE' });
   }
 
-  // ZIP Backup Methods
-  async createZipBackup(): Promise<{
+  async createZipBackup(passphrase: string): Promise<{
     success: boolean;
     message: string;
     filename: string;
@@ -649,14 +617,17 @@ class ApiService {
     tableCount: number;
     totalRecords: number;
   }> {
-    return this.request('/backup/create-zip', { method: 'POST' });
+    return this.request('/backup/create-zip', {
+      method: 'POST',
+      body: JSON.stringify({ passphrase }),
+    });
   }
 
   async downloadZipBackup(filename: string): Promise<void> {
     await this.downloadFile(`${this.baseUrl}/backup/download-zip/${filename}`, filename);
   }
 
-  async restoreZipBackup(file: File): Promise<{
+  async restoreZipBackup(file: File, passphrase: string): Promise<{
     success: boolean;
     message: string;
     restoredTables: number;
@@ -664,6 +635,8 @@ class ApiService {
     timestamp: string;
   }> {
     const formData = new FormData();
+    // Passwort vor der Datei, damit es beim Upload-Parsing schon vorliegt
+    formData.append('passphrase', passphrase);
     formData.append('backupFile', file);
 
     const response = await fetch(`${this.baseUrl}/backup/restore-zip`, {
@@ -682,8 +655,7 @@ class ApiService {
 
   async listAllBackups(): Promise<{
     success: boolean;
-    backups: (BackupInfo & { type: 'json' })[];
-    zipBackups: (BackupInfo & { type: 'zip' })[];
+    zipBackups: BackupInfo[];
   }> {
     return this.request('/backup/list-all');
   }

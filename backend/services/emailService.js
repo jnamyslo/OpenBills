@@ -3,6 +3,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { query } from '../database.js';
 import logger from '../utils/logger.js';
+import { decryptSmtpPass } from '../utils/smtpPassword.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -60,7 +61,7 @@ export const createTransporter = async () => {
         secure: settings.smtp_secure,
         auth: {
           user: settings.smtp_user,
-          pass: settings.smtp_pass,
+          pass: decryptSmtpPass(settings.smtp_pass),
         },
         connectionTimeout: 10000, // 10 seconds
         greetingTimeout: 10000, // 10 seconds

@@ -72,7 +72,7 @@ Three Docker services per instance: `database` (PostgreSQL 15), `backend`, `fron
 
 - Env files: `.env.<instance>` for Docker Compose vars, `.env.backend.<instance>` for backend runtime.
 - `COMPOSE_PROJECT_NAME=openbills-<name>` scopes all containers, networks, and volumes per instance.
-- Nginx proxies `/api` → backend; `client_max_body_size 100M` for attachments.
+- Nginx proxies `/api` → backend; `client_max_body_size 500M` (attachments, ZIP backup restore).
 
 ### Plan-Tiers (Managed SaaS)
 

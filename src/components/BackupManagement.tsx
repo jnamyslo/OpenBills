@@ -1,27 +1,30 @@
 import React, { useState, useEffect } from 'react';
 import logger from '../utils/logger';
-import { 
-  Save, 
-  Download, 
-  Upload, 
-  Trash2, 
-  AlertTriangle, 
-  CheckCircle, 
+import {
+  Save,
+  Download,
+  Upload,
+  Trash2,
+  AlertTriangle,
+  CheckCircle,
   Clock,
   Database,
   FileText,
   RefreshCw,
+  Lock,
   X
 } from 'lucide-react';
 import { apiService } from '../services/api';
 
+const MIN_PASSPHRASE_LENGTH = 12;
+
 interface BackupInfo {
   filename: string;
-  type: 'json' | 'zip';
   timestamp: string;
   size: number;
   tableCount: number;
   totalRecords: number;
+  encrypted: boolean;
   created: string;
 }
 
@@ -29,24 +32,20 @@ interface BackupManagementProps {
   onClose?: () => void;
 }
 
-interface RestoreData {
-  file?: File;
-  version?: string;
-  timestamp?: string;
-  data?: Record<string, unknown[] | undefined>;
+function errorText(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
 }
 
 export function BackupManagement({ onClose }: BackupManagementProps) {
-  const [backups, setBackups] = useState<BackupInfo[]>([]);
   const [zipBackups, setZipBackups] = useState<BackupInfo[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [isCreatingBackup, setIsCreatingBackup] = useState(false);
   const [isCreatingZipBackup, setIsCreatingZipBackup] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
-  const [restoreData, setRestoreData] = useState<RestoreData | null>(null);
-  const [restoreType, setRestoreType] = useState<'json' | 'zip'>('json');
+  const [passphrase, setPassphrase] = useState('');
+  const [passphraseRepeat, setPassphraseRepeat] = useState('');
+  const [restorePassphrase, setRestorePassphrase] = useState('');
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
 
   useEffect(() => {
@@ -56,23 +55,9 @@ export function BackupManagement({ onClose }: BackupManagementProps) {
   const loadBackups = async () => {
     setIsLoading(true);
     try {
-      // Try new API first, fallback to old API if it fails
-      try {
-        const response = await apiService.listAllBackups();
-        if (response.success) {
-          setBackups(response.backups);
-          setZipBackups(response.zipBackups);
-          return;
-        }
-      } catch (error) {
-        console.warn('New backup API failed, trying fallback:', error);
-      }
-      
-      // Fallback to old API
-      const response = await apiService.listBackups();
+      const response = await apiService.listAllBackups();
       if (response.success) {
-        setBackups(response.backups.map(backup => ({ ...backup, type: 'json' as const })));
-        setZipBackups([]);
+        setZipBackups(response.zipBackups);
       } else {
         setMessage({ type: 'error', text: 'Fehler beim Laden der Backups' });
       }
@@ -84,60 +69,42 @@ export function BackupManagement({ onClose }: BackupManagementProps) {
     }
   };
 
-  const createBackup = async () => {
-    setIsCreatingBackup(true);
-    try {
-      const response = await apiService.createBackup();
-      if (response.success) {
-        setMessage({ 
-          type: 'success', 
-          text: `Backup erfolgreich erstellt: ${response.totalRecords} Datensätze aus ${response.tableCount} Tabellen` 
-        });
-        await loadBackups();
-      } else {
-        setMessage({ type: 'error', text: response.message || 'Fehler beim Erstellen des Backups' });
-      }
-    } catch (error) {
-      logger.error('Error creating backup:', error);
-      setMessage({ type: 'error', text: 'Fehler beim Erstellen des Backups' });
-    } finally {
-      setIsCreatingBackup(false);
-    }
-  };
+  const passphraseError =
+    passphrase.length > 0 && passphrase.length < MIN_PASSPHRASE_LENGTH
+      ? `Mindestens ${MIN_PASSPHRASE_LENGTH} Zeichen`
+      : passphraseRepeat.length > 0 && passphrase !== passphraseRepeat
+        ? 'Passwörter stimmen nicht überein'
+        : null;
+  const canCreate = passphrase.length >= MIN_PASSPHRASE_LENGTH && passphrase === passphraseRepeat;
 
   const createZipBackup = async () => {
+    if (!canCreate) return;
     setIsCreatingZipBackup(true);
     try {
-      const response = await apiService.createZipBackup();
+      const response = await apiService.createZipBackup(passphrase);
       if (response.success) {
-        setMessage({ 
-          type: 'success', 
-          text: `Vollbackup erfolgreich erstellt: ${response.totalRecords} Datensätze aus ${response.tableCount} Tabellen` 
+        setMessage({
+          type: 'success',
+          text: `Vollbackup erfolgreich erstellt: ${response.totalRecords} Datensätze aus ${response.tableCount} Tabellen`
         });
+        setPassphrase('');
+        setPassphraseRepeat('');
         await loadBackups();
       } else {
         setMessage({ type: 'error', text: response.message || 'Fehler beim Erstellen des Vollbackups' });
       }
     } catch (error) {
       logger.error('Error creating ZIP backup:', error);
-      setMessage({ 
-        type: 'warning', 
-        text: 'ZIP-Backup noch nicht verfügbar. Bitte starten Sie den Container neu: docker-compose down && docker-compose up --build' 
-      });
+      setMessage({ type: 'error', text: errorText(error, 'Fehler beim Erstellen des Vollbackups') });
     } finally {
       setIsCreatingZipBackup(false);
     }
   };
 
-  const downloadBackup = async (filename: string, type: 'json' | 'zip') => {
+  const downloadBackup = async (filename: string) => {
     try {
-      if (type === 'zip') {
-        await apiService.downloadZipBackup(filename);
-        setMessage({ type: 'success', text: 'Vollbackup erfolgreich heruntergeladen' });
-      } else {
-        await apiService.downloadBackup(filename);
-        setMessage({ type: 'success', text: 'Backup erfolgreich heruntergeladen' });
-      }
+      await apiService.downloadZipBackup(filename);
+      setMessage({ type: 'success', text: 'Vollbackup erfolgreich heruntergeladen' });
     } catch (error) {
       logger.error('Error downloading backup:', error);
       setMessage({ type: 'error', text: 'Fehler beim Download des Backups' });
@@ -166,59 +133,35 @@ export function BackupManagement({ onClose }: BackupManagementProps) {
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    
-    setSelectedFile(file);
-    
-    if (file.type === 'application/json' || file.name.endsWith('.json')) {
-      // Handle JSON backup
-      setRestoreType('json');
-      
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const data = JSON.parse(e.target?.result as string);
-          if (data.version && data.data && data.timestamp) {
-            setRestoreData(data);
-            setShowRestoreConfirm(true);
-          } else {
-            setMessage({ type: 'error', text: 'Ungültige JSON-Backup-Datei' });
-          }
-        } catch {
-          setMessage({ type: 'error', text: 'Fehler beim Lesen der JSON-Backup-Datei' });
-        }
-      };
-      reader.readAsText(file);
-    } else if (file.type === 'application/zip' || file.name.endsWith('.zip')) {
-      // Handle ZIP backup
-      setRestoreType('zip');
-      setRestoreData({ file });
+
+    if (file.type === 'application/zip' || file.name.endsWith('.zip')) {
+      setSelectedFile(file);
+      setRestorePassphrase('');
       setShowRestoreConfirm(true);
     } else {
-      setMessage({ type: 'error', text: 'Bitte wählen Sie eine gültige JSON- oder ZIP-Datei aus' });
+      setMessage({ type: 'error', text: 'Bitte wählen Sie eine gültige ZIP-Datei aus' });
     }
   };
 
+  const closeRestoreConfirm = () => {
+    setShowRestoreConfirm(false);
+    setSelectedFile(null);
+    setRestorePassphrase('');
+  };
+
   const restoreBackup = async () => {
-    if (!restoreData) return;
+    if (!selectedFile) return;
 
     setIsRestoring(true);
     try {
-      let response;
-      
-      if (restoreType === 'zip' && restoreData.file) {
-        response = await apiService.restoreZipBackup(restoreData.file);
-      } else {
-        response = await apiService.restoreBackup(restoreData);
-      }
-      
+      const response = await apiService.restoreZipBackup(selectedFile, restorePassphrase);
+
       if (response.success) {
-        setMessage({ 
-          type: 'success', 
-          text: `${restoreType === 'zip' ? 'Vollbackup' : 'Backup'} erfolgreich wiederhergestellt: ${response.restoredRecords} Datensätze aus ${response.restoredTables} Tabellen` 
+        setMessage({
+          type: 'success',
+          text: `Vollbackup erfolgreich wiederhergestellt: ${response.restoredRecords} Datensätze aus ${response.restoredTables} Tabellen`
         });
-        setShowRestoreConfirm(false);
-        setSelectedFile(null);
-        setRestoreData(null);
+        closeRestoreConfirm();
         // Reload page to reflect restored data
         setTimeout(() => {
           window.location.reload();
@@ -228,7 +171,7 @@ export function BackupManagement({ onClose }: BackupManagementProps) {
       }
     } catch (error) {
       logger.error('Error restoring backup:', error);
-      setMessage({ type: 'error', text: 'Fehler beim Wiederherstellen des Backups' });
+      setMessage({ type: 'error', text: errorText(error, 'Fehler beim Wiederherstellen des Backups') });
     } finally {
       setIsRestoring(false);
     }
@@ -252,6 +195,8 @@ export function BackupManagement({ onClose }: BackupManagementProps) {
       second: '2-digit'
     });
   };
+
+  const inputClass = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-custom';
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -296,49 +241,51 @@ export function BackupManagement({ onClose }: BackupManagementProps) {
           {/* Create Backup Section */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
             <h3 className="text-lg font-semibold text-blue-900 mb-4">Backup erstellen</h3>
-            
-            {/* JSON Backup */}
-            <div className="flex items-center justify-between mb-4 p-4 bg-white rounded-lg">
-              <div>
-                <h4 className="font-medium text-gray-900 mb-1">Datenbank-Backup (JSON)</h4>
-                <p className="text-gray-600 text-sm">
-                  Sichert nur die Datenbank-Inhalte als JSON-Datei.
-                </p>
-              </div>
-              <button
-                onClick={createBackup}
-                disabled={isCreatingBackup || isCreatingZipBackup}
-                className="btn-secondary text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors flex items-center space-x-2 disabled:opacity-50"
-              >
-                {isCreatingBackup ? (
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                ) : (
-                  <FileText className="h-4 w-4" />
-                )}
-                <span>{isCreatingBackup ? 'Erstelle...' : 'JSON-Backup'}</span>
-              </button>
-            </div>
 
-            {/* ZIP Backup */}
-            <div className="flex items-center justify-between p-4 bg-white rounded-lg">
+            <div className="p-4 bg-white rounded-lg space-y-4">
               <div>
-                <h4 className="font-medium text-gray-900 mb-1">Vollständiges Backup (ZIP)</h4>
+                <h4 className="font-medium text-gray-900 mb-1">Vollständiges Backup (ZIP, verschlüsselt)</h4>
                 <p className="text-gray-600 text-sm">
-                  Sichert alle Daten inklusive Logos und Anhänge als ZIP-Archiv.
+                  Sichert alle Daten inklusive Logos und Anhänge als verschlüsseltes ZIP-Archiv.
                 </p>
               </div>
-              <button
-                onClick={createZipBackup}
-                disabled={isCreatingBackup || isCreatingZipBackup}
-                className="btn-primary text-white px-4 py-2 rounded-lg hover:brightness-90 transition-colors flex items-center space-x-2 disabled:opacity-50"
-              >
-                {isCreatingZipBackup ? (
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Save className="h-4 w-4" />
-                )}
-                <span>{isCreatingZipBackup ? 'Erstelle...' : 'Vollbackup (ZIP)'}</span>
-              </button>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  placeholder="Backup-Passwort"
+                  value={passphrase}
+                  onChange={(e) => setPassphrase(e.target.value)}
+                  className={inputClass}
+                />
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  placeholder="Backup-Passwort wiederholen"
+                  value={passphraseRepeat}
+                  onChange={(e) => setPassphraseRepeat(e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+              {passphraseError && <p className="text-sm text-red-600">{passphraseError}</p>}
+              <p className="text-xs text-gray-600 flex items-start">
+                <AlertTriangle className="h-4 w-4 mr-1 flex-shrink-0 text-orange-500" />
+                Das Passwort wird nicht gespeichert. Ohne dieses Passwort kann das Backup nicht wiederhergestellt werden.
+              </p>
+              <div className="flex justify-end">
+                <button
+                  onClick={createZipBackup}
+                  disabled={isCreatingZipBackup || !canCreate}
+                  className="btn-primary text-white px-4 py-2 rounded-lg hover:brightness-90 transition-colors flex items-center space-x-2 disabled:opacity-50"
+                >
+                  {isCreatingZipBackup ? (
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
+                  <span>{isCreatingZipBackup ? 'Erstelle...' : 'Vollbackup erstellen'}</span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -351,17 +298,17 @@ export function BackupManagement({ onClose }: BackupManagementProps) {
                 <strong>Warnung:</strong> Dies überschreibt alle vorhandenen Daten!
               </p>
             </div>
-            
+
             <div className="flex items-center space-x-4">
               <div className="flex-1">
                 <input
                   type="file"
-                  accept=".json,.zip"
+                  accept=".zip"
                   onChange={handleFileSelect}
                   className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Unterstützte Dateiformate: JSON (Datenbank) oder ZIP (Vollbackup)
+                  Unterstütztes Dateiformat: ZIP (Vollbackup)
                 </p>
               </div>
               {selectedFile && (
@@ -391,124 +338,74 @@ export function BackupManagement({ onClose }: BackupManagementProps) {
                 <RefreshCw className="h-8 w-8 animate-spin text-gray-400 mx-auto mb-2" />
                 <p className="text-gray-500">Lade Backups...</p>
               </div>
-            ) : backups.length === 0 && zipBackups.length === 0 ? (
+            ) : zipBackups.length === 0 ? (
               <div className="p-8 text-center">
                 <FileText className="h-8 w-8 text-gray-400 mx-auto mb-2" />
                 <p className="text-gray-500">Keine Backups verfügbar</p>
               </div>
             ) : (
               <div className="divide-y divide-gray-200">
-                {/* ZIP Backups */}
-                {zipBackups.length > 0 && (
-                  <>
-                    <div className="p-3 bg-green-50">
-                      <h4 className="text-sm font-medium text-green-800 flex items-center">
-                        <Save className="h-4 w-4 mr-2" />
-                        Vollständige Backups (ZIP)
-                      </h4>
-                    </div>
-                    {zipBackups.map((backup) => (
-                      <div key={backup.filename} className="p-4 hover:bg-gray-50">
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center space-x-2 mb-1">
-                              <h5 className="font-medium text-gray-900">{backup.filename}</h5>
-                              <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded">
-                                ZIP - {formatFileSize(backup.size)}
-                              </span>
-                            </div>
-                            <div className="flex items-center space-x-4 text-sm text-gray-500">
-                              <div className="flex items-center">
-                                <Clock className="h-4 w-4 mr-1" />
-                                {formatDate(backup.created)}
-                              </div>
-                              <div className="flex items-center">
-                                <Database className="h-4 w-4 mr-1" />
-                                {backup.tableCount} Tabellen
-                              </div>
-                              <div className="flex items-center">
-                                <FileText className="h-4 w-4 mr-1" />
-                                {backup.totalRecords.toLocaleString('de-DE')} Datensätze
-                              </div>
-                            </div>
+                {zipBackups.map((backup) => (
+                  <div key={backup.filename} className="p-4 hover:bg-gray-50">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-2 mb-1">
+                          <h5 className="font-medium text-gray-900">{backup.filename}</h5>
+                          <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded">
+                            ZIP - {formatFileSize(backup.size)}
+                          </span>
+                          {backup.encrypted ? (
+                            <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded flex items-center">
+                              <Lock className="h-3 w-3 mr-1" />
+                              Verschlüsselt
+                            </span>
+                          ) : (
+                            <span className="text-xs px-2 py-1 bg-yellow-100 text-yellow-800 rounded">
+                              Unverschlüsselt
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center space-x-4 text-sm text-gray-500">
+                          <div className="flex items-center">
+                            <Clock className="h-4 w-4 mr-1" />
+                            {formatDate(backup.created)}
                           </div>
-                          <div className="flex items-center space-x-2 ml-4">
-                            <button
-                              onClick={() => downloadBackup(backup.filename, 'zip')}
-                              className="text-blue-600 hover:text-blue-800 transition-colors p-2 rounded-lg hover:bg-blue-50"
-                              title="Herunterladen"
-                            >
-                              <Download className="h-4 w-4" />
-                            </button>
+                          <div className="flex items-center">
+                            <Database className="h-4 w-4 mr-1" />
+                            {backup.tableCount} Tabellen
+                          </div>
+                          <div className="flex items-center">
+                            <FileText className="h-4 w-4 mr-1" />
+                            {backup.totalRecords.toLocaleString('de-DE')} Datensätze
                           </div>
                         </div>
                       </div>
-                    ))}
-                  </>
-                )}
-                
-                {/* JSON Backups */}
-                {backups.length > 0 && (
-                  <>
-                    <div className="p-3 bg-blue-50">
-                      <h4 className="text-sm font-medium text-blue-800 flex items-center">
-                        <FileText className="h-4 w-4 mr-2" />
-                        Datenbank-Backups (JSON)
-                      </h4>
-                    </div>
-                    {backups.map((backup) => (
-                      <div key={backup.filename} className="p-4 hover:bg-gray-50">
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center space-x-2 mb-1">
-                              <h5 className="font-medium text-gray-900">{backup.filename}</h5>
-                              <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded">
-                                JSON - {formatFileSize(backup.size)}
-                              </span>
-                            </div>
-                            <div className="flex items-center space-x-4 text-sm text-gray-500">
-                              <div className="flex items-center">
-                                <Clock className="h-4 w-4 mr-1" />
-                                {formatDate(backup.created)}
-                              </div>
-                              <div className="flex items-center">
-                                <Database className="h-4 w-4 mr-1" />
-                                {backup.tableCount} Tabellen
-                              </div>
-                              <div className="flex items-center">
-                                <FileText className="h-4 w-4 mr-1" />
-                                {backup.totalRecords.toLocaleString('de-DE')} Datensätze
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex items-center space-x-2 ml-4">
-                            <button
-                              onClick={() => downloadBackup(backup.filename, 'json')}
-                              className="text-blue-600 hover:text-blue-800 transition-colors p-2 rounded-lg hover:bg-blue-50"
-                              title="Herunterladen"
-                            >
-                              <Download className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={() => deleteBackup(backup.filename)}
-                              className="text-red-600 hover:text-red-800 transition-colors p-2 rounded-lg hover:bg-red-50"
-                              title="Löschen"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </div>
+                      <div className="flex items-center space-x-2 ml-4">
+                        <button
+                          onClick={() => downloadBackup(backup.filename)}
+                          className="text-blue-600 hover:text-blue-800 transition-colors p-2 rounded-lg hover:bg-blue-50"
+                          title="Herunterladen"
+                        >
+                          <Download className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => deleteBackup(backup.filename)}
+                          className="text-red-600 hover:text-red-800 transition-colors p-2 rounded-lg hover:bg-red-50"
+                          title="Löschen"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                       </div>
-                    ))}
-                  </>
-                )}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
         </div>
 
         {/* Restore Confirmation Modal */}
-        {showRestoreConfirm && restoreData && (
+        {showRestoreConfirm && selectedFile && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
               <div className="p-6">
@@ -516,39 +413,36 @@ export function BackupManagement({ onClose }: BackupManagementProps) {
                   <AlertTriangle className="h-6 w-6 text-red-500 mr-3" />
                   <h3 className="text-lg font-semibold text-gray-900">Backup wiederherstellen</h3>
                 </div>
-                
+
                 <div className="mb-6">
                   <p className="text-gray-700 mb-4">
                     <strong>Achtung:</strong> Diese Aktion überschreibt alle vorhandenen Daten unwiderruflich!
                   </p>
-                  
-                  <div className="bg-gray-50 rounded-lg p-4 space-y-2 text-sm">
-                    <div><strong>Backup-Typ:</strong> {restoreType === 'zip' ? 'Vollständiges ZIP-Backup' : 'Datenbank JSON-Backup'}</div>
-                    {restoreType === 'json' && restoreData.timestamp && (
-                      <div><strong>Backup-Datum:</strong> {formatDate(restoreData.timestamp)}</div>
-                    )}
-                    {restoreType === 'json' && restoreData.data && (
-                      <>
-                        <div><strong>Tabellen:</strong> {Object.keys(restoreData.data || {}).length}</div>
-                        <div><strong>Datensätze:</strong> {Object.values(restoreData.data || {}).reduce((sum: number, records) => sum + (records?.length || 0), 0).toLocaleString('de-DE')}</div>
-                      </>
-                    )}
-                    {restoreType === 'zip' && restoreData.file && (
-                      <>
-                        <div><strong>Dateiname:</strong> {restoreData.file.name}</div>
-                        <div><strong>Dateigröße:</strong> {formatFileSize(restoreData.file.size)}</div>
-                      </>
-                    )}
+
+                  <div className="bg-gray-50 rounded-lg p-4 space-y-2 text-sm mb-4">
+                    <div><strong>Dateiname:</strong> {selectedFile.name}</div>
+                    <div><strong>Dateigröße:</strong> {formatFileSize(selectedFile.size)}</div>
                   </div>
+
+                  <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="restore-passphrase">
+                    Backup-Passwort
+                  </label>
+                  <input
+                    id="restore-passphrase"
+                    type="password"
+                    autoComplete="off"
+                    value={restorePassphrase}
+                    onChange={(e) => setRestorePassphrase(e.target.value)}
+                    className={inputClass}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Leer lassen nur bei alten, unverschlüsselten Backups.
+                  </p>
                 </div>
 
                 <div className="flex items-center space-x-3">
                   <button
-                    onClick={() => {
-                      setShowRestoreConfirm(false);
-                      setRestoreData(null);
-                      setSelectedFile(null);
-                    }}
+                    onClick={closeRestoreConfirm}
                     className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
                   >
                     Abbrechen
