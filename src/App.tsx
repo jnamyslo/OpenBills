@@ -16,6 +16,13 @@ import { useCompany } from './context/CompanyContext';
 import { useQuotes } from './context/QuoteContext';
 import { usePlan } from './context/PlanContext';
 import { PlanLockedNotice } from './components/PlanLockedNotice';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { parsePublicAuthRoute } from './utils/authRoutes';
+import { LoginPage } from './components/LoginPage';
+import { SetupPage } from './components/SetupPage';
+import { AcceptInvitePage } from './components/AcceptInvitePage';
+import { ForgotPasswordPage } from './components/ForgotPasswordPage';
+import { ResetPasswordPage } from './components/ResetPasswordPage';
 
 interface PageState {
   page: string;
@@ -25,6 +32,62 @@ interface PageState {
 }
 
 function App() {
+  return (
+    <AuthProvider>
+      <AuthGate />
+    </AuthProvider>
+  );
+}
+
+/**
+ * Öffentliche Auth-Routen werden vor dem Login-Gate erkannt. Die App (und damit
+ * das Laden der Fachdaten im AppProvider) wird erst nach erfolgreicher Anmeldung gemountet.
+ */
+function AuthGate() {
+  const { status, refresh } = useAuth();
+  const [hash, setHash] = useState(() => window.location.hash);
+
+  useEffect(() => {
+    const handleHashChange = () => setHash(window.location.hash);
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  const finishOnboarding = async () => {
+    await refresh();
+    window.location.hash = 'dashboard';
+  };
+
+  const publicRoute = parsePublicAuthRoute(hash);
+  if (publicRoute) {
+    switch (publicRoute.kind) {
+      case 'setup':
+        return <SetupPage key={publicRoute.token} token={publicRoute.token} onDone={finishOnboarding} />;
+      case 'invite':
+        return <AcceptInvitePage key={publicRoute.token} token={publicRoute.token} onDone={finishOnboarding} />;
+      case 'reset':
+        return <ResetPasswordPage key={publicRoute.token} token={publicRoute.token} onDone={finishOnboarding} />;
+      case 'forgot':
+        return <ForgotPasswordPage />;
+    }
+  }
+
+  if (status === 'loading') {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  if (status !== 'authenticated') {
+    return <LoginPage />;
+  }
+
+  return <MainApp />;
+}
+
+function MainApp() {
   const [currentPageState, setCurrentPageState] = useState<PageState>(() => {
     // Initialize from URL hash
     const hash = window.location.hash.slice(1); // Remove #

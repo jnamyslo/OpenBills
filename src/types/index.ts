@@ -500,3 +500,50 @@ export interface PlanErrorBody {
   limit?: number;
   feature?: PlanFeature;
 }
+
+// ============================================================================
+// Auth Types
+// ============================================================================
+
+export type AuthRole = 'admin' | 'user';
+
+export interface AuthUser {
+  id: number;
+  email: string;
+  name: string;
+  role: AuthRole;
+  isOperator: boolean;
+  isActive: boolean;
+  totpEnabled: boolean;
+  lastLoginAt: string | null;
+  createdAt: string;
+}
+
+export type TokenStatus = 'valid' | 'expired' | 'used' | 'invalid' | 'done';
+
+export interface AuditEntry {
+  id: number;
+  at: string;
+  actorLabel: string | null;
+  isOperator: boolean;
+  action: string;
+  entityType: string | null;
+  entityId: string | null;
+  details: Record<string, unknown> | null;
+  ip: string | null;
+}
+
+export interface AuditLogFilters {
+  from?: string;
+  to?: string;
+  userId?: string;
+  action?: string;
+  page?: number;
+}
+
+export interface AuditLogPage {
+  entries: AuditEntry[];
+  total: number;
+  page: number;
+  pageSize: number;
+}

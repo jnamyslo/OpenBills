@@ -1,4 +1,4 @@
-import { Customer, Invoice, Quote, Company, JobEntry, MaterialTemplate, HourlyRate, YearlyInvoiceStartNumber, InvoiceJournalResponse, ReportingStatistics, ReminderEligibility, PlanInfo, PlanErrorBody } from '../types';
+import { Customer, Invoice, Quote, Company, JobEntry, MaterialTemplate, HourlyRate, YearlyInvoiceStartNumber, InvoiceJournalResponse, ReportingStatistics, ReminderEligibility, PlanInfo, PlanErrorBody, AuthUser, AuthRole, TokenStatus, AuditLogFilters, AuditLogPage } from '../types';
 import logger from '../utils/logger';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
@@ -18,12 +18,53 @@ export const isPlanError = (error: unknown): error is PlanError => error instanc
 /** Event, auf das der PlanContext mit dem Upgrade-Dialog reagiert. */
 export const PLAN_ERROR_EVENT = 'openbills:plan-error';
 
+/** Event, auf das der AuthContext mit der Login-Seite reagiert (Session fehlt oder abgelaufen). */
+export const AUTH_REQUIRED_EVENT = 'openbills:auth-required';
+
+/** Fehler bei 401 `AUTH_REQUIRED` / `MFA_REQUIRED`. */
+export class AuthRequiredError extends Error {
+  readonly code: 'AUTH_REQUIRED' | 'MFA_REQUIRED';
+  constructor(code: 'AUTH_REQUIRED' | 'MFA_REQUIRED' = 'AUTH_REQUIRED', message = 'Nicht angemeldet') {
+    super(message);
+    this.name = 'AuthRequiredError';
+    this.code = code;
+  }
+}
+
+interface ErrorBody {
+  error?: string;
+  message?: string;
+  code?: string;
+}
+
+/** Wirft bei 401 (Login nötig) bzw. 403 (keine Berechtigung) passende Fehler. */
+function checkAuthError(status: number, body: ErrorBody, skipAuthEvent = false): void {
+  if (status === 401 && (body.code === 'AUTH_REQUIRED' || body.code === 'MFA_REQUIRED')) {
+    if (!skipAuthEvent) {
+      window.dispatchEvent(new CustomEvent(AUTH_REQUIRED_EVENT, { detail: { code: body.code } }));
+    }
+    throw new AuthRequiredError(body.code, body.error);
+  }
+  if (status === 403 && body.code === 'FORBIDDEN') {
+    throw new Error('Keine Berechtigung');
+  }
+}
+
+/** Auth-Prüfung für die direkten `fetch`-Aufrufe außerhalb von `request()`. */
+async function handleAuthStatus(response: Response): Promise<void> {
+  if (response.status !== 401 && response.status !== 403) return;
+  const body: ErrorBody = await response.clone().json().catch(() => ({}));
+  checkAuthError(response.status, body);
+}
+
 // ============================================================================
 // Helper Types
 // ============================================================================
 
 interface ApiRequestOptions extends RequestInit {
   skipErrorLogging?: boolean;
+  /** Für Aufrufe des AuthContext selbst (/auth/me, /auth/login*), damit kein Event-Kreislauf entsteht. */
+  skipAuthEvent?: boolean;
 }
 
 interface EmailAttachment {
@@ -59,9 +100,10 @@ class ApiService {
   private async request<T>(endpoint: string, options: ApiRequestOptions = {}): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
     const method = options.method || 'GET';
-    const { skipErrorLogging, ...fetchOptions } = options;
+    const { skipErrorLogging, skipAuthEvent, ...fetchOptions } = options;
     
     const config: RequestInit = {
+      credentials: 'same-origin',
       ...fetchOptions,
       headers: {
         'Content-Type': 'application/json',
@@ -74,6 +116,7 @@ class ApiService {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Network error' }));
+        checkAuthError(response.status, errorData, skipAuthEvent);
         if (errorData.code === 'PLAN_LIMIT_REACHED' || errorData.code === 'FEATURE_NOT_IN_PLAN') {
           const planError = new PlanError(errorData as PlanErrorBody);
           window.dispatchEvent(new CustomEvent(PLAN_ERROR_EVENT, { detail: planError.body }));
@@ -82,9 +125,12 @@ class ApiService {
         throw new Error(errorData.error || errorData.message || `HTTP error! status: ${response.status}`);
       }
 
+      if (response.status === 204) {
+        return undefined as T;
+      }
       return response.json();
     } catch (error) {
-      if (!skipErrorLogging) {
+      if (!skipErrorLogging && !(error instanceof AuthRequiredError)) {
         logger.api(method, url, undefined, undefined, error as Error);
       }
       throw error;
@@ -94,6 +140,7 @@ class ApiService {
   // Helper for file downloads
   private async downloadFile(url: string, filename: string): Promise<void> {
     const response = await fetch(url);
+    await handleAuthStatus(response);
     
     if (!response.ok) {
       throw new Error(`Fehler beim Download: ${filename}`);
@@ -615,6 +662,7 @@ class ApiService {
       method: 'POST',
       body: formData,
     });
+    await handleAuthStatus(response);
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ error: 'Network error' }));
@@ -656,6 +704,7 @@ class ApiService {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
     });
+    await handleAuthStatus(response);
 
     if (!response.ok) {
       throw new Error('Fehler beim Generieren des Rechnungsjournal-PDFs');
@@ -716,6 +765,136 @@ class ApiService {
 
   async getPlan(): Promise<PlanInfo> {
     return this.request<PlanInfo>('/plan');
+  }
+
+  // --------------------------------------------------------------------------
+  // Auth API
+  // --------------------------------------------------------------------------
+
+  async login(email: string, password: string): Promise<{ mfaRequired?: boolean; user?: AuthUser }> {
+    return this.request('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+      skipAuthEvent: true,
+    });
+  }
+
+  async loginTotp(code: string): Promise<{ user: AuthUser }> {
+    return this.request('/auth/login/totp', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+      skipAuthEvent: true,
+    });
+  }
+
+  async logout(): Promise<void> {
+    await this.request<void>('/auth/logout', { method: 'POST', skipAuthEvent: true });
+  }
+
+  async getMe(): Promise<{ user: AuthUser }> {
+    return this.request('/auth/me', { skipAuthEvent: true, skipErrorLogging: true });
+  }
+
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    await this.request<void>('/auth/password', {
+      method: 'POST',
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+  }
+
+  async getSetupStatus(token: string): Promise<{ status: TokenStatus }> {
+    return this.request(`/auth/setup/${encodeURIComponent(token)}`);
+  }
+
+  async completeSetup(data: { token: string; name: string; email: string; password: string }): Promise<{ user: AuthUser }> {
+    return this.request('/auth/setup', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async getInvite(token: string): Promise<{ status: TokenStatus; email?: string; role?: AuthRole }> {
+    return this.request(`/auth/invite/${encodeURIComponent(token)}`);
+  }
+
+  async acceptInvite(token: string, data: { name: string; password: string }): Promise<{ user: AuthUser }> {
+    return this.request(`/auth/invite/${encodeURIComponent(token)}`, { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async requestPasswordReset(email: string): Promise<{ ok: boolean }> {
+    return this.request('/auth/password-reset/request', { method: 'POST', body: JSON.stringify({ email }) });
+  }
+
+  async getResetStatus(token: string): Promise<{ status: TokenStatus }> {
+    return this.request(`/auth/password-reset/${encodeURIComponent(token)}`);
+  }
+
+  async resetPassword(token: string, password: string): Promise<void> {
+    await this.request<void>(`/auth/password-reset/${encodeURIComponent(token)}`, {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+    });
+  }
+
+  async totpSetup(password: string): Promise<{ secret: string; otpauthUri: string }> {
+    return this.request('/auth/totp/setup', { method: 'POST', body: JSON.stringify({ password }) });
+  }
+
+  async totpEnable(code: string): Promise<{ recoveryCodes: string[] }> {
+    return this.request('/auth/totp/enable', { method: 'POST', body: JSON.stringify({ code }) });
+  }
+
+  async totpDisable(password: string, code: string): Promise<void> {
+    await this.request<void>('/auth/totp/disable', { method: 'POST', body: JSON.stringify({ password, code }) });
+  }
+
+  // --------------------------------------------------------------------------
+  // Users API (Admin)
+  // --------------------------------------------------------------------------
+
+  async getUsers(): Promise<{ users: AuthUser[]; operator: { active: boolean; lastLoginAt: string | null } }> {
+    return this.request('/users');
+  }
+
+  async inviteUser(email: string, role: AuthRole): Promise<{ link: string; emailed: boolean }> {
+    return this.request('/users/invite', { method: 'POST', body: JSON.stringify({ email, role }) });
+  }
+
+  async updateUser(id: number, changes: { name?: string; role?: AuthRole; isActive?: boolean }): Promise<{ user: AuthUser }> {
+    return this.request(`/users/${id}`, { method: 'PUT', body: JSON.stringify(changes) });
+  }
+
+  async createResetLink(id: number): Promise<{ link: string }> {
+    return this.request(`/users/${id}/password-reset-link`, { method: 'POST' });
+  }
+
+  async resetUserTotp(id: number): Promise<void> {
+    await this.request<void>(`/users/${id}/totp/reset`, { method: 'POST' });
+  }
+
+  async revokeUserSessions(id: number): Promise<void> {
+    await this.request<void>(`/users/${id}/sessions`, { method: 'DELETE' });
+  }
+
+  // --------------------------------------------------------------------------
+  // Audit-Log API (Admin)
+  // --------------------------------------------------------------------------
+
+  private auditLogQuery(filters: AuditLogFilters): URLSearchParams {
+    const params = new URLSearchParams();
+    if (filters.from) params.append('from', filters.from);
+    if (filters.to) params.append('to', filters.to);
+    if (filters.userId) params.append('userId', filters.userId);
+    if (filters.action) params.append('action', filters.action);
+    if (filters.page) params.append('page', String(filters.page));
+    return params;
+  }
+
+  async getAuditLog(filters: AuditLogFilters = {}): Promise<AuditLogPage> {
+    return this.request<AuditLogPage>(`/audit-log?${this.auditLogQuery(filters)}`);
+  }
+
+  auditLogCsvUrl(filters: AuditLogFilters = {}): string {
+    const params = this.auditLogQuery({ ...filters, page: undefined });
+    params.append('format', 'csv');
+    return `${this.baseUrl}/audit-log?${params}`;
   }
 }
 
