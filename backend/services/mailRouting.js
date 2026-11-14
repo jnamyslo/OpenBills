@@ -5,7 +5,7 @@
  */
 import nodemailer from 'nodemailer';
 import { query } from '../database.js';
-import { hasFeature } from '../utils/plan.js';
+import { hasFeature, getPlanName, getUpgradeContact, PlanError, sendPlanError } from '../utils/plan.js';
 
 export const PLATFORM_DOMAIN = 'openbills.de';
 export const PLATFORM_SYSTEM_SENDER = { name: 'OpenBills', email: `support@${PLATFORM_DOMAIN}` };
@@ -62,4 +62,35 @@ export async function getMailRoute(kind) {
   if (hasFeature('ownSystemSmtp')) return 'own';
   if (kind === 'system') return 'platform';
   return hasFeature('ownSmtp') && await hasOwnSmtp() ? 'own' : 'platform';
+}
+
+/** Tageslimit für Kundenmails über den Plattform-Relay (schützt Brevo-Account und Domain-Reputation). */
+export const PLATFORM_MAIL_DAILY_LIMIT = 20;
+
+/** Heute (Europe/Berlin) erfolgreich über die Plattform versendete Kundenmails. */
+export async function countPlatformCustomerMailsToday() {
+  const result = await query(
+    `SELECT COUNT(*) AS count FROM email_history
+     WHERE sender_email = $1 AND status = 'sent'
+       AND sent_at >= (date_trunc('day', now() AT TIME ZONE 'Europe/Berlin') AT TIME ZONE 'Europe/Berlin')`,
+    [getPlatformInstanceSender()]
+  );
+  return Number(result.rows[0]?.count ?? 0);
+}
+
+/** Express-Middleware vor Kundenmail-Versand: 429, sobald das Tageslimit erreicht ist. */
+export async function enforcePlatformMailLimit(req, res, next) {
+  try {
+    if (req.method === 'GET' || await getMailRoute('customer') !== 'platform') return next();
+    if (await countPlatformCustomerMailsToday() < PLATFORM_MAIL_DAILY_LIMIT) return next();
+    sendPlanError(res, new PlanError(429, {
+      error: `Tageslimit für den E-Mail-Versand über OpenBills erreicht (${PLATFORM_MAIL_DAILY_LIMIT} pro Tag). Für mehr bitte Ihren Tarif upgraden.`,
+      code: 'PLATFORM_MAIL_LIMIT',
+      limit: PLATFORM_MAIL_DAILY_LIMIT,
+      plan: getPlanName(),
+      upgradeContact: getUpgradeContact(),
+    }));
+  } catch (error) {
+    next(error);
+  }
 }

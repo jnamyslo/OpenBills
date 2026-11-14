@@ -2,6 +2,7 @@ import express from 'express';
 import { query } from '../database.js';
 import logger from '../utils/logger.js';
 import { requireFeature, sendPlanError } from '../utils/plan.js';
+import { enforcePlatformMailLimit } from '../services/mailRouting.js';
 import { stampDraftWatermark } from '../utils/draftWatermark.js';
 import { findAllQuotes, findQuoteById } from '../queries/quoteQueries.js';
 import { createQuote, updateQuote, deleteQuote, convertQuoteToInvoice } from '../services/quoteService.js';
@@ -103,7 +104,7 @@ router.delete('/:id', async (req, res) => {
 
 // Convert quote to invoice
 // Send quote via email
-router.post('/:id/send-email', requireFeature('email'), async (req, res) => {
+router.post('/:id/send-email', requireFeature('email'), enforcePlatformMailLimit, async (req, res) => {
   try {
     const { id } = req.params;
     const { customerEmails, customText, attachments, pdfBuffer } = req.body;

@@ -25,6 +25,7 @@ import authRouter from './routes/auth.js';
 import usersRouter from './routes/users.js';
 import auditLogRouter from './routes/auditLog.js';
 import { requireFeature } from './utils/plan.js';
+import { enforcePlatformMailLimit } from './services/mailRouting.js';
 
 export function createApp() {
   const app = express();
@@ -76,7 +77,7 @@ export function createApp() {
   app.use('/api/company', requireAdminForWrites, companyRouter);
   // Rechnungsvorlagen pflegen auch Nutzer (Rechnungseditor); übrige Firmendaten bleiben admin-only.
   app.use('/api/invoice-templates', invoiceTemplatesRouter);
-  app.use('/api/email', requireFeature('email'), emailRouter);
+  app.use('/api/email', requireFeature('email'), enforcePlatformMailLimit, emailRouter);
   app.use('/api/email-management', emailManagementRouter);
   app.use('/api/jobs', requireFeature('jobs', { allowRead: true }), jobsRouter);
   app.use('/api/material-templates', requireFeature('customerPricing', { allowRead: true }), requireAdminForWrites, materialTemplatesRouter);

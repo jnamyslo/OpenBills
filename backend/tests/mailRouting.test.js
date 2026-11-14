@@ -121,3 +121,65 @@ describe('Plattform-Transport und Absender', () => {
     expect(getPlatformInstanceSender()).toBe('muster@openbills.de');
   });
 });
+
+describe('enforcePlatformMailLimit', () => {
+  const run = async (method = 'POST') => {
+    const { enforcePlatformMailLimit } = await import('../services/mailRouting.js');
+    const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+    const next = vi.fn();
+    await enforcePlatformMailLimit({ method }, res, next);
+    return { res, next };
+  };
+  const countSql = () => queryMock.mock.calls.map(c => c[0]).find(sql => sql.includes('email_history'));
+
+  it('Starter mit 20 versendeten Mails heute → 429 PLATFORM_MAIL_LIMIT', async () => {
+    vi.stubEnv('OPENBILLS_PLAN', 'starter');
+    stubPlatformEnv();
+    queryMock.mockResolvedValue({ rows: [{ count: '20' }] });
+    const { res, next } = await run();
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(429);
+    expect(res.json.mock.calls[0][0]).toMatchObject({ code: 'PLATFORM_MAIL_LIMIT', limit: 20, plan: 'starter' });
+  });
+
+  it('Starter mit 19 Mails → weiter', async () => {
+    vi.stubEnv('OPENBILLS_PLAN', 'starter');
+    stubPlatformEnv();
+    queryMock.mockResolvedValue({ rows: [{ count: '19' }] });
+    const { next } = await run();
+    expect(next).toHaveBeenCalled();
+  });
+
+  it('zählt nur erfolgreich versendete Mails mit Plattform-Absender seit Tagesbeginn (Berlin)', async () => {
+    vi.stubEnv('OPENBILLS_PLAN', 'starter');
+    stubPlatformEnv();
+    queryMock.mockResolvedValue({ rows: [{ count: '0' }] });
+    await run();
+    expect(countSql()).toMatch(/status = 'sent'/);
+    expect(countSql()).toMatch(/Europe\/Berlin/);
+    const call = queryMock.mock.calls.find(c => c[0].includes('email_history'));
+    expect(call[1]).toEqual(['muster@openbills.de']);
+  });
+
+  it('Selfhosted → weiter ohne Zählung', async () => {
+    vi.stubEnv('OPENBILLS_PLAN', '');
+    const { next } = await run();
+    expect(next).toHaveBeenCalled();
+    expect(countSql()).toBeUndefined();
+  });
+
+  it('Professional mit eigenem SMTP → weiter ohne Zählung', async () => {
+    vi.stubEnv('OPENBILLS_PLAN', 'professional');
+    queryMock.mockResolvedValue(ownSmtpRow);
+    const { next } = await run();
+    expect(next).toHaveBeenCalled();
+    expect(countSql()).toBeUndefined();
+  });
+
+  it('GET → weiter ohne Zählung', async () => {
+    vi.stubEnv('OPENBILLS_PLAN', 'starter');
+    const { next } = await run('GET');
+    expect(next).toHaveBeenCalled();
+    expect(countSql()).toBeUndefined();
+  });
+});

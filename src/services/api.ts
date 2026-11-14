@@ -118,7 +118,7 @@ class ApiService {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Network error' }));
         checkAuthError(response.status, errorData, skipAuthEvent);
-        if (errorData.code === 'PLAN_LIMIT_REACHED' || errorData.code === 'FEATURE_NOT_IN_PLAN') {
+        if (errorData.code === 'PLAN_LIMIT_REACHED' || errorData.code === 'FEATURE_NOT_IN_PLAN' || errorData.code === 'PLATFORM_MAIL_LIMIT') {
           const planError = new PlanError(errorData as PlanErrorBody);
           window.dispatchEvent(new CustomEvent(PLAN_ERROR_EVENT, { detail: planError.body }));
           throw planError;

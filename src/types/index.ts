@@ -490,10 +490,10 @@ export interface PlanInfo {
   upgradeContact: string | null;
 }
 
-/** Antwort-Body des Backends bei 402 (Limit) bzw. 403 (Feature nicht im Plan). */
+/** Antwort-Body des Backends bei 402 (Limit), 403 (Feature nicht im Plan) bzw. 429 (Tageslimit Plattform-Mails). */
 export interface PlanErrorBody {
   error: string;
-  code: 'PLAN_LIMIT_REACHED' | 'FEATURE_NOT_IN_PLAN';
+  code: 'PLAN_LIMIT_REACHED' | 'FEATURE_NOT_IN_PLAN' | 'PLATFORM_MAIL_LIMIT';
   plan: PlanName;
   upgradeContact: string | null;
   kind?: PlanLimitKind;
