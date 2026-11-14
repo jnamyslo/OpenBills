@@ -4,6 +4,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import logger from '../utils/logger.js';
+import { audit } from '../auth/audit.js';
 
 const router = express.Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -160,6 +161,8 @@ router.get('/download/:filename', async (req, res) => {
       });
     }
 
+    await audit(req, { action: 'backup.downloaded', entityType: 'backup', entityId: filename });
+
     const backupContent = await fs.readFile(filepath);
     
     res.setHeader('Content-Type', 'application/json');
@@ -291,7 +294,6 @@ router.post('/restore', async (req, res) => {
 
     // Step 2: Restore tables in correct dependency order (parent tables first)  
     const restoreOrder = [
-      'migrations',        // system table - restore first
       'company',           // parent table
       'customers',         // parent table  
       'yearly_invoice_start_numbers',
@@ -733,6 +735,8 @@ router.get('/download-zip/:filename', async (req, res) => {
       });
     }
 
+    await audit(req, { action: 'backup.downloaded', entityType: 'backup', entityId: filename });
+
     const backupContent = await fs.readFile(filepath);
     
     res.setHeader('Content-Type', 'application/zip');
@@ -815,7 +819,7 @@ router.post('/restore-zip', async (req, res) => {
       let restoredTables = 0;
       let restoredRecords = 0;
 
-      // Step 1: Clear all data using TRUNCATE CASCADE and explicit DELETE for migrations
+      // Step 1: Clear all data using TRUNCATE CASCADE
       logger.info('Clearing all data...');
       const tablesToClear = [
         'email_history', 'customer_emails', 'customer_hourly_rates',
@@ -836,17 +840,8 @@ router.post('/restore-zip', async (req, res) => {
         }
       }
       
-      // Special handling for migrations table (explicit DELETE instead of TRUNCATE)
-      try {
-        await client.query(`DELETE FROM migrations`);
-        logger.info(`Deleted all records from migrations table`);
-      } catch (error) {
-        logger.warn(`Could not clear migrations table:`, error.message);
-      }
-
       // Step 2: Restore tables in correct dependency order (parent tables first)
       const restoreOrder = [
-        'migrations',        // system table - restore first
         'company',           // parent table
         'customers',         // parent table  
         'yearly_invoice_start_numbers',
