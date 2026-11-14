@@ -95,6 +95,9 @@ describe.skipIf(!hasDb)('Backup/Restore und Auth-Daten', () => {
     await expectAuthIntact();
     const rows = await waitForAudit('POST /api/backup/restore-zip');
     expect(rows.length).toBeGreaterThan(0);
+    const restored = await waitForAudit('backup.restored');
+    expect(restored).toHaveLength(1);
+    expect(restored[0]).toMatchObject({ entity_type: 'backup', entity_id: 'backup.zip', details: { format: 'zip' } });
   });
 
   it('JSON-Restore lässt migrations, Nutzer und Sessions unangetastet', async () => {
@@ -108,6 +111,9 @@ describe.skipIf(!hasDb)('Backup/Restore und Auth-Daten', () => {
     await expectAuthIntact();
     const rows = await waitForAudit('POST /api/backup/restore');
     expect(rows.length).toBeGreaterThan(0);
+    const restored = await waitForAudit('backup.restored');
+    expect(restored).toHaveLength(1);
+    expect(restored[0]).toMatchObject({ entity_type: 'backup', entity_id: backup.timestamp, details: { format: 'json' } });
   });
 
   it('Downloads werden auditiert, 404 nicht', async () => {

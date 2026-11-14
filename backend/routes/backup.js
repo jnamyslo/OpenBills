@@ -518,6 +518,8 @@ Wir fordern Sie hiermit letztmalig auf, den Betrag unverzüglich, spätestens je
 
     // Commit transaction
     await client.query('COMMIT');
+    // Die JSON-Route erhält keinen Dateinamen; der Backup-Zeitstempel identifiziert das Backup.
+    await audit(req, { action: 'backup.restored', entityType: 'backup', entityId: backupData.timestamp ?? null, details: { format: 'json' } });
     
     logger.info(`Restore completed: ${restoredTables} tables, ${restoredRecords} records`);
     
@@ -1070,6 +1072,7 @@ Wir fordern Sie hiermit letztmalig auf, den Betrag unverzüglich, spätestens je
 
       // Commit transaction
       await client.query('COMMIT');
+      await audit(req, { action: 'backup.restored', entityType: 'backup', entityId: req.file.originalname, details: { format: 'zip' } });
       
       // Clean up uploaded file
       try {

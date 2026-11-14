@@ -225,6 +225,8 @@ OpenBills hat eine eigene Anmeldung (E‑Mail + Passwort, optional 2FA); ein vor
 
 Wichtige Backend‑Variablen in `.env.backend.<name>`: `PUBLIC_URL`, `AUTH_ENCRYPTION_KEY` (32 Byte base64, nicht ändern/verlieren, sonst sind hinterlegte 2FA‑Secrets unbrauchbar), `TRUST_PROXY_HOPS`.
 
+**Netzwerk (wichtig):** Die Instanz‑Ports (Web, API, DB) dürfen von außen nie erreichbar sein. Offen sind nur 80/443 der vorgelagerten Proxy‑Firewall, über den Nginx Proxy Manager (NPM). Von Docker veröffentlichte Ports umgehen `ufw`; eine Host‑Firewall allein schützt sie also nicht. `TRUST_PROXY_HOPS=2` (Standard) setzt NPM vor dem Frontend‑Nginx voraus. Ist der Web‑Port direkt erreichbar, lässt sich `X-Forwarded-For` fälschen und damit das Rate‑Limit pro IP umgehen.
+
 ### Umstellung von Authentik
 
 Bestehende Instanzen (bisher Authentik + NPM Forward‑Auth) werden in‑place umgestellt:
@@ -233,6 +235,9 @@ Bestehende Instanzen (bisher Authentik + NPM Forward‑Auth) werden in‑place u
 2. `PUBLIC_URL` (z. B. `https://kunde.openbills.de`) und `AUTH_ENCRYPTION_KEY` (`openssl rand -base64 32`) per `./manage-instances.sh config <name>` in `.env.backend.<name>` ergänzen, `git pull`, Instanz neu starten. Die Migration legt leere Auth‑Tabellen an, Fachdaten bleiben unverändert.
 3. `./manage-instances.sh operator-reset <name>` und `./manage-instances.sh onboarding-link <name>` ausführen; den Link an den Kunden senden.
 4. Authentik bleibt bis zum Abschluss des Onboardings vor der Instanz. Danach Forward‑Auth im NPM entfernen.
+
+- Die URL im Browser muss exakt `PUBLIC_URL` entsprechen. Die Origin‑Prüfung lehnt andere Hosts oder Aliase (z. B. IP, zweite Domain) ab.
+- `backups/` enthält neben dem DB‑Dump auch `.env.backend.<name>` inkl. `AUTH_ENCRYPTION_KEY`. Das Verzeichnis daher geschützt ablegen (Zugriffsrechte, verschlüsselter Speicher).
 
 Zwischen Schritt 2 und dem Onboarding ist die API geschlossen (ohne Session 401).
 
