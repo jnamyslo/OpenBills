@@ -18,7 +18,7 @@ vi.mock('../services/mailRouting.js', () => ({
   PLATFORM_SYSTEM_SENDER: { name: 'OpenBills', email: 'support@openbills.de' },
 }));
 
-const { sendInviteMail, sendPasswordResetMail, isSmtpConfigured } = await import('../services/authMailService.js');
+const { sendInviteMail, sendPasswordResetMail, sendOnboardingMail, isSmtpConfigured } = await import('../services/authMailService.js');
 
 describe('Auth-Mails', () => {
   beforeEach(() => {
@@ -103,5 +103,31 @@ describe('Auth-Mails', () => {
     expect(html).not.toContain('<script>');
     expect(html).toContain('#2563eb');
   });
-});
 
+  it('sendOnboardingMail geht immer über die Plattform', async () => {
+    route.system = 'own';
+    await sendOnboardingMail('k@firma.de', { link: 'https://k.openbills.de/#setup/t', plan: 'enterprise', instanceSender: 'k@openbills.de' });
+    expect(sendMail).not.toHaveBeenCalled();
+    const m = platformSendMail.mock.calls[0][0];
+    expect(m.from).toBe('"OpenBills" <support@openbills.de>');
+    expect(m.to).toBe('k@firma.de');
+    expect(m.subject).toBe('Willkommen bei OpenBills – Konto einrichten');
+    expect(m.text).toContain('https://k.openbills.de/#setup/t');
+    expect(m.text).toContain('48 Stunden');
+    expect(m.text).toContain('Zwei-Faktor');
+    expect(m.text).toContain('eigenen Mailserver');
+    expect(m.html).toContain('Konto einrichten');
+  });
+
+  it('sendOnboardingMail nennt bei Starter den Plattform-Absender und das Tageslimit', async () => {
+    await sendOnboardingMail('k@firma.de', { link: 'https://x/#setup/t', plan: 'starter', instanceSender: 'mueller-bau@openbills.de' });
+    const m = platformSendMail.mock.calls[0][0];
+    expect(m.text).toContain('mueller-bau@openbills.de');
+    expect(m.text).toContain('20');
+  });
+
+  it('sendOnboardingMail: Free ohne Rechnungsversand', async () => {
+    await sendOnboardingMail('k@firma.de', { link: 'https://x/#setup/t', plan: 'free', instanceSender: 'f@openbills.de' });
+    expect(platformSendMail.mock.calls[0][0].text).toContain('ab Starter');
+  });
+});

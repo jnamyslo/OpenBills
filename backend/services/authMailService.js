@@ -66,3 +66,65 @@ export const sendPasswordResetMail = async (to, { link }) => {
   });
   await send(to, 'Passwort zurücksetzen – OpenBills', text, html);
 };
+
+const ONBOARDING_STEPS = [
+  'Admin-Konto anlegen',
+  'Firmendaten in den Einstellungen hinterlegen',
+  'Zwei-Faktor-Anmeldung aktivieren',
+  'Mitarbeitende einladen',
+  'Erste Rechnung schreiben',
+];
+
+const onboardingPlanSentence = (plan, instanceSender) => {
+  const starter = `E-Mails an Ihre Kunden gehen von ${instanceSender} raus, Antworten landen bei Ihrer Firmen-E-Mail; bis zu 20 Mails pro Tag.`;
+  switch (plan) {
+    case 'free':
+      return 'Rechnungen per E-Mail versenden ist ab Starter enthalten.';
+    case 'starter':
+      return starter;
+    case 'professional':
+      return `${starter} Sie können in den Einstellungen einen eigenen Mailserver hinterlegen.`;
+    case 'enterprise':
+      return 'Bitte hinterlegen Sie in den Einstellungen Ihren eigenen Mailserver; darüber laufen alle Mails.';
+    default:
+      return '';
+  }
+};
+
+/** Willkommensmail mit Setup-Link; geht immer über den Plattform-Relay (Firma/SMTP existieren noch nicht). */
+export const sendOnboardingMail = async (to, { link, plan, instanceSender }) => {
+  const note = 'Der Link ist 48 Stunden gültig und kann nur einmal verwendet werden.';
+  const planSentence = onboardingPlanSentence(plan, instanceSender);
+  const intro = 'Ihre OpenBills-Instanz ist bereit. Richten Sie über den folgenden Button Ihr Konto ein.';
+  const closing = 'Fragen? support@openbills.de';
+  const text = [
+    'Hallo,',
+    intro.replace('über den folgenden Button', 'über folgenden Link'),
+    `Konto einrichten:\n${link}`,
+    `So starten Sie:\n${ONBOARDING_STEPS.map((s, i) => `${i + 1}. ${s}`).join('\n')}`,
+    planSentence,
+    note,
+    closing,
+  ].filter(Boolean).join('\n\n') + '\n';
+  const html = renderAuthMail({
+    heading: 'Willkommen bei OpenBills',
+    paragraphs: [
+      'Hallo,',
+      intro,
+      `So starten Sie: ${ONBOARDING_STEPS.map((s, i) => `${i + 1}. ${s}`).join(' ')}`,
+      planSentence,
+      closing,
+    ].filter(Boolean),
+    buttonLabel: 'Konto einrichten',
+    link,
+    note,
+  });
+  const transporter = createPlatformTransporter();
+  await transporter.sendMail({
+    from: `"${PLATFORM_SYSTEM_SENDER.name}" <${PLATFORM_SYSTEM_SENDER.email}>`,
+    to,
+    subject: 'Willkommen bei OpenBills – Konto einrichten',
+    text,
+    html,
+  });
+};
