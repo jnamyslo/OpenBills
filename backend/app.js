@@ -21,6 +21,7 @@ import backupRouter from './routes/backup.js';
 import reportingRouter from './routes/reporting.js';
 import remindersRouter from './routes/reminders.js';
 import planRouter from './routes/plan.js';
+import demoRouter from './routes/demo.js';
 import authRouter from './routes/auth.js';
 import usersRouter from './routes/users.js';
 import auditLogRouter from './routes/auditLog.js';
@@ -87,6 +88,7 @@ export function createApp() {
   app.use('/api/reporting', reportingRouter);
   app.use('/api/reminders', requireFeature('reminders', { allowRead: true }), remindersRouter);
   app.use('/api/plan', planRouter);
+  app.use('/api/demo', demoRouter);
 
   // Error handling middleware
   app.use((err, req, res, next) => {

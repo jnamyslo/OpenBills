@@ -80,7 +80,8 @@ describe.skipIf(!hasDb)('Zugriffskontrolle (DB)', () => {
     }
   });
 
-  it.each(bases)('GET %s ohne Cookie -> 401 AUTH_REQUIRED', async (base) => {
+  // /api/demo ist bewusst öffentlich (Login-Seite zeigt Demo-Zugang), siehe PUBLIC_API_PATHS.
+  it.each(bases.filter((b) => b !== '/api/demo'))('GET %s ohne Cookie -> 401 AUTH_REQUIRED', async (base) => {
     const res = await request(app).get(base);
     expect(res.status).toBe(401);
     expect(res.body).toEqual({ error: 'Nicht angemeldet', code: 'AUTH_REQUIRED' });
