@@ -90,6 +90,7 @@ Three Docker services per instance: `database` (PostgreSQL 15), `backend`, `fron
 - Globales Auth-Gate in `backend/auth/middleware.js`; öffentliche Routen stehen in der Whitelist dort. Neue Routen sind automatisch geschützt — nur bewusst in die Whitelist aufnehmen.
 - Rollen `admin`/`user`; Support-Zugang `support@openbills.de` (`is_operator`). Auth-Tabellen sind nicht im App-Backup.
 - Onboarding/Support-Zugang: `backend/scripts/onboarding.js`, `operator.js`; Aufruf über `deploy-instance.sh` und `manage-instances.sh onboarding-link|operator-reset`.
+- Onboarding-Mail optional: `deploy-instance.sh --legacy … --send-onboarding <email>` (interaktiv: Abfrage nach dem Deploy) und `manage-instances.sh onboarding-link <name> --send-to <email>`; `.env.platform` wird dafür per stdin an `onboarding.js --platform-env-stdin` gereicht (nur Tarif-Instanzen, nicht Demo/self-hosted).
 - Spec: `docs/superpowers/specs/2026-11-13-auth.md`.
 
 ### PDF Generation

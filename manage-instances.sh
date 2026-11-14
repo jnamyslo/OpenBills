@@ -314,6 +314,8 @@ run_auth_script() {
     local instance_name=$1
     local script=$2
     local usage=$3
+    shift 3
+    local extra_args=("$@")
     if [ -z "$instance_name" ]; then
         print_error "Bitte geben Sie den Instanznamen an"
         echo "Usage: $0 $usage <instance_name>"
@@ -337,12 +339,28 @@ run_auth_script() {
         return 1
     fi
 
-    "${compose[@]}" exec -T -e LOG_LEVEL=WARN backend node "scripts/${script}.js"
+    if [ "${extra_args[0]:-}" = "--send-to" ]; then
+        # Mailversand: .env.platform per stdin (nur hier), da Enterprise-Container sie nicht eingebunden haben
+        "${compose[@]}" exec -T -e LOG_LEVEL=WARN backend node "scripts/${script}.js" "${extra_args[@]}" < "$PLATFORM_ENV_FILE"
+    else
+        "${compose[@]}" exec -T -e LOG_LEVEL=WARN backend node "scripts/${script}.js"
+    fi
 }
 
-# Neuen Onboarding-Link erzeugen
+# Neuen Onboarding-Link erzeugen, optional per Mail senden (--send-to <email>)
 onboarding_link() {
-    run_auth_script "$1" onboarding onboarding-link
+    local name="$1" flag="${2:-}" email="${3:-}"
+    if [ -z "$flag" ]; then
+        run_auth_script "$name" onboarding onboarding-link
+        return
+    fi
+    if [ "$flag" != "--send-to" ] || [ -z "$email" ]; then
+        print_error "Usage: $0 onboarding-link <instance_name> [--send-to <email>]"
+        return 1
+    fi
+    local send_args
+    send_args=$(onboarding_send_args "$name") || return 1
+    run_auth_script "$name" onboarding onboarding-link --send-to "$email" $send_args
 }
 
 # Support-Zugang anlegen bzw. Passwort zurücksetzen
@@ -384,7 +402,7 @@ case "$1" in
         edit_config $2
         ;;
     onboarding-link)
-        onboarding_link $2
+        onboarding_link "$2" "$3" "$4"
         ;;
     operator-reset)
         operator_reset $2
@@ -404,7 +422,8 @@ case "$1" in
         echo "  logs <instance> [svc]   - Logs anzeigen"
         echo "  backup <instance>       - Datenbank-Backup erstellen"
         echo "  config <instance>       - Konfiguration bearbeiten"
-        echo "  onboarding-link <inst>  - Neuen Onboarding-Link für den Kunden erzeugen"
+        echo "  onboarding-link <inst> [--send-to <email>]"
+        echo "                          - Neuen Onboarding-Link erzeugen, optional per Mail an den Kunden senden"
         echo "  operator-reset <inst>   - Support-Zugang anlegen / Passwort zurücksetzen"
         echo "  help                    - Diese Hilfe anzeigen"
         echo
@@ -415,6 +434,7 @@ case "$1" in
         echo "  $0 backup client1"
         echo "  $0 config client1"
         echo "  $0 onboarding-link client1"
+        echo "  $0 onboarding-link client1 --send-to kunde@example.com"
         echo
         ;;
     *)

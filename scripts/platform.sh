@@ -34,6 +34,26 @@ is_demo_instance() {
     [ "$(grep -E '^OPENBILLS_DEMO=' "$file" | tail -1 | cut -d'=' -f2- | tr -d '"'"'"'\r ')" = "true" ]
 }
 
+# onboarding_send_args <name> → gibt "--platform-env-stdin" aus (Aufrufer reicht dann .env.platform per stdin durch)
+# und liefert 0, wenn die Onboarding-Mail gesendet werden kann: Tarif nicht leer (auch enterprise), keine Demo,
+# .env.platform lesbar. Sonst Meldung auf stderr und 1.
+onboarding_send_args() {
+    local name="$1"
+    if is_demo_instance "$name"; then
+        print_error "Demo-Instanz: kein Onboarding-Versand." >&2
+        return 1
+    fi
+    if [ -z "$(instance_plan "$name")" ]; then
+        print_error "Self-hosted-Instanz: Onboarding-Mail-Versand ist nur mit Tarif möglich." >&2
+        return 1
+    fi
+    if [ ! -r "$PLATFORM_ENV_FILE" ]; then
+        print_error "Plattform-Mailzugang fehlt oder ist nicht lesbar: $PLATFORM_ENV_FILE" >&2
+        return 1
+    fi
+    echo "--platform-env-stdin"
+}
+
 # is_valid_platform_instance_name <name> → 0, wenn der Name als Absender <name>@openbills.de taugt
 is_valid_platform_instance_name() {
     [[ "$1" =~ $PLATFORM_INSTANCE_NAME_REGEX ]]

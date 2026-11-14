@@ -137,11 +137,19 @@ prompt_public_url() {
 # Argument: Instanzname. Rückgabewert 1 bei Timeout oder Fehler.
 print_access_info() {
     local name="$1"
+    local email="${2:-}"
     if is_demo_instance "$name"; then
         echo
         print_info "=== Zugang ==="
         print_info "Demo-Instanz – Login: demo@openbills.de / demo (Reset alle 3 h, kein Onboarding/Support-Zugang)"
         return 0
+    fi
+    local send_args=""
+    if [ -n "$email" ]; then
+        if ! send_args=$(onboarding_send_args "$name"); then
+            print_warning "Onboarding-Mail wird nicht gesendet; es wird nur der Link ausgegeben."
+            email=""
+        fi
     fi
     compose_cmd "$name"
     local compose=("${COMPOSE[@]}")
@@ -162,7 +170,12 @@ print_access_info() {
         print_error "Support-Zugang konnte nicht angelegt werden: $operator_out"
         return 1
     fi
-    if ! onboarding_out=$("${compose[@]}" exec -T -e LOG_LEVEL=WARN backend node scripts/onboarding.js 2>&1); then
+    if [ -n "$email" ]; then
+        if ! onboarding_out=$("${compose[@]}" exec -T -e LOG_LEVEL=WARN backend node scripts/onboarding.js --send-to "$email" $send_args < "$PLATFORM_ENV_FILE" 2>&1); then
+            print_error "Onboarding-Mail konnte nicht gesendet werden: $onboarding_out"
+            return 1
+        fi
+    elif ! onboarding_out=$("${compose[@]}" exec -T -e LOG_LEVEL=WARN backend node scripts/onboarding.js 2>&1); then
         print_error "Onboarding-Link konnte nicht erzeugt werden: $onboarding_out"
         return 1
     fi
@@ -173,7 +186,11 @@ print_access_info() {
     echo
     echo "$onboarding_out"
     echo
-    print_warning "Support-Zugang jetzt im Passwortmanager ablegen. Onboarding-Link an den Kunden senden."
+    if [ -n "$email" ]; then
+        print_warning "Support-Zugang jetzt im Passwortmanager ablegen. Onboarding-Mail wurde an ${email} gesendet."
+    else
+        print_warning "Support-Zugang jetzt im Passwortmanager ablegen. Onboarding-Link an den Kunden senden."
+    fi
 }
 
 # Function to check if port is available
@@ -352,7 +369,17 @@ EOF
         echo
         print_warning "Wichtig: Bewahren Sie die Konfigurationsdateien sicher auf!"
         print_warning "Database Password: $DB_PASSWORD"
-        print_access_info "$INSTANCE_NAME" || return 1
+        local send_mail="" onboarding_email=""
+        if [ "$OPENBILLS_DEMO" != "true" ] && [ -n "$OPENBILLS_PLAN" ]; then
+            echo
+            read -r -p "Onboarding-Mail an Kunden senden? (y/N) " send_mail
+            if [[ "$send_mail" =~ ^[Yy]$ ]]; then
+                while [ -z "$onboarding_email" ]; do
+                    onboarding_email=$(prompt_input "E-Mail-Adresse des Kunden" "")
+                done
+            fi
+        fi
+        print_access_info "$INSTANCE_NAME" "$onboarding_email" || return 1
     else
         print_error "Deployment fehlgeschlagen!"
         return 1
@@ -433,9 +460,10 @@ show_help() {
     echo "  $0 -h, --help             # Diese Hilfe anzeigen"
     echo
     echo "Legacy Modus (für Kompatibilität):"
-    echo "  $0 --legacy <instance_name> [db_port] [backend_port] [frontend_port] [plan] [public_url]"
+    echo "  $0 --legacy <instance_name> [db_port] [backend_port] [frontend_port] [plan] [public_url] [--send-onboarding <email>]"
     echo "      plan: free | starter | professional | enterprise | demo (weglassen = self-hosted, "" zum Überspringen)"
     echo "      public_url: z.B. https://kunde.openbills.de (Standard: http://localhost:<frontend_port>)"
+    echo "      --send-onboarding <email>: Onboarding-Mail nach dem Deploy an den Kunden senden (nur mit Tarif, nicht Demo)"
     echo
     echo "Beispiele:"
     echo "  $0                        # Startet interaktiven Modus (Standard)"
@@ -443,6 +471,7 @@ show_help() {
     echo "  $0 --legacy client1 5432 3001 8080"
     echo "  $0 --legacy client2 5433 3002 8081"
     echo "  $0 --legacy client3 5434 3003 8082 starter https://client3.example.com"
+    echo "  $0 --legacy client3 5434 3003 8082 starter https://client3.example.com --send-onboarding kunde@example.com"
     echo
     print_info "Der interaktive Modus läuft standardmäßig und ist empfohlen, da er eine"
     print_info "vollständige E-Mail-Konfiguration und Validierung bietet."
@@ -453,6 +482,23 @@ show_help() {
 legacy_deploy() {
     print_warning "Verwende Legacy-Modus (mit --legacy aufgerufen). Für vollständige Konfiguration verwenden Sie den Standard-Modus ohne Argumente."
     
+    # --send-onboarding <email> an beliebiger Position herauslösen
+    local SEND_ONBOARDING_TO="" rest=()
+    while [ $# -gt 0 ]; do
+        if [ "$1" = "--send-onboarding" ]; then
+            if [ -z "${2:-}" ]; then
+                print_error "--send-onboarding benötigt eine E-Mail-Adresse."
+                exit 1
+            fi
+            SEND_ONBOARDING_TO="$2"
+            shift 2
+        else
+            rest+=("$1")
+            shift
+        fi
+    done
+    set -- ${rest[@]+"${rest[@]}"}
+
     # Check if instance name is provided
     if [ -z "$1" ]; then
         show_help
@@ -561,7 +607,7 @@ EOF
         fi
         print_warning "E-Mail-Funktionen sind im Legacy-Modus nicht konfiguriert."
         print_info "Verwenden Sie das Script ohne --legacy Flag für vollständige Konfiguration."
-        print_access_info "$INSTANCE_NAME" || exit 1
+        print_access_info "$INSTANCE_NAME" "$SEND_ONBOARDING_TO" || exit 1
     else
         print_error "Deployment fehlgeschlagen!"
         exit 1
