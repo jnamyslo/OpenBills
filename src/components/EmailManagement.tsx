@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import logger from '../utils/logger';
+import { usePlan } from '../context/PlanContext';
 import { Mail, Send, Settings, TestTube, RefreshCw, Search, Calendar, User, FileText, CheckCircle, XCircle, Clock, AlertTriangle, Eye, X, TrendingUp, Database, Lock } from 'lucide-react';
 
 interface EmailHistoryItem {
@@ -57,7 +58,28 @@ interface EmailManagementProps {
   onClose?: () => void;
 }
 
+/** Hinweis zum Versand über den OpenBills-Relay (Hosted-Tarife). */
+function PlatformMailNotice({ title, text, upgradeContact }: { title: string; text: string; upgradeContact?: string | null }) {
+  return (
+    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+      <div className="flex items-start">
+        <Mail className="h-5 w-5 text-amber-600 mr-3 mt-0.5" />
+        <div>
+          <h3 className="font-medium text-amber-900">{title}</h3>
+          <p className="text-sm text-amber-800 mt-1">{text}</p>
+          {upgradeContact && <p className="text-sm text-amber-800 mt-1">Kontakt für ein Upgrade: {upgradeContact}</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function EmailManagement({ onClose }: EmailManagementProps) {
+  const { plan, hasFeature } = usePlan();
+  // Free/Starter: kein eigener Mailserver, Versand über OpenBills. Professional: eigener Mailserver nur für Kundenmails.
+  const ownSmtpAllowed = hasFeature('ownSmtp');
+  const ownSystemSmtpAllowed = hasFeature('ownSystemSmtp');
+
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -384,9 +406,10 @@ export function EmailManagement({ onClose }: EmailManagementProps) {
           >
             <div className="flex items-center space-x-2">
               <Settings className="h-4 w-4" />
-              <span>SMTP-Konfiguration</span>
+              <span>{ownSmtpAllowed ? 'SMTP-Konfiguration' : 'E-Mail-Versand'}</span>
             </div>
           </button>
+          {ownSmtpAllowed && (
           <button
             onClick={() => setActiveTab('test')}
             className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
@@ -400,6 +423,7 @@ export function EmailManagement({ onClose }: EmailManagementProps) {
               <span>Test-E-Mail</span>
             </div>
           </button>
+          )}
         </div>
 
         {/* Content */}
@@ -630,9 +654,32 @@ export function EmailManagement({ onClose }: EmailManagementProps) {
           )}
 
           {/* SMTP Settings Tab */}
-          {activeTab === 'settings' && (
+          {activeTab === 'settings' && !ownSmtpAllowed && (
             <div className="p-6">
               <div className="max-w-2xl mx-auto space-y-6">
+                <PlatformMailNotice
+                  title="Versand über OpenBills"
+                  text="E-Mails werden über OpenBills versendet · eigener Mailserver ab Professional"
+                  upgradeContact={plan?.upgradeContact}
+                />
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'settings' && ownSmtpAllowed && (
+            <div className="p-6">
+              <div className="max-w-2xl mx-auto space-y-6">
+                {!ownSystemSmtpAllowed && (
+                  <PlatformMailNotice
+                    title="Systemmails über OpenBills"
+                    text={`Systemmails (Einladung, Passwort) laufen über OpenBills · eigener Absender ab Enterprise${
+                      plan?.mailRoutes.customer === 'platform'
+                        ? '. Rechnungen werden derzeit über OpenBills versendet, bis ein eigener Mailserver aktiviert ist.'
+                        : ''
+                    }`}
+                    upgradeContact={plan?.upgradeContact}
+                  />
+                )}
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                   <div className="flex items-start">
                     <Lock className="h-5 w-5 text-blue-500 mr-3 mt-0.5" />
@@ -809,7 +856,7 @@ export function EmailManagement({ onClose }: EmailManagementProps) {
           )}
 
           {/* Test Email Tab */}
-          {activeTab === 'test' && (
+          {activeTab === 'test' && ownSmtpAllowed && (
             <div className="p-6">
               <div className="max-w-2xl mx-auto space-y-6">
                 <div className="bg-green-50 border border-green-200 rounded-lg p-4">
