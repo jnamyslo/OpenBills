@@ -78,7 +78,8 @@ router.get('/', async (req, res) => {
       // Legacy fields for backward compatibility
       bankAccount: row.bank_account || row.payment_bank_account,
       bic: row.bic || row.payment_bic,
-      hourlyRates: hourlyRates
+      hourlyRates: hourlyRates,
+      invoiceTemplates: row.invoice_templates || []
     };
 
     res.json(company);
@@ -402,7 +403,8 @@ router.put('/', async (req, res) => {
       // Legacy fields for backward compatibility
       bankAccount: row.bank_account || row.payment_bank_account,
       bic: row.bic || row.payment_bic,
-      hourlyRates: updatedHourlyRates
+      hourlyRates: updatedHourlyRates,
+      invoiceTemplates: row.invoice_templates || []
     };
 
     res.json(company);

@@ -13,7 +13,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const JSONB_COLUMNS = {
   'email_history': ['attachments', 'smtp_response'],
   'job_entries': ['materials', 'signature'],
-  'company': ['payment_methods']
+  'company': ['payment_methods', 'invoice_templates']
 };
 
 // Function to process values for JSONB columns

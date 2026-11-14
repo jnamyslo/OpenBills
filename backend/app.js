@@ -10,6 +10,7 @@ import customersRouter from './routes/customers.js';
 import invoicesRouter from './routes/invoices.js';
 import quotesRouter from './routes/quotes.js';
 import companyRouter from './routes/company.js';
+import invoiceTemplatesRouter from './routes/invoiceTemplates.js';
 import emailRouter from './routes/email.js';
 import emailManagementRouter from './routes/emailManagement.js';
 import jobsRouter from './routes/jobs.js';
@@ -73,6 +74,8 @@ export function createApp() {
   app.use('/api/invoices', invoicesRouter);
   app.use('/api/quotes', quotesRouter);
   app.use('/api/company', requireAdminForWrites, companyRouter);
+  // Rechnungsvorlagen pflegen auch Nutzer (Rechnungseditor); übrige Firmendaten bleiben admin-only.
+  app.use('/api/invoice-templates', invoiceTemplatesRouter);
   app.use('/api/email', requireFeature('email'), emailRouter);
   app.use('/api/email-management', emailManagementRouter);
   app.use('/api/jobs', requireFeature('jobs', { allowRead: true }), jobsRouter);

@@ -1,4 +1,4 @@
-import { Customer, Invoice, Quote, Company, JobEntry, MaterialTemplate, HourlyRate, YearlyInvoiceStartNumber, InvoiceJournalResponse, ReportingStatistics, ReminderEligibility, PlanInfo, PlanErrorBody, AuthUser, AuthRole, TokenStatus, AuditLogFilters, AuditLogPage } from '../types';
+import { Customer, Invoice, Quote, Company, JobEntry, MaterialTemplate, InvoiceTemplate, HourlyRate, YearlyInvoiceStartNumber, InvoiceJournalResponse, ReportingStatistics, ReminderEligibility, PlanInfo, PlanErrorBody, AuthUser, AuthRole, TokenStatus, AuditLogFilters, AuditLogPage } from '../types';
 import logger from '../utils/logger';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
@@ -346,6 +346,13 @@ class ApiService {
     return this.request<Company>('/company', {
       method: 'PUT',
       body: JSON.stringify(company),
+    });
+  }
+
+  async updateInvoiceTemplates(invoiceTemplates: InvoiceTemplate[]): Promise<InvoiceTemplate[]> {
+    return this.request<InvoiceTemplate[]>('/invoice-templates', {
+      method: 'PUT',
+      body: JSON.stringify({ invoiceTemplates }),
     });
   }
 
