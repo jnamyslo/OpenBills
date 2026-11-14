@@ -27,6 +27,10 @@ print_error() {
     echo -e "${RED}❌ $1${NC}"
 }
 
+# Plattform-Mailversand (Tarife free/starter/professional), siehe scripts/platform.sh
+# shellcheck source=scripts/platform.sh
+source "$(dirname "$0")/scripts/platform.sh"
+
 # Function to prompt for input with default value
 prompt_input() {
     local prompt="$1"
@@ -130,7 +134,8 @@ prompt_public_url() {
 # Argument: Instanzname. Rückgabewert 1 bei Timeout oder Fehler.
 print_access_info() {
     local name="$1"
-    local compose=(docker compose --env-file ".env.${name}" -f docker-compose.yml)
+    compose_cmd "$name"
+    local compose=("${COMPOSE[@]}")
     local waited=0
     print_info "Warte auf Backend (max. 90 s)..."
     until "${compose[@]}" exec -T backend wget -qO- http://127.0.0.1:3001/health >/dev/null 2>&1; do
@@ -237,6 +242,13 @@ collect_instance_config() {
     fi
 
     prompt_plan
+    if is_platform_plan "$OPENBILLS_PLAN"; then
+        if ! is_valid_platform_instance_name "$INSTANCE_NAME"; then
+            print_error "Instanzname '$INSTANCE_NAME' wird Teil der Absenderadresse ${INSTANCE_NAME}@openbills.de – nur a-z, 0-9 und '-' (nicht am Anfang/Ende) erlaubt."
+            return 1
+        fi
+        ensure_platform_env || return 1
+    fi
     prompt_public_url
     
 
@@ -306,7 +318,8 @@ EOF
 
     # Start deployment
     print_info "Starte Docker Container..."
-    if docker compose --env-file .env.${INSTANCE_NAME} -f docker-compose.yml up -d --build; then
+    compose_cmd "$INSTANCE_NAME"
+    if "${COMPOSE[@]}" up -d --build; then
         echo
         print_success "Instance '$INSTANCE_NAME' wurde erfolgreich deployed!"
         echo
@@ -451,6 +464,17 @@ legacy_deploy() {
         exit 1
     fi
 
+    if is_platform_plan "$OPENBILLS_PLAN"; then
+        if ! is_valid_platform_instance_name "$INSTANCE_NAME"; then
+            print_error "Instanzname '$INSTANCE_NAME' ist für Tarif '$OPENBILLS_PLAN' ungültig (nur a-z, 0-9 und '-', nicht am Anfang/Ende)."
+            exit 1
+        fi
+        if [ ! -f "$PLATFORM_ENV_FILE" ]; then
+            print_error "Plattform-Mailzugang fehlt: $PLATFORM_ENV_FILE anlegen (einmal ./deploy-instance.sh interaktiv ausführen)."
+            exit 1
+        fi
+    fi
+
     # Check if ports are already in use
     if ! check_port $DB_PORT; then
         print_error "Port $DB_PORT ist bereits belegt!"
@@ -505,7 +529,8 @@ TRUST_PROXY_HOPS=2
 EOF
 
     # Deploy with specific env file
-    if docker compose --env-file .env.${INSTANCE_NAME} -f docker-compose.yml up -d --build; then
+    compose_cmd "$INSTANCE_NAME"
+    if "${COMPOSE[@]}" up -d --build; then
         print_success "Instance '$INSTANCE_NAME' deployed successfully!"
         print_info "Frontend available at: http://localhost:$FRONTEND_PORT"
         print_info "Backend API available at: http://localhost:$BACKEND_PORT (nur lokal)"

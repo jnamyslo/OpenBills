@@ -81,5 +81,5 @@ Unbekannter Wert in `OPENBILLS_PLAN` → Startfehler (kein stilles Fallback auf 
 
 ## Nicht im Scope
 
-- Eigene SMTP / Absenderdomain als Feature-Gate: gestrichen. Alle Tiers mit E-Mail-Versand nutzen eigenes SMTP.
+- ~~Eigene SMTP / Absenderdomain als Feature-Gate: gestrichen.~~ Überholt durch `2026-11-14-platform-mail-design.md` (Plattform-Mailversand, eigener Mailserver ab Professional, eigener Systemabsender ab Enterprise).
 - Lizenzkeys, Billing, Self-Service-Upgrade.

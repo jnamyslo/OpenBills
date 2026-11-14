@@ -79,7 +79,10 @@ Three Docker services per instance: `database` (PostgreSQL 15), `backend`, `fron
 - `OPENBILLS_PLAN` in `.env.backend.<name>` (free | starter | professional | enterprise; empty = selfhosted, unlimited). Matrix in `backend/utils/plan.js`; frontend reads it via `GET /api/plan` (`PlanContext`).
 - Backend enforces: `requireFeature()` middleware (403), quota counting on first non-draft status in `services/quotaService.js` (402). Frontend gating is UX only.
 - Drafts always get an "ENTWURF" watermark and no embedded ZUGFeRD/XRechnung; send/download "as sent" releases first via `src/utils/releaseForOutput.ts`.
+- Mailversand: free/starter/professional senden Systemmails (Einladung, PW-Reset) über den Plattform-Relay als `support@openbills.de`; Kundenmails bei Starter (und Pro ohne eigenes SMTP) als `<instanz>@openbills.de` mit Reply-To Firmen-Mail, max. 20/Tag. Routing in `backend/services/mailRouting.js` (Features `ownSmtp`/`ownSystemSmtp`).
+- Plattform-Zugang nur in `.env.platform` (Host, nie im Repo), per `docker-compose.platform.yml` nur an Plattform-Tarife; Logik für Skripte in `scripts/platform.sh`. Backend startet bei Plattform-Tarif nicht ohne `PLATFORM_SMTP_*`.
 - Spec: `docs/superpowers/specs/2026-11-13-plan-tiers.md`.
+- Spec Mailversand: `docs/superpowers/specs/2026-11-14-platform-mail-design.md`.
 
 ### Auth (lokal, Session-Cookie)
 

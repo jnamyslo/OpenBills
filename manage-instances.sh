@@ -26,6 +26,10 @@ print_error() {
     echo -e "${RED}❌ $1${NC}"
 }
 
+# Plattform-Mailversand (Tarife free/starter/professional), siehe scripts/platform.sh
+# shellcheck source=scripts/platform.sh
+source "$(dirname "$0")/scripts/platform.sh"
+
 # Function to list all running instances
 list_instances() {
     echo
@@ -84,7 +88,8 @@ stop_instance() {
     fi
     
     print_info "Stoppe Instanz: $instance_name"
-    if docker compose --env-file .env.${instance_name} -f docker-compose.yml down; then
+    compose_cmd "$instance_name"
+    if "${COMPOSE[@]}" down; then
         print_success "Instanz '$instance_name' wurde gestoppt"
     else
         print_error "Fehler beim Stoppen der Instanz '$instance_name'"
@@ -131,8 +136,11 @@ EOF
         print_warning "PUBLIC_URL wurde auf http://localhost:${FRONTEND_PORT} gesetzt. Bitte per './manage-instances.sh config ${instance_name}' auf die echte URL ändern."
     fi
     
+    check_platform_ready "$instance_name" || return 1
+
     print_info "Starte Instanz: $instance_name"
-    if docker compose --env-file .env.${instance_name} -f docker-compose.yml up -d --build; then
+    compose_cmd "$instance_name"
+    if "${COMPOSE[@]}" up -d --build; then
         print_success "Instanz '$instance_name' wurde gestartet"
         
         # Show access information
@@ -174,7 +182,8 @@ remove_instance() {
         print_info "Entferne Instanz: $instance_name"
         
         # Stop and remove containers with volumes
-        docker compose --env-file .env.${instance_name} -f docker-compose.yml down -v
+        compose_cmd "$instance_name"
+        "${COMPOSE[@]}" down -v
         
         # Remove configuration files
         rm -f .env.${instance_name}
@@ -205,9 +214,11 @@ logs_instance() {
     print_info "Zeige Logs für Instanz: $instance_name"
     if [ -n "$service" ]; then
         print_info "Service: $service"
-        docker compose --env-file .env.${instance_name} -f docker-compose.yml logs -f $service
+        compose_cmd "$instance_name"
+        "${COMPOSE[@]}" logs -f $service
     else
-        docker compose --env-file .env.${instance_name} -f docker-compose.yml logs -f
+        compose_cmd "$instance_name"
+        "${COMPOSE[@]}" logs -f
     fi
 }
 
@@ -314,7 +325,8 @@ run_auth_script() {
         return 1
     fi
 
-    local compose=(docker compose --env-file ".env.${instance_name}" -f docker-compose.yml)
+    compose_cmd "$instance_name"
+    local compose=("${COMPOSE[@]}")
     if [ -z "$("${compose[@]}" ps --status running -q backend 2>/dev/null)" ]; then
         print_error "Das Backend von Instanz '$instance_name' läuft nicht. Zuerst starten: $0 start $instance_name"
         return 1
@@ -347,6 +359,7 @@ case "$1" in
     restart)
         if [ -n "$2" ]; then
             print_info "Starte Instanz '$2' neu..."
+            check_platform_ready "$2" || exit 1
             stop_instance $2
             start_instance $2
         else
