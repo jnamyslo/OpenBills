@@ -42,6 +42,7 @@ export function ConfirmationModal({
             <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="text-gray-500 hover:text-gray-700"
           >
@@ -67,12 +68,14 @@ export function ConfirmationModal({
         
         <div className="flex justify-end space-x-3 p-6 border-t border-gray-200">
           <button
+            type="button"
             onClick={onClose}
             className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
           >
             {cancelText}
           </button>
           <button
+            type="button"
             onClick={handleConfirm}
             className={`px-4 py-2 rounded-lg text-white transition-colors ${
               isDestructive 

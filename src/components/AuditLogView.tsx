@@ -57,7 +57,12 @@ export function AuditLogView() {
         <h3 className="text-lg font-semibold text-gray-900">Audit-Log</h3>
       </div>
 
-      <div className="space-y-4">
+      <div
+        className="space-y-4"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && e.target instanceof HTMLInputElement) e.preventDefault();
+        }}
+      >
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <label className="text-sm text-gray-700">
             Von
