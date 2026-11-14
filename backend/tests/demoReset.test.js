@@ -2,16 +2,18 @@ import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import { mkdtemp, writeFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { pool } from '../database.js';
+import { pool, runWithSchema } from '../database.js';
 import { hasDb, migrateTestDb, resetAuthTables } from './helpers/db.js';
 import { BACKUP_TABLES } from '../utils/backupTables.js';
 import { verifyPassword } from '../auth/password.js';
 import { DEMO_EMAIL, DEMO_PASSWORD } from '../demo/index.js';
 import { seedDemoData } from '../demo/seed.js';
 import { resetDemo, assertDemoDatabase, DemoRefusedError } from '../demo/reset.js';
+import { TEMPLATE_SCHEMA } from '../demo/sessionSchema.js';
 
 async function wipeAll() {
   await pool.query(`TRUNCATE ${BACKUP_TABLES.join(', ')}, usage_counters, demo_marker RESTART IDENTITY CASCADE`);
+  await pool.query(`DROP SCHEMA IF EXISTS ${TEMPLATE_SCHEMA} CASCADE`);
   await resetAuthTables();
 }
 
@@ -76,29 +78,30 @@ describe.skipIf(!hasDb)('Demo-Reset', () => {
     expect(await count('SELECT COUNT(*) AS n FROM users')).toBe(1);
   });
 
-  it('Seed-Inhalt ist vollständig', async () => {
-    const now = new Date();
-    await resetDemo({ now, backupDir });
-    expect(await count('SELECT COUNT(*) AS n FROM customers')).toBeGreaterThanOrEqual(8);
-    for (const status of ['draft', 'sent', 'paid', 'overdue', 'reminded_1x', 'reminded_2x']) {
-      expect(await count('SELECT COUNT(*) AS n FROM invoices WHERE status = $1', [status]), status).toBeGreaterThanOrEqual(1);
-    }
-    expect(await count(`SELECT COUNT(*) AS n FROM invoices WHERE status = 'overdue' AND due_date < CURRENT_DATE`)).toBeGreaterThanOrEqual(1);
-    expect(await count('SELECT COUNT(*) AS n FROM invoices')).toBeGreaterThanOrEqual(15);
-    expect(await count('SELECT COUNT(*) AS n FROM invoice_items')).toBeGreaterThanOrEqual(15);
-    expect(await count('SELECT COUNT(*) AS n FROM quotes')).toBeGreaterThanOrEqual(5);
-    expect(await count('SELECT COUNT(DISTINCT status) AS n FROM quotes')).toBeGreaterThanOrEqual(3);
-    expect(await count('SELECT COUNT(*) AS n FROM quotes WHERE converted_to_invoice_id IS NOT NULL')).toBeGreaterThanOrEqual(1);
-    expect(await count('SELECT COUNT(*) AS n FROM job_entries')).toBeGreaterThanOrEqual(6);
-    expect(await count('SELECT COUNT(*) AS n FROM job_time_entries')).toBeGreaterThanOrEqual(4);
-    expect(await count('SELECT COUNT(*) AS n FROM hourly_rates')).toBeGreaterThanOrEqual(3);
-    expect(await count('SELECT COUNT(*) AS n FROM material_templates')).toBeGreaterThanOrEqual(6);
-    expect(await count('SELECT COUNT(*) AS n FROM customer_specific_hourly_rates')).toBeGreaterThanOrEqual(1);
-    const { rows: [company] } = await pool.query('SELECT * FROM company');
-    expect(company.reminders_enabled && company.job_tracking_enabled && company.quotes_enabled && company.reporting_enabled).toBe(true);
-    // Nummern eindeutig und im RE-YYYY-NNN-Format
-    const { rows: numbers } = await pool.query('SELECT invoice_number FROM invoices');
-    for (const { invoice_number } of numbers) expect(invoice_number).toMatch(/^RE-\d{4}-\d{3}$/);
+  it('Seed-Inhalt ist vollständig (in der Demo-Vorlage)', async () => {
+    await resetDemo({ now: new Date(), backupDir });
+    await runWithSchema(TEMPLATE_SCHEMA, async () => {
+      expect(await count('SELECT COUNT(*) AS n FROM customers')).toBeGreaterThanOrEqual(8);
+      for (const status of ['draft', 'sent', 'paid', 'overdue', 'reminded_1x', 'reminded_2x']) {
+        expect(await count('SELECT COUNT(*) AS n FROM invoices WHERE status = $1', [status]), status).toBeGreaterThanOrEqual(1);
+      }
+      expect(await count(`SELECT COUNT(*) AS n FROM invoices WHERE status = 'overdue' AND due_date < CURRENT_DATE`)).toBeGreaterThanOrEqual(1);
+      expect(await count('SELECT COUNT(*) AS n FROM invoices')).toBeGreaterThanOrEqual(15);
+      expect(await count('SELECT COUNT(*) AS n FROM invoice_items')).toBeGreaterThanOrEqual(15);
+      expect(await count('SELECT COUNT(*) AS n FROM quotes')).toBeGreaterThanOrEqual(5);
+      expect(await count('SELECT COUNT(DISTINCT status) AS n FROM quotes')).toBeGreaterThanOrEqual(3);
+      expect(await count('SELECT COUNT(*) AS n FROM quotes WHERE converted_to_invoice_id IS NOT NULL')).toBeGreaterThanOrEqual(1);
+      expect(await count('SELECT COUNT(*) AS n FROM job_entries')).toBeGreaterThanOrEqual(6);
+      expect(await count('SELECT COUNT(*) AS n FROM job_time_entries')).toBeGreaterThanOrEqual(4);
+      expect(await count('SELECT COUNT(*) AS n FROM hourly_rates')).toBeGreaterThanOrEqual(3);
+      expect(await count('SELECT COUNT(*) AS n FROM material_templates')).toBeGreaterThanOrEqual(6);
+      expect(await count('SELECT COUNT(*) AS n FROM customer_specific_hourly_rates')).toBeGreaterThanOrEqual(1);
+      const { rows: [company] } = await pool.query('SELECT * FROM company');
+      expect(company.reminders_enabled && company.job_tracking_enabled && company.quotes_enabled && company.reporting_enabled).toBe(true);
+      // Nummern eindeutig und im RE-YYYY-NNN-Format
+      const { rows: numbers } = await pool.query('SELECT invoice_number FROM invoices');
+      for (const { invoice_number } of numbers) expect(invoice_number).toMatch(/^RE-\d{4}-\d{3}$/);
+    });
   });
 
   it('Datumswerte relativ zu now', async () => {

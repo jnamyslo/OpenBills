@@ -39,6 +39,12 @@ export function demoGuard(req, res, next) {
   next();
 }
 
+/** In der Demo komplett gesperrt (Backups: Dateien liegen in einem gemeinsamen Ordner für alle Besucher). */
+export function demoBlockAll(req, res, next) {
+  if (isDemoMode()) return res.status(403).json(DEMO_DISABLED);
+  next();
+}
+
 /**
  * Zusätzliche Absicherung auf Router-Ebene (Express-Mount-Matching, also robust gegen Pfadvarianten):
  * in der Demo sind hier alle schreibenden Aufrufe gesperrt – u. a. SMTP-Tests, die ausgehende Verbindungen öffnen.

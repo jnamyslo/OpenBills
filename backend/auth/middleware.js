@@ -1,3 +1,4 @@
+import { AsyncResource } from 'node:async_hooks';
 import { getAuthConfig } from './config.js';
 import { getSession, SESSION_COOKIE } from './sessions.js';
 import { audit, describeRequest } from './audit.js';
@@ -95,11 +96,12 @@ export function auditWrites(req, res, next) {
   const originalUrl = req.originalUrl;
   const path = originalUrl.split('?')[0];
   if (UNAUDITED_PREFIX.test(path)) return next();
-  res.on('finish', () => {
+  // bind: im DB-Kontext des Requests schreiben (Demo: Audit-Log der eigenen Sitzung)
+  res.on('finish', AsyncResource.bind(() => {
     if (res.statusCode >= 400 || !req.user) return;
     const status = req.body?.status;
     const details = typeof status === 'string' || typeof status === 'number' ? { status } : null;
     audit(req, { ...describeRequest(req.method, originalUrl), details });
-  });
+  }));
   next();
 }

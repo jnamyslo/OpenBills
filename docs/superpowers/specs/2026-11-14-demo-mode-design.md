@@ -2,7 +2,7 @@
 
 ## Intent
 
-Öffentliche Demo-Instanz, verlinkt aus dem GitHub-README, damit Interessierte OpenBills ohne Installation ausprobieren können. Voller Funktionsumfang, aber abgeriegelt: keine Mails nach außen, Besucher können sich nicht gegenseitig aussperren oder die Instanz zerstören. Daten werden alle 3 Stunden automatisch auf realistische Demo-Daten zurückgesetzt.
+Öffentliche Demo-Instanz, verlinkt aus dem GitHub-README, damit Interessierte OpenBills ohne Installation ausprobieren können. Voller Funktionsumfang, aber abgeriegelt: keine Mails nach außen, Besucher können sich nicht gegenseitig aussperren oder die Instanz zerstören. Jede Sitzung startet mit frischen, realistischen Demo-Daten und arbeitet auf einer eigenen Kopie; nichts davon sieht ein anderer Besucher, beim Logout/Ablauf wird sie gelöscht. *(Nachtrag 2026-11-14: ersetzt den ursprünglichen 3-h-Reset der gemeinsamen Daten.)*
 
 ## Goals
 
@@ -10,13 +10,12 @@
 - Gemeinsamer Demo-Login, Zugangsdaten auf der Login-Seite sichtbar, Ein-Klick-Login.
 - Alle Features freigeschaltet (Plan `selfhosted`).
 - Kein Mailversand nach außen, egal über welchen Weg.
-- Automatischer Reset alle 3 h mit frischen, datums-relativen Demo-Daten.
+- Eigene Demo-Daten je Sitzung (frisch, datums-relativ), keine Besucherdaten über die Sitzung hinaus.
 
 ## Non-Goals
 
-- Getrennte Sandbox pro Besucher.
 - Hosting/Deployment der Demo selbst, DNS, README-Link (separat).
-- Missbrauchsschutz über die Sperrliste hinaus (z. B. Moderation hochgeladener Logos/Anhänge – der 3-h-Reset begrenzt das).
+- Missbrauchsschutz über die Sperrliste hinaus (z. B. Moderation hochgeladener Logos/Anhänge – Kopie lebt nur bis Logout/Sitzungsende).
 
 ## Anti-Goals
 
@@ -40,18 +39,20 @@
 - Demo-Zugang fest im Code: `demo@openbills.de` / `demo` (Konstanten in `backend/demo/`). Kein Geheimnis.
 - Modul `backend/demo/index.js` exportiert `isDemoMode()` und die Konstanten; alle Demo-Abfragen gehen darüber.
 
-### Reset
+### Reset beim Start
 
-- Beim Start (nach Migrationen) und danach zu jeder vollen 3. Stunde (00, 03, 06, … Uhr, Serverzeit/TZ des Containers) per Timer in `server.js` (Muster wie `runCleanup`, `.unref()`).
-- **Schutz echter Daten (Entscheidung Nutzer):** Vor jedem Reset prüft das Backend, ob die DB eine Demo-Markierung trägt (eigene Tabelle `demo_marker`, per Migration angelegt, nicht im Truncate, nicht in `BACKUP_TABLES`) oder leer ist (keine Zeilen in `users`, `invoices`, `customers`). Weder markiert noch leer → Reset verweigert; beim Start bricht das Backend mit „Datenbank enthält echte Daten – Demo-Modus verweigert“ ab. Der erste erfolgreiche Reset auf leerer DB setzt die Markierung. Ohne Demo-Flag wird `demo_marker` ignoriert.
-- In einer Transaktion:
-  1. `TRUNCATE` aller App-Tabellen (`BACKUP_TABLES`) und Auth-Tabellen (`users`, `user_recovery_codes`, `sessions`, `auth_tokens`, `rate_limits`, `audit_log`) `CASCADE`. Plan-Usage-Zähler ebenfalls.
-  2. Demo-User anlegen (Admin, kein Operator, kein 2FA).
-  3. Seed einspielen.
-- Danach: Dateien im Backup-Verzeichnis löschen (`backups/`), damit von Besuchern erzeugte Backups nicht liegen bleiben.
-- Sessions sind weg → aktive Besucher landen beim nächsten Request auf dem Login (bestehendes 401-Verhalten).
-- Fehler beim Reset: loggen, Instanz läuft weiter; nächster Versuch beim nächsten Intervall. Fehler beim Start-Reset: Start abbrechen.
-- Nächster Reset-Zeitpunkt wird berechnet und dem Frontend geliefert (s. u.).
+- Beim Start (nach Migrationen), in einer Transaktion.
+- **Schutz echter Daten (Entscheidung Nutzer):** Vor dem Reset prüft das Backend, ob die DB eine Demo-Markierung trägt (eigene Tabelle `demo_marker`, per Migration angelegt, nicht im Truncate, nicht in `BACKUP_TABLES`) oder leer ist (keine Zeilen in `users`, `invoices`, `customers`). Weder markiert noch leer → beim Start bricht das Backend mit „Datenbank enthält echte Daten – Demo-Modus verweigert“ ab. Der erste erfolgreiche Reset auf leerer DB setzt die Markierung. Ohne Demo-Flag wird `demo_marker` ignoriert.
+- Ablauf: `TRUNCATE` aller App- und Auth-Tabellen (+ `usage_counters`), Demo-User anlegen (Admin, kein Operator, kein 2FA), Marker setzen, alle Sitzungs-Schemas löschen, Vorlage `demo_template` neu aufbauen (Struktur aus `public`, Daten per Seed). Danach Backup-Verzeichnis leeren.
+- Die App-Tabellen in `public` bleiben in der Demo leer.
+
+### Eigene Daten je Sitzung (`backend/demo/sessionSchema.js`)
+
+- Je Sitzung ein Postgres-Schema `demo_s_<erste 32 Zeichen von sessions.id_hash>`, beim ersten Request der Sitzung aus `demo_template` kopiert (Tabellen aus `BACKUP_TABLES` + `usage_counters` + `audit_log`; Spalten/Defaults/Checks/Indizes per `LIKE`, eigene Sequenzen, Fremdschlüssel und Trigger aus dem Katalog nachgebaut).
+- `database.js` stellt per `AsyncLocalStorage` (`runWithSchema`) bei jedem `pool.connect`/`pool.query` den `search_path` auf `<sitzung>, public`; Auth-Tabellen (users, sessions, …) bleiben dadurch gemeinsam. Ohne Kontext Standard-`search_path`, normale Instanzen unverändert.
+- Middleware `demoSessionContext` hängt hinter den Body-Parsern (die den Kontext verlieren), `auditWrites` dahinter und mit `AsyncResource.bind`, damit Audit-Einträge in der Sitzungskopie landen.
+- Logout löscht das Schema sofort; stündlicher Cleanup löscht Schemas ohne gültige Sitzung (Ablauf nach 12 h Inaktivität) und frischt `demo_template` auf (Datumswerte). Höchstens 100 Sitzungs-Schemas; bei Überlauf wird die am längsten inaktive Sitzung beendet.
+- Backups (`/api/backup`) sind in der Demo komplett gesperrt (Dateien lägen in einem gemeinsamen Ordner).
 
 ### Deployment-Skripte *(nach Builder-Check, eigene Entscheidung)*
 
@@ -99,9 +100,9 @@ Frontend: Buttons der gesperrten Aktionen bleiben sichtbar, sind im Demo-Modus d
 
 ### Frontend
 
-- Neuer öffentlicher Endpoint `GET /api/demo` (in `PUBLIC_API_PATHS`): `{ demo: boolean, email?, password?, nextResetAt? }`. Ohne Demo-Modus nur `{ demo: false }`.
+- Neuer öffentlicher Endpoint `GET /api/demo` (in `PUBLIC_API_PATHS`): `{ demo: boolean, email?, password? }`. Ohne Demo-Modus nur `{ demo: false }`.
 - Login-Seite: im Demo-Modus Kasten „Demo-Zugang“ mit E-Mail/Passwort und Button „Als Demo anmelden“ (füllt und sendet). „Passwort vergessen“ ausgeblendet.
-- Banner oben in der App (alle Seiten, nicht schließbar, dezent): „Demo-Instanz – alle Daten werden alle 3 Stunden zurückgesetzt (nächster Reset: HH:MM Uhr). E-Mails werden nicht versendet.“
+- Banner oben in der App (alle Seiten, nicht schließbar, dezent): „Demo-Instanz – Ihre Änderungen sieht niemand sonst und sie werden beim Abmelden gelöscht. E-Mails werden nicht versendet.“
 - Kleiner Context/Hook (`useDemo`) analog `PlanContext`.
 
 ## Constraints

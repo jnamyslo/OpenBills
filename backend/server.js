@@ -5,7 +5,8 @@ import { createApp } from './app.js';
 import { getPlanName } from './utils/plan.js';
 import { assertAuthConfig } from './auth/config.js';
 import { assertDemoConfig, isDemoMode } from './demo/index.js';
-import { resetDemo, scheduleDemoResets } from './demo/reset.js';
+import { resetDemo } from './demo/reset.js';
+import { cleanupDemoSchemas, refreshDemoTemplate } from './demo/sessionSchema.js';
 import { assertPlatformMailConfig } from './services/mailRouting.js';
 import { verifyDummyPassword } from './auth/password.js';
 import { cleanupSessions } from './auth/sessions.js';
@@ -22,6 +23,9 @@ async function runCleanup() {
     ['sessions', cleanupSessions],
     ['rate_limits', cleanupRateLimits],
     ['audit_log', cleanupAuditLog],
+    // nach sessions: Daten abgelaufener Demo-Sitzungen löschen, Demo-Vorlage auffrischen
+    ['demo_sessions', cleanupDemoSchemas],
+    ['demo_template', refreshDemoTemplate],
   ]) {
     try {
       await fn();
@@ -51,7 +55,6 @@ async function startServer() {
     if (isDemoMode()) {
       // Wirft DemoRefusedError bei echten Daten ohne Demo-Markierung -> Start bricht ab.
       await resetDemo();
-      scheduleDemoResets();
     }
 
     await verifyDummyPassword('warmup');

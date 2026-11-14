@@ -85,7 +85,7 @@ prompt_plan() {
     echo "  3) Starter       –  25 Rechnungen/Angebote pro Monat,  50 Kunden, E-Mail, Mahnwesen"
     echo "  4) Professional  – 100 Rechnungen/Angebote pro Monat, 250 Kunden, alle Funktionen"
     echo "  5) Enterprise    – unbegrenzt, alle Funktionen"
-    echo "  6) Demo-Instanz  – öffentliche Demo, alle Funktionen, keine Mails, Reset alle 3 h"
+    echo "  6) Demo-Instanz  – öffentliche Demo, alle Funktionen, keine Mails, eigene Daten je Sitzung"
     OPENBILLS_DEMO=""
     while true; do
         local choice
@@ -141,7 +141,7 @@ print_access_info() {
     if is_demo_instance "$name"; then
         echo
         print_info "=== Zugang ==="
-        print_info "Demo-Instanz – Login: demo@openbills.de / demo (Reset alle 3 h, kein Onboarding/Support-Zugang)"
+        print_info "Demo-Instanz – Login: demo@openbills.de / demo (eigene Daten je Sitzung, kein Onboarding/Support-Zugang)"
         return 0
     fi
     local send_args=""
@@ -356,7 +356,7 @@ NODE_ENV=production
 
 # Managed SaaS: free | starter | professional | enterprise (leer = self-hosted, unbegrenzt)
 OPENBILLS_PLAN=${OPENBILLS_PLAN}
-# Öffentliche Demo (true = abgeriegelt, keine Mails, Reset alle 3 h; nur auf leerer DB)
+# Öffentliche Demo (true = abgeriegelt, keine Mails, eigene Daten je Sitzung; nur auf leerer DB)
 OPENBILLS_DEMO=${OPENBILLS_DEMO}
 # Kontakt im Upgrade-Hinweis (E-Mail, Telefon oder URL)
 OPENBILLS_UPGRADE_CONTACT=${OPENBILLS_UPGRADE_CONTACT}
@@ -700,7 +700,7 @@ NODE_ENV=production
 
 # Managed SaaS: free | starter | professional | enterprise (leer = self-hosted, unbegrenzt)
 OPENBILLS_PLAN=${OPENBILLS_PLAN}
-# Öffentliche Demo (true = abgeriegelt, keine Mails, Reset alle 3 h; nur auf leerer DB)
+# Öffentliche Demo (true = abgeriegelt, keine Mails, eigene Daten je Sitzung; nur auf leerer DB)
 OPENBILLS_DEMO=${OPENBILLS_DEMO}
 # Kontakt im Upgrade-Hinweis (E-Mail, Telefon oder URL)
 OPENBILLS_UPGRADE_CONTACT=${OPENBILLS_UPGRADE_CONTACT}

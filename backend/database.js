@@ -4,6 +4,7 @@ import logger from './utils/logger.js';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { runMigrations, getMigrationStatus } from './migrations/index.js';
 
 dotenv.config();
@@ -72,6 +73,46 @@ export const pool = new Pool({
   keepAlive: true, // Enable TCP keep-alive
   keepAliveInitialDelayMillis: 10000, // Start keep-alive after 10 seconds of inactivity
 });
+
+// ============================================================================
+// Schema-Kontext (Demo: eigenes Schema je Sitzung)
+// ============================================================================
+
+const searchPathContext = new AsyncLocalStorage();
+
+/**
+ * Führt `fn` so aus, dass alle darin gestarteten DB-Zugriffe (pool.query, pool.connect, query)
+ * zuerst im Schema `schema` suchen, danach in `public`. Ohne Kontext: Standard-search_path.
+ */
+export function runWithSchema(schema, fn) {
+  return searchPathContext.run(schema, fn);
+}
+
+const rawConnect = pool.connect.bind(pool);
+
+async function connectWithSearchPath() {
+  // Kontext synchron lesen, bevor ein await ihn verlieren könnte.
+  const schema = searchPathContext.getStore() ?? null;
+  const client = await rawConnect();
+  if ((client.openbillsSchema ?? null) !== schema) {
+    try {
+      await client.query(schema ? `SET search_path TO ${client.escapeIdentifier(schema)}, public` : 'RESET search_path');
+      client.openbillsSchema = schema;
+    } catch (error) {
+      client.release(error);
+      throw error;
+    }
+  }
+  return client;
+}
+
+// pg-pool ruft intern this.connect(callback) auf (pool.query) – beide Formen unterstützen.
+pool.connect = function connect(callback) {
+  const promise = connectWithSearchPath();
+  if (typeof callback !== 'function') return promise;
+  promise.then((client) => callback(undefined, client, client.release), (error) => callback(error));
+  return undefined;
+};
 
 // ============================================================================
 // Pool Event Handlers for Monitoring and Error Handling

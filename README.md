@@ -5,6 +5,10 @@
   </picture>
 
   **[openbills.de](https://openbills.de)**
+
+  <br>
+
+  <a href="https://demo.openbills.de"><img src="https://img.shields.io/badge/%F0%9F%9A%80%20Demo%20jetzt%20ausprobieren-demo.openbills.de-1BA085?style=for-the-badge" alt="Demo jetzt ausprobieren – demo.openbills.de" height="48"></a>
 </div>
 
 # Moderne Rechnungssoftware für KMU, Handwerk & Dienstleister

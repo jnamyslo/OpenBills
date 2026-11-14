@@ -22,7 +22,8 @@ import reportingRouter from './routes/reporting.js';
 import remindersRouter from './routes/reminders.js';
 import planRouter from './routes/plan.js';
 import demoRouter from './routes/demo.js';
-import { demoGuard, demoBlockWrites } from './demo/guard.js';
+import { demoGuard, demoBlockWrites, demoBlockAll } from './demo/guard.js';
+import { demoSessionContext } from './demo/sessionSchema.js';
 import authRouter from './routes/auth.js';
 import usersRouter from './routes/users.js';
 import auditLogRouter from './routes/auditLog.js';
@@ -62,12 +63,15 @@ export function createApp() {
   });
 
   // Jede /api-Route braucht eine Session (Ausnahmen: PUBLIC_API_PATHS)
-  app.use('/api', originCheck, loadSession, requireAuth, demoGuard, auditWrites);
+  app.use('/api', originCheck, loadSession, requireAuth, demoGuard);
 
   // Bodies erst nach der Authentifizierung parsen; öffentliche Auth-Endpunkte nur kleine Bodies
   app.use('/api/auth', express.json({ limit: '100kb' }), express.urlencoded({ limit: '100kb', extended: true }));
   app.use(express.json({ limit: '100mb' })); // Increase limit for PDF attachments
   app.use(express.urlencoded({ limit: '100mb', extended: true }));
+
+  // Demo: ab hier eigenes Schema je Sitzung (erst hinter den Body-Parsern, die den Kontext verlieren)
+  app.use('/api', demoSessionContext, auditWrites);
 
   // API routes
   app.use('/api/auth', authRouter);
@@ -85,7 +89,7 @@ export function createApp() {
   app.use('/api/material-templates', requireFeature('customerPricing', { allowRead: true }), requireAdminForWrites, materialTemplatesRouter);
   app.use('/api/hourly-rates', requireAdminForWrites, hourlyRatesRouter);
   app.use('/api/yearly-invoice-start-numbers', requireAdminForWrites, yearlyInvoiceStartNumbersRouter);
-  app.use('/api/backup', requireAdmin, backupRouter);
+  app.use('/api/backup', requireAdmin, demoBlockAll, backupRouter);
   app.use('/api/reporting', reportingRouter);
   app.use('/api/reminders', requireFeature('reminders', { allowRead: true }), remindersRouter);
   app.use('/api/plan', planRouter);

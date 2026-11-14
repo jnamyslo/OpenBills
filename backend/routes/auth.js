@@ -11,6 +11,7 @@ import {
 import { createAuthToken, peekAuthToken, consumeAuthToken, revokeTokens, TOKEN_MESSAGES } from '../auth/tokens.js';
 import { getAuthConfig } from '../auth/config.js';
 import { isDemoMode, DEMO_EMAIL } from '../demo/index.js';
+import { dropSessionSchema } from '../demo/sessionSchema.js';
 import { isSmtpConfigured, sendPasswordResetMail } from '../services/authMailService.js';
 import { reserveAttempt, releaseAttempt, clearRateLimit, LIMITS } from '../auth/rateLimit.js';
 import {
@@ -206,6 +207,7 @@ router.post('/logout', async (req, res) => {
   try {
     clearSessionCookie(res);
     if (req.sessionToken) await deleteSession(req.sessionToken);
+    if (req.demoSchema) await dropSessionSchema(req.demoSchema);
     if (req.user) await audit(req, { action: 'auth.logout', entityType: 'users', entityId: req.user.id });
     return res.status(204).end();
   } catch (err) {

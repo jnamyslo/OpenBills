@@ -10,8 +10,6 @@ import logger from '../utils/logger.js';
 export const DEMO_EMAIL = 'demo@openbills.de';
 export const DEMO_PASSWORD = 'demo';
 
-const RESET_INTERVAL_HOURS = 3;
-
 export function isDemoMode() {
   return (process.env.OPENBILLS_DEMO || '').trim() === 'true';
 }
@@ -21,16 +19,6 @@ export function assertDemoConfig() {
   if (isDemoMode() && (process.env.OPENBILLS_PLAN || '').trim() !== '') {
     throw new Error('OPENBILLS_DEMO und OPENBILLS_PLAN schließen sich aus – für die Demo OPENBILLS_PLAN leer lassen.');
   }
-}
-
-/** Nächster Reset: volle Stunde mit hour % 3 === 0 (Container-Zeitzone), strikt nach `now`. */
-export function nextResetAt(now) {
-  const next = new Date(now);
-  next.setMinutes(0, 0, 0);
-  do {
-    next.setHours(next.getHours() + 1);
-  } while (next.getHours() % RESET_INTERVAL_HOURS !== 0);
-  return next;
 }
 
 /** Transport, der nichts versendet (nodemailer jsonTransport) und nur protokolliert. */

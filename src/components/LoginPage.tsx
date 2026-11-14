@@ -88,7 +88,7 @@ export function LoginPage() {
             E-Mail: <span className="font-mono">{demo.email}</span><br />
             Passwort: <span className="font-mono">{demo.password}</span>
           </p>
-          <p className="text-xs">Alle Daten werden alle 3 Stunden zurückgesetzt. E-Mails werden nicht versendet.</p>
+          <p className="text-xs">Jede Anmeldung startet mit frischen Demo-Daten. Ihre Änderungen sieht niemand sonst und sie werden beim Abmelden gelöscht. E-Mails werden nicht versendet.</p>
           <button
             type="button"
             onClick={handleDemoLogin}

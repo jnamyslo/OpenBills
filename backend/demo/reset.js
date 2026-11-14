@@ -6,8 +6,9 @@ import logger from '../utils/logger.js';
 import { BACKUP_TABLES } from '../utils/backupTables.js';
 import { createUser } from '../auth/users.js';
 import { hashPassword } from '../auth/password.js';
-import { DEMO_EMAIL, DEMO_PASSWORD, isDemoMode, nextResetAt } from './index.js';
+import { DEMO_EMAIL, DEMO_PASSWORD } from './index.js';
 import { seedDemoData } from './seed.js';
+import { buildTemplate, dropOrphanSchemas, lockDemoSchemas } from './sessionSchema.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Gleicher Ordner wie routes/backup.js
@@ -44,7 +45,8 @@ async function clearBackupDir(dir) {
 }
 
 /**
- * Setzt die Demo-Instanz zurück: alles leeren, Demo-User + Demo-Daten anlegen, Marker setzen.
+ * Setzt die Demo-Instanz zurück: alles leeren (inkl. aller Sitzungen und ihrer Daten), Demo-User anlegen,
+ * Demo-Vorlage neu aufbauen, Marker setzen. Die App-Tabellen in public bleiben leer (siehe sessionSchema.js).
  * Alles in einer Transaktion; Backups werden erst nach erfolgreichem Commit gelöscht.
  */
 export async function resetDemo({ now = new Date(), backupDir = DEFAULT_BACKUP_DIR, seed = seedDemoData } = {}) {
@@ -52,12 +54,14 @@ export async function resetDemo({ now = new Date(), backupDir = DEFAULT_BACKUP_D
   try {
     await client.query('BEGIN');
     await client.query('LOCK TABLE demo_marker IN EXCLUSIVE MODE');
+    await lockDemoSchemas(client);
     await assertDemoDatabase(client);
     const tables = [...BACKUP_TABLES, 'usage_counters', ...AUTH_TABLES].map((t) => client.escapeIdentifier(t));
     await client.query(`TRUNCATE ${tables.join(', ')} RESTART IDENTITY CASCADE`);
     await createUser(client, { email: DEMO_EMAIL, name: 'Demo', passwordHash: await hashPassword(DEMO_PASSWORD), role: 'admin' });
-    await seed(client, now);
     await client.query('INSERT INTO demo_marker DEFAULT VALUES ON CONFLICT DO NOTHING');
+    await dropOrphanSchemas(client);
+    await buildTemplate(client, { now, seed });
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
@@ -66,25 +70,5 @@ export async function resetDemo({ now = new Date(), backupDir = DEFAULT_BACKUP_D
     client.release();
   }
   await clearBackupDir(backupDir);
-  logger.info('Demo zurückgesetzt', { nextResetAt: nextResetAt(now).toISOString() });
-}
-
-const RETRY_DELAY_MS = 60 * 1000;
-
-/**
- * Plant den nächsten Reset (volle Stunde, durch 3 teilbar) und danach immer wieder.
- * Schlägt ein Reset fehl (z. B. Deadlock mit einem Besucher-Request), folgt nach einer Minute ein neuer Versuch.
- */
-export function scheduleDemoResets({ reset = resetDemo, delayMs } = {}) {
-  if (!isDemoMode()) return;
-  const delay = delayMs ?? Math.max(nextResetAt(new Date()).getTime() - Date.now(), 1000);
-  setTimeout(async () => {
-    try {
-      await reset();
-      scheduleDemoResets({ reset });
-    } catch (error) {
-      logger.error('Demo-Reset fehlgeschlagen, neuer Versuch in 1 Minute', { error: error.message });
-      scheduleDemoResets({ reset, delayMs: RETRY_DELAY_MS });
-    }
-  }, delay);
+  logger.info('Demo zurückgesetzt');
 }

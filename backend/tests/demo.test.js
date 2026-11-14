@@ -8,10 +8,9 @@ import { hashPassword } from '../auth/password.js';
 import { demoGuard } from '../demo/guard.js';
 import { createTransporter } from '../services/emailService.js';
 import { createPlatformTransporter } from '../services/mailRouting.js';
-import { scheduleDemoResets } from '../demo/reset.js';
 import { createApp } from '../app.js';
 import { PUBLIC_API_PATHS } from '../auth/middleware.js';
-import { isDemoMode, assertDemoConfig, nextResetAt, DEMO_EMAIL, DEMO_PASSWORD } from '../demo/index.js';
+import { isDemoMode, assertDemoConfig, DEMO_EMAIL, DEMO_PASSWORD } from '../demo/index.js';
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -45,15 +44,6 @@ describe('assertDemoConfig', () => {
   });
 });
 
-describe('nextResetAt', () => {
-  it('nächste volle Stunde mit hour % 3 === 0, strikt danach', () => {
-    expect(nextResetAt(new Date(2026, 10, 14, 21, 59))).toEqual(new Date(2026, 10, 15, 0, 0));
-    expect(nextResetAt(new Date(2026, 10, 14, 3, 0, 0))).toEqual(new Date(2026, 10, 14, 6, 0));
-    expect(nextResetAt(new Date(2026, 10, 14, 4, 30))).toEqual(new Date(2026, 10, 14, 6, 0));
-    expect(nextResetAt(new Date(2026, 10, 14, 2, 59, 59, 999))).toEqual(new Date(2026, 10, 14, 3, 0));
-  });
-});
-
 describe('GET /api/demo', () => {
   const app = createApp();
 
@@ -69,14 +59,11 @@ describe('GET /api/demo', () => {
     expect(res.body).toEqual({ demo: false });
   });
 
-  it('im Demo-Modus mit Zugangsdaten und nächstem Reset', async () => {
+  it('im Demo-Modus mit Zugangsdaten', async () => {
     vi.stubEnv('OPENBILLS_DEMO', 'true');
     const res = await request(app).get('/api/demo');
     expect(res.status).toBe(200);
-    expect(res.body.demo).toBe(true);
-    expect(res.body.email).toBe(DEMO_EMAIL);
-    expect(res.body.password).toBe(DEMO_PASSWORD);
-    expect(new Date(res.body.nextResetAt).getTime()).toBeGreaterThan(Date.now());
+    expect(res.body).toEqual({ demo: true, email: DEMO_EMAIL, password: DEMO_PASSWORD });
   });
 });
 
@@ -254,20 +241,4 @@ describe.skipIf(!hasDb)('Demo-Sperre über echte Express-Routen', () => {
 
 afterAll(async () => {
   if (hasDb) await pool.end();
-});
-
-describe('scheduleDemoResets', () => {
-  it('wiederholt einen fehlgeschlagenen Reset nach einer Minute', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date(2026, 10, 14, 2, 59, 0));
-    vi.stubEnv('OPENBILLS_DEMO', 'true');
-    const reset = vi.fn().mockRejectedValueOnce(new Error('deadlock')).mockResolvedValue(undefined);
-    scheduleDemoResets({ reset });
-    await vi.advanceTimersByTimeAsync(60 * 1000);
-    expect(reset).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(60 * 1000);
-    expect(reset).toHaveBeenCalledTimes(2);
-    vi.clearAllTimers();
-    vi.useRealTimers();
-  });
 });

@@ -486,7 +486,6 @@ export interface DemoInfo {
   demo: boolean;
   email?: string;
   password?: string;
-  nextResetAt?: string;
 }
 
 export interface PlanInfo {

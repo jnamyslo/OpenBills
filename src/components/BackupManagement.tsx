@@ -53,8 +53,9 @@ export function BackupManagement({ onClose, embedded = false }: BackupManagement
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
 
   useEffect(() => {
-    loadBackups();
-  }, []);
+    // Demo: Backups gesperrt (Backend 403), Liste gar nicht erst laden
+    if (!demo) loadBackups();
+  }, [demo]);
 
   const loadBackups = async () => {
     setIsLoading(true);
@@ -276,10 +277,11 @@ export function BackupManagement({ onClose, embedded = false }: BackupManagement
                 <AlertTriangle className="h-4 w-4 mr-1 flex-shrink-0 text-orange-500" />
                 Das Passwort wird nicht gespeichert. Ohne dieses Passwort kann das Backup nicht wiederhergestellt werden.
               </p>
+              {demo && <p className="text-sm text-amber-800">In der Demo deaktiviert</p>}
               <div className="flex justify-end">
                 <button
                   onClick={createZipBackup}
-                  disabled={isCreatingZipBackup || !canCreate}
+                  disabled={demo || isCreatingZipBackup || !canCreate}
                   className="btn-primary text-white px-4 py-2 rounded-lg hover:brightness-90 transition-colors flex items-center space-x-2 disabled:opacity-50"
                 >
                   {isCreatingZipBackup ? (
