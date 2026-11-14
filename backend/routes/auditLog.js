@@ -80,7 +80,7 @@ function toEntry(r) {
 
 function csvField(value) {
   let s = value === null || value === undefined ? '' : String(value);
-  if (/^[=+\-@]/.test(s)) s = `'${s}`;
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   if (/[;"\r\n]/.test(s)) s = `"${s.replace(/"/g, '""')}"`;
   return s;
 }

@@ -45,6 +45,7 @@ describe.skipIf(!hasDb)('Betreiber-Skripte (DB)', () => {
     const { rows: log } = await pool.query(`SELECT * FROM audit_log WHERE action='operator.reset'`);
     expect(log).toHaveLength(2);
     expect(log[0].actor_label).toBe('System');
+    expect(log[0].entity_type).toBe('users');
   });
 
   it('resetOperator wandelt keinen normalen Nutzer um', async () => {

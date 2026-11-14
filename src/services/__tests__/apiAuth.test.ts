@@ -53,6 +53,15 @@ describe('api auth handling', () => {
     await expect(apiService.login('a@example.com', 'pw')).rejects.toThrow('Zu viele Versuche. Bitte später erneut versuchen.');
   });
 
+  it('gibt den Fehlercode weiter (MFA_NOT_PENDING)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      jsonResponse(400, { error: 'Keine ausstehende Zwei-Faktor-Anmeldung', code: 'MFA_NOT_PENDING' })));
+    await expect(apiService.loginTotp('123456')).rejects.toMatchObject({
+      message: 'Keine ausstehende Zwei-Faktor-Anmeldung',
+      code: 'MFA_NOT_PENDING',
+    });
+  });
+
   it('lässt PlanError unverändert', async () => {
     vi.stubGlobal('fetch', vi.fn(async () =>
       jsonResponse(402, { error: 'Limit', code: 'PLAN_LIMIT_REACHED', plan: 'free', upgradeContact: null })));

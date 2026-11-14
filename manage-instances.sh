@@ -114,7 +114,8 @@ start_instance() {
         DB_NAME=$(grep "POSTGRES_DB=" ".env.${instance_name}" | cut -d'=' -f2)
         DB_USER=$(grep "POSTGRES_USER=" ".env.${instance_name}" | cut -d'=' -f2)
         DB_PASSWORD=$(grep "POSTGRES_PASSWORD=" ".env.${instance_name}" | cut -d'=' -f2)
-        
+        FRONTEND_PORT=$(grep "FRONTEND_PORT=" ".env.${instance_name}" | cut -d'=' -f2)
+
         cat > .env.backend.${instance_name} << EOF
 PORT=3001
 DB_HOST=database
@@ -123,7 +124,11 @@ DB_NAME=${DB_NAME}
 DB_USER=${DB_USER}
 DB_PASSWORD=${DB_PASSWORD}
 NODE_ENV=production
+AUTH_ENCRYPTION_KEY=$(openssl rand -base64 32)
+TRUST_PROXY_HOPS=2
+PUBLIC_URL=http://localhost:${FRONTEND_PORT}
 EOF
+        print_warning "PUBLIC_URL wurde auf http://localhost:${FRONTEND_PORT} gesetzt. Bitte per './manage-instances.sh config ${instance_name}' auf die echte URL ändern."
     fi
     
     print_info "Starte Instanz: $instance_name"

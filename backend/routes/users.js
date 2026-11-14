@@ -135,7 +135,14 @@ router.put('/:id', async (req, res) => {
         `UPDATE users SET name = $2, role = $3, is_active = $4, updated_at = now() WHERE id = $1 RETURNING *`,
         [current.id, changes.name ?? current.name, nextRole, nextActive]
       );
-      return { row: out[0], wasActive: current.is_active };
+      // Einladungen eines deaktivierten oder herabgestuften Admins verfallen.
+      if (wasAdmin && !willBeAdmin) {
+        await client.query(
+          `UPDATE auth_tokens SET used_at = now() WHERE kind = 'invite' AND created_by = $1 AND used_at IS NULL`,
+          [current.id]
+        );
+      }
+      return { row: out[0] };
     });
 
     if (!updated.row.is_active) await deleteUserSessions(updated.row.id);

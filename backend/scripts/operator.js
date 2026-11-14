@@ -1,6 +1,6 @@
 import { pathToFileURL } from 'url';
 import { pool } from '../database.js';
-import { OPERATOR_EMAIL, findUserByEmail } from '../auth/users.js';
+import { OPERATOR_EMAIL } from '../auth/users.js';
 import { hashPassword } from '../auth/password.js';
 import { generateToken } from '../auth/crypto.js';
 import { deleteUserSessions } from '../auth/sessions.js';
@@ -46,7 +46,7 @@ export async function resetOperator() {
     client.release();
   }
   await deleteUserSessions(id);
-  await audit(null, { action: 'operator.reset', entityType: 'user', entityId: id });
+  await audit(null, { action: 'operator.reset', entityType: 'users', entityId: id });
   return { email: OPERATOR_EMAIL, password };
 }
 

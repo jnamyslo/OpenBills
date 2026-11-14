@@ -122,7 +122,8 @@ class ApiService {
           window.dispatchEvent(new CustomEvent(PLAN_ERROR_EVENT, { detail: planError.body }));
           throw planError;
         }
-        throw new Error(errorData.error || errorData.message || `HTTP error! status: ${response.status}`);
+        // Fehlercode mitgeben, damit Aufrufer (z. B. AuthContext) gezielt reagieren können.
+        throw Object.assign(new Error(errorData.error || errorData.message || `HTTP error! status: ${response.status}`), { code: errorData.code as string | undefined });
       }
 
       if (response.status === 204) {

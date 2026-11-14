@@ -131,6 +131,26 @@ describe.skipIf(!hasDb)('users API', () => {
       expect((await call('get', '/api/plan', bobCookie)).status).toBe(401);
     });
 
+    it.each([
+      ['demotion', { role: 'user' }],
+      ['deactivation', { isActive: false }],
+    ])('%s of an admin revokes their unused invites', async (_label, change) => {
+      const admin = await loginAs('admin');
+      const other = await loginAs('admin');
+      const mine = await createAuthToken({ kind: 'invite', email: 'a@firma.de', role: 'user', createdBy: other.user.id, ttlMs: 3600000 });
+      const foreign = await createAuthToken({ kind: 'invite', email: 'b@firma.de', role: 'user', createdBy: admin.user.id, ttlMs: 3600000 });
+      expect((await call('put', `/api/users/${other.user.id}`, admin.cookie, change)).status).toBe(200);
+      expect((await request(app).get(`/api/auth/invite/${mine}`)).body.status).toBe('used');
+      expect((await request(app).get(`/api/auth/invite/${foreign}`)).body.status).toBe('valid');
+    });
+
+    it('renaming an admin keeps their invites', async () => {
+      const admin = await loginAs('admin');
+      const token = await createAuthToken({ kind: 'invite', email: 'a@firma.de', role: 'user', createdBy: admin.user.id, ttlMs: 3600000 });
+      expect((await call('put', `/api/users/${admin.user.id}`, admin.cookie, { name: 'Neu' })).status).toBe(200);
+      expect((await request(app).get(`/api/auth/invite/${token}`)).body.status).toBe('valid');
+    });
+
     it('concurrent demotions leave one admin', async () => {
       const a = await loginAs('admin');
       const b = await loginAs('admin');

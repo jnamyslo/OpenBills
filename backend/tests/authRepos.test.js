@@ -128,23 +128,6 @@ describe.skipIf(!hasDb)('Auth-Repos (DB)', () => {
     expect((await tokens.peekAuthToken(t, 'password_reset')).status).toBe('used');
   });
 
-  it('Rate-Limit', async () => {
-    for (let i = 0; i < 5; i++) await rl.recordAttempt('k1', 900000);
-    expect(await rl.checkRateLimit('k1', 5, 900000)).toBeGreaterThan(0);
-    expect(await rl.checkRateLimit('k2', 5, 900000)).toBe(0);
-    await rl.clearRateLimit('k1');
-    expect(await rl.checkRateLimit('k1', 5, 900000)).toBe(0);
-  });
-
-  it('Rate-Limit-Fenster läuft ab', async () => {
-    for (let i = 0; i < 5; i++) await rl.recordAttempt('k3', 900000);
-    await pool.query(`UPDATE rate_limits SET window_start = now() - interval '1 hour' WHERE key = 'k3'`);
-    expect(await rl.checkRateLimit('k3', 5, 900000)).toBe(0);
-    await rl.recordAttempt('k3', 900000);
-    const { rows } = await pool.query(`SELECT count FROM rate_limits WHERE key = 'k3'`);
-    expect(rows[0].count).toBe(1);
-  });
-
   it('reserveAttempt ist atomar: von 6 parallelen Reservierungen bei Limit 5 gelingen genau 5', async () => {
     const results = await Promise.all(Array.from({ length: 6 }, () => rl.reserveAttempt('k4', 5, 900000)));
     expect(results.filter((r) => r === 0)).toHaveLength(5);

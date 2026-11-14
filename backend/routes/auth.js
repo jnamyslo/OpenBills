@@ -301,6 +301,12 @@ async function inTransaction(fn) {
   }
 }
 
+// Vorabprüfung ohne Sperre: ungültige Tokens kosten keinen argon2-Hash.
+async function requireValidToken(token, kind) {
+  const { status } = await peekAuthToken(token, kind);
+  if (status !== 'valid') throw new AuthError(400, TOKEN_MESSAGES[status], `token_${status}`);
+}
+
 async function startSession(req, res, user) {
   const token = await createSession(user.id, { ip: req.ip ?? null, userAgent: req.get('user-agent') ?? null });
   setSessionCookie(res, token);
@@ -325,6 +331,7 @@ router.post('/setup', async (req, res) => {
     const { token, name, email, password } = req.body ?? {};
     const cleanName = requireName(name);
     const cleanEmail = requireEmail(email);
+    await requireValidToken(token, 'onboarding');
     const passwordHash = await hashPassword(requireStrongPassword(password));
 
     const user = await inTransaction(async (client) => {
@@ -362,6 +369,7 @@ router.post('/invite/:token', async (req, res) => {
 
     const { name, password } = req.body ?? {};
     const cleanName = requireName(name);
+    await requireValidToken(req.params.token, 'invite');
     const passwordHash = await hashPassword(requireStrongPassword(password));
 
     const user = await inTransaction(async (client) => {
@@ -429,9 +437,7 @@ router.post('/password-reset/:token', async (req, res) => {
     const ipKey = resetCompleteIpKey(req);
     const retryAfter = await reserveIp(ipKey);
     if (retryAfter > 0) return sendRateLimited(res, retryAfter);
-    // Vorabprüfung ohne Sperre: ungültige Tokens kosten keinen argon2-Hash.
-    const { status } = await peekAuthToken(req.params.token, 'password_reset');
-    if (status !== 'valid') throw new AuthError(400, TOKEN_MESSAGES[status], `token_${status}`);
+    await requireValidToken(req.params.token, 'password_reset');
 
     const passwordHash = await hashPassword(requireStrongPassword(req.body?.password));
     const user = await inTransaction(async (client) => {

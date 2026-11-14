@@ -114,6 +114,14 @@ describe.skipIf(!hasDb)('audit log API', () => {
       expect(lines[2]).toBe('2026-01-01T10:00:00.000Z;"A;B ""C""";ja;x.y;\'=cmd;7;');
     });
 
+    it('neutralizes formulas starting with TAB or CR', async () => {
+      const admin = await loginAs('admin');
+      await insert('2026-01-01T10:00:00Z', { actor: '\tcmd', entityType: '\r=x', ip: null });
+      const res = await get('/api/audit-log?format=csv', admin.cookie);
+      const lines = res.text.slice(1).split('\r\n');
+      expect(lines[1]).toBe("2026-01-01T10:00:00.000Z;'\tcmd;nein;auth.login;\"'\r=x\";;");
+    });
+
     it('applies filters and ignores pagination', async () => {
       const admin = await loginAs('admin');
       await pool.query(

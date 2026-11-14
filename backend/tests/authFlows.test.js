@@ -115,6 +115,14 @@ describe.skipIf(!hasDb)('Auth-Flows: Setup, Einladung, Reset, 2FA', () => {
       expect((await post('/api/auth/setup', setupBody(token))).status).toBe(201);
     });
 
+    it('ungültiger Token -> 400 ohne argon2-Hash', async () => {
+      hashSpy.fn.mockClear();
+      const res = await post('/api/auth/setup', setupBody('unbekannt'));
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('token_invalid');
+      expect(hashSpy.fn).not.toHaveBeenCalled();
+    });
+
     it('21. Versuch pro IP -> 429', async () => {
       for (let i = 0; i < 20; i += 1) {
         expect((await post('/api/auth/setup', setupBody('falsch'))).status).toBe(400);
@@ -144,6 +152,14 @@ describe.skipIf(!hasDb)('Auth-Flows: Setup, Einladung, Reset, 2FA', () => {
       await makeUser('neu@firma.de');
       const token = await createAuthToken({ kind: 'invite', email: 'neu@firma.de', role: 'admin', ttlMs: 48 * HOUR });
       expect((await post(`/api/auth/invite/${token}`, { name: 'Neu', password: PASSWORD })).status).toBe(409);
+    });
+
+    it('ungültiger Token -> 400 ohne argon2-Hash', async () => {
+      hashSpy.fn.mockClear();
+      const res = await post('/api/auth/invite/unbekannter-token', { name: 'Neu', password: PASSWORD });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('token_invalid');
+      expect(hashSpy.fn).not.toHaveBeenCalled();
     });
 
     it('schwaches Passwort -> 400', async () => {

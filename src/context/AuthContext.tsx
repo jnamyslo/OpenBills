@@ -50,10 +50,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const verifyTotp = useCallback(async (code: string) => {
-    const { user: me } = await apiService.loginTotp(code);
-    setUser(me);
-    setStatus('authenticated');
-  }, []);
+    try {
+      const { user: me } = await apiService.loginTotp(code);
+      setUser(me);
+      setStatus('authenticated');
+    } catch (error) {
+      // Pending-Session abgelaufen: Status neu laden, damit wieder das Login-Formular erscheint.
+      if ((error as { code?: string }).code === 'MFA_NOT_PENDING') await refresh();
+      throw error;
+    }
+  }, [refresh]);
 
   const logout = useCallback(async () => {
     try {
