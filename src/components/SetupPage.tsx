@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { apiService } from '../services/api';
 import type { TokenStatus } from '../types';
 import { errorMessage, newPasswordProblem } from '../utils/authRoutes';
+import { usePasswordMinLength } from '../hooks/usePasswordMinLength';
 import { AuthField, AuthLayout, AuthLoading, AuthMessage, AuthSubmitButton, TokenStatusMessage } from './AuthLayout';
 
 interface SetupPageProps {
@@ -11,6 +12,7 @@ interface SetupPageProps {
 
 /** Ersteinrichtung: legt den ersten Administrator über den Onboarding-Link an. */
 export function SetupPage({ token, onDone }: SetupPageProps) {
+  const minLength = usePasswordMinLength();
   const [status, setStatus] = useState<TokenStatus | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [name, setName] = useState('');
@@ -32,7 +34,7 @@ export function SetupPage({ token, onDone }: SetupPageProps) {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    const problem = newPasswordProblem(password, confirmation);
+    const problem = newPasswordProblem(password, confirmation, minLength);
     if (problem) {
       setError(problem);
       return;
@@ -61,7 +63,7 @@ export function SetupPage({ token, onDone }: SetupPageProps) {
           {error && <AuthMessage kind="error">{error}</AuthMessage>}
           <AuthField label="Name" value={name} onChange={setName} autoComplete="name" autoFocus />
           <AuthField label="E-Mail" type="email" value={email} onChange={setEmail} autoComplete="username" inputMode="email" />
-          <AuthField label="Passwort (mind. 12 Zeichen)" type="password" value={password} onChange={setPassword} autoComplete="new-password" />
+          <AuthField label={`Passwort (mind. ${minLength} Zeichen)`} type="password" value={password} onChange={setPassword} autoComplete="new-password" />
           <AuthField label="Passwort bestätigen" type="password" value={confirmation} onChange={setConfirmation} autoComplete="new-password" />
           <AuthSubmitButton busy={busy}>Konto anlegen</AuthSubmitButton>
         </form>

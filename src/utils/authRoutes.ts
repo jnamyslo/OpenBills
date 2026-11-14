@@ -22,9 +22,9 @@ export function isAdmin(user: AuthUser | null): boolean {
 export const PASSWORD_MIN_LENGTH = 12;
 export const PASSWORD_MAX_LENGTH = 128;
 
-/** Clientseitige Vorprüfung wie im Backend (12–128 Zeichen); die Servermeldung hat Vorrang. */
-export function newPasswordProblem(password: string, confirmation: string): string | null {
-  if (password.length < PASSWORD_MIN_LENGTH) return `Das Passwort muss mindestens ${PASSWORD_MIN_LENGTH} Zeichen lang sein.`;
+/** Clientseitige Vorprüfung wie im Backend (Mindestlänge laut Server, max. 128 Zeichen); die Servermeldung hat Vorrang. */
+export function newPasswordProblem(password: string, confirmation: string, minLength = PASSWORD_MIN_LENGTH): string | null {
+  if (password.length < minLength) return `Das Passwort muss mindestens ${minLength} Zeichen lang sein.`;
   if (password.length > PASSWORD_MAX_LENGTH) return `Das Passwort darf höchstens ${PASSWORD_MAX_LENGTH} Zeichen lang sein.`;
   if (password !== confirmation) return 'Die Passwörter stimmen nicht überein.';
   return null;

@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { hashPassword, verifyPassword, verifyDummyPassword, validatePassword } from '../auth/password.js';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { assertAuthConfig } from '../auth/config.js';
+import { hashPassword, verifyPassword, verifyDummyPassword, validatePassword, getPasswordMinLength } from '../auth/password.js';
 import { commonPasswords } from '../auth/commonPasswords.js';
 
 describe('Passwort-Hashing', () => {
@@ -30,6 +31,34 @@ describe('validatePassword', () => {
     for (const p of commonPasswords) {
       expect(p.length).toBeGreaterThanOrEqual(12);
       expect(p).toBe(p.toLowerCase());
+    }
+  });
+});
+
+describe('PASSWORD_MIN_LENGTH', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('Default 12', () => {
+    vi.stubEnv('PASSWORD_MIN_LENGTH', '');
+    expect(getPasswordMinLength()).toBe(12);
+    expect(validatePassword('abcdefgh')).toMatch(/mindestens 12/);
+  });
+
+  it('per Env auf 8 gesenkt', () => {
+    vi.stubEnv('PASSWORD_MIN_LENGTH', '8');
+    expect(getPasswordMinLength()).toBe(8);
+    expect(validatePassword('abcdefgh')).toBeNull();
+    expect(validatePassword('abcdefg')).toBe('Das Passwort muss mindestens 8 Zeichen lang sein.');
+  });
+
+  it('assertAuthConfig lehnt ungültige Werte ab', () => {
+    for (const bad of ['7', '129', 'abc', '10.5']) {
+      vi.stubEnv('PASSWORD_MIN_LENGTH', bad);
+      expect(() => assertAuthConfig(), bad).toThrow(/PASSWORD_MIN_LENGTH/);
+    }
+    for (const ok of ['', '8', '128']) {
+      vi.stubEnv('PASSWORD_MIN_LENGTH', ok);
+      expect(() => assertAuthConfig(), ok).not.toThrow();
     }
   });
 });

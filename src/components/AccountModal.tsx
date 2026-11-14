@@ -4,6 +4,7 @@ import { X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { apiService } from '../services/api';
 import { errorMessage, newPasswordProblem } from '../utils/authRoutes';
+import { usePasswordMinLength } from '../hooks/usePasswordMinLength';
 
 interface AccountModalProps {
   isOpen: boolean;
@@ -17,6 +18,7 @@ const buttonClass = 'px-4 py-2 rounded-md bg-primary-custom text-white hover:opa
 const secondaryClass = 'px-4 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50';
 
 export function AccountModal({ isOpen, onClose }: AccountModalProps) {
+  const minLength = usePasswordMinLength();
   const { user, refresh } = useAuth();
 
   const [currentPassword, setCurrentPassword] = useState('');
@@ -64,7 +66,7 @@ export function AccountModal({ isOpen, onClose }: AccountModalProps) {
     event.preventDefault();
     setPwError('');
     setPwSuccess('');
-    const problem = newPasswordProblem(newPassword, confirmPassword);
+    const problem = newPasswordProblem(newPassword, confirmPassword, minLength);
     if (problem) {
       setPwError(problem);
       return;

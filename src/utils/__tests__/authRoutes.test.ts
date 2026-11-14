@@ -53,4 +53,10 @@ describe('newPasswordProblem', () => {
     expect(newPasswordProblem('a'.repeat(12), 'b'.repeat(12))).toMatch(/nicht überein/);
     expect(newPasswordProblem('a'.repeat(12), 'a'.repeat(12))).toBeNull();
   });
+
+  it('nutzt die übergebene Mindestlänge', () => {
+    expect(newPasswordProblem('abcdefgh', 'abcdefgh', 8)).toBeNull();
+    expect(newPasswordProblem('abcdefg', 'abcdefg', 8)).toMatch(/mindestens 8/);
+    expect(newPasswordProblem('abcdefgh', 'abcdefgh')).toMatch(/mindestens 12/);
+  });
 });

@@ -35,6 +35,7 @@ describe('PUBLIC_API_PATHS', () => {
     expect(isPublic('POST', '/auth/password-reset/request')).toBe(true);
     expect(isPublic('GET', '/auth/password-reset/abc')).toBe(true);
     expect(isPublic('POST', '/auth/password-reset/abc')).toBe(true);
+    expect(isPublic('GET', '/auth/password-policy')).toBe(true);
   });
 
   it('lässt keine Umgehungen durch', () => {
@@ -50,6 +51,8 @@ describe('PUBLIC_API_PATHS', () => {
       ['GET', '/auth/password-reset/request/x'],
       ['POST', '/auth/logout'],
       ['GET', '/auth/me'],
+      ['POST', '/auth/password-policy'],
+      ['GET', '/auth/password-policy/x'],
       ['GET', '/customers'],
       ['POST', '/x/auth/login'],
     ]) {
@@ -85,6 +88,12 @@ describe.skipIf(!hasDb)('Zugriffskontrolle (DB)', () => {
 
   it('unbekannte /api-Pfade ohne Cookie -> 401', async () => {
     expect((await request(app).get('/api/gibt-es-nicht')).status).toBe(401);
+  });
+
+  it('GET /api/auth/password-policy ohne Cookie -> 200 mit Mindestlänge', async () => {
+    const res = await request(app).get('/api/auth/password-policy');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ minLength: 12, maxLength: 128 });
   });
 
   it('GET /health ohne Cookie -> nicht 401', async () => {

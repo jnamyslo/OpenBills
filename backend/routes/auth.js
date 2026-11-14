@@ -3,7 +3,7 @@ import { pool, query } from '../database.js';
 import logger from '../utils/logger.js';
 import { hashToken, encryptSecret, decryptSecret } from '../auth/crypto.js';
 import { verifyTotp, generateTotpSecret, otpauthUri, generateRecoveryCodes } from '../auth/totp.js';
-import { verifyPassword, verifyDummyPassword, validatePassword, hashPassword } from '../auth/password.js';
+import { verifyPassword, verifyDummyPassword, validatePassword, hashPassword, getPasswordMinLength, MAX_LENGTH } from '../auth/password.js';
 import {
   findUserByEmail, findUserById, normalizeEmail, recordLoginFailure, recordLoginSuccess, toPublicUser,
   createUser, hasCustomerAdmin,
@@ -208,6 +208,11 @@ router.post('/logout', async (req, res) => {
   } catch (err) {
     return sendAuthError(res, err);
   }
+});
+
+// Öffentlich: Passwort-Richtlinie für Setup-, Einladungs- und Reset-Seiten.
+router.get('/password-policy', (req, res) => {
+  res.json({ minLength: getPasswordMinLength(), maxLength: MAX_LENGTH });
 });
 
 router.get('/me', (req, res) => {

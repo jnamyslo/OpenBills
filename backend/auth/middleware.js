@@ -15,6 +15,7 @@ export const PUBLIC_API_PATHS = [
   { method: 'POST', pattern: /^\/auth\/password-reset\/request$/ },
   { method: 'GET', pattern: new RegExp(`^/auth/password-reset/${TOKEN}$`) },
   { method: 'POST', pattern: new RegExp(`^/auth/password-reset/${TOKEN}$`) },
+  { method: 'GET', pattern: /^\/auth\/password-policy$/ },
 ];
 
 // Für Sessions mit mfa_pending zusätzlich erreichbar.

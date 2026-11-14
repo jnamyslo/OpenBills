@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { apiService } from '../services/api';
 import type { TokenStatus } from '../types';
 import { errorMessage, newPasswordProblem } from '../utils/authRoutes';
+import { usePasswordMinLength } from '../hooks/usePasswordMinLength';
 import { AuthField, AuthLayout, AuthLoading, AuthMessage, AuthSubmitButton, TokenStatusMessage } from './AuthLayout';
 
 interface ResetPasswordPageProps {
@@ -11,6 +12,7 @@ interface ResetPasswordPageProps {
 
 /** Neues Passwort über einen Reset-Link setzen. Das Backend beendet alle Sessions – danach neu anmelden. */
 export function ResetPasswordPage({ token, onDone }: ResetPasswordPageProps) {
+  const minLength = usePasswordMinLength();
   const [status, setStatus] = useState<TokenStatus | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [password, setPassword] = useState('');
@@ -31,7 +33,7 @@ export function ResetPasswordPage({ token, onDone }: ResetPasswordPageProps) {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    const problem = newPasswordProblem(password, confirmation);
+    const problem = newPasswordProblem(password, confirmation, minLength);
     if (problem) {
       setError(problem);
       return;
@@ -76,7 +78,7 @@ export function ResetPasswordPage({ token, onDone }: ResetPasswordPageProps) {
       ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && <AuthMessage kind="error">{error}</AuthMessage>}
-          <AuthField label="Neues Passwort (mind. 12 Zeichen)" type="password" value={password} onChange={setPassword} autoComplete="new-password" autoFocus />
+          <AuthField label={`Neues Passwort (mind. ${minLength} Zeichen)`} type="password" value={password} onChange={setPassword} autoComplete="new-password" autoFocus />
           <AuthField label="Passwort bestätigen" type="password" value={confirmation} onChange={setConfirmation} autoComplete="new-password" />
           <AuthSubmitButton busy={busy}>Passwort speichern</AuthSubmitButton>
         </form>

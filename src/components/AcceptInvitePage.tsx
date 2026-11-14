@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { apiService } from '../services/api';
 import type { AuthRole, TokenStatus } from '../types';
 import { errorMessage, newPasswordProblem } from '../utils/authRoutes';
+import { usePasswordMinLength } from '../hooks/usePasswordMinLength';
 import { AuthField, AuthLayout, AuthLoading, AuthMessage, AuthSubmitButton, TokenStatusMessage } from './AuthLayout';
 
 interface AcceptInvitePageProps {
@@ -16,6 +17,7 @@ const ROLE_LABELS: Record<AuthRole, string> = {
 
 /** Einladung annehmen: Name und Passwort für das eingeladene Konto festlegen. */
 export function AcceptInvitePage({ token, onDone }: AcceptInvitePageProps) {
+  const minLength = usePasswordMinLength();
   const [status, setStatus] = useState<TokenStatus | null>(null);
   const [invite, setInvite] = useState<{ email: string; role?: AuthRole }>({ email: '' });
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -41,7 +43,7 @@ export function AcceptInvitePage({ token, onDone }: AcceptInvitePageProps) {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    const problem = newPasswordProblem(password, confirmation);
+    const problem = newPasswordProblem(password, confirmation, minLength);
     if (problem) {
       setError(problem);
       return;
@@ -74,7 +76,7 @@ export function AcceptInvitePage({ token, onDone }: AcceptInvitePageProps) {
           {error && <AuthMessage kind="error">{error}</AuthMessage>}
           <AuthField label="E-Mail" type="email" value={invite.email} autoComplete="username" readOnly />
           <AuthField label="Name" value={name} onChange={setName} autoComplete="name" autoFocus />
-          <AuthField label="Passwort (mind. 12 Zeichen)" type="password" value={password} onChange={setPassword} autoComplete="new-password" />
+          <AuthField label={`Passwort (mind. ${minLength} Zeichen)`} type="password" value={password} onChange={setPassword} autoComplete="new-password" />
           <AuthField label="Passwort bestätigen" type="password" value={confirmation} onChange={setConfirmation} autoComplete="new-password" />
           <AuthSubmitButton busy={busy}>Konto anlegen</AuthSubmitButton>
         </form>

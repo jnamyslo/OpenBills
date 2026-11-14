@@ -1,3 +1,5 @@
+import { MAX_LENGTH, PASSWORD_MIN_LENGTH_FLOOR } from './password.js';
+
 export function getAuthConfig() {
   const publicUrl = (process.env.PUBLIC_URL || '').trim();
   let publicOrigin = publicUrl.replace(/\/+$/, '');
@@ -29,6 +31,10 @@ export function assertAuthConfig() {
   }
   if (protocol !== 'http:' && protocol !== 'https:') {
     throw new Error('PUBLIC_URL ist ungültig (erwartet http:// oder https://, z. B. https://rechnung.example.de)');
+  }
+  const minLength = (process.env.PASSWORD_MIN_LENGTH || '').trim();
+  if (minLength !== '' && !(/^\d+$/.test(minLength) && Number(minLength) >= PASSWORD_MIN_LENGTH_FLOOR && Number(minLength) <= MAX_LENGTH)) {
+    throw new Error(`PASSWORD_MIN_LENGTH ist ungültig ("${minLength}"). Erlaubt: ganze Zahl von ${PASSWORD_MIN_LENGTH_FLOOR} bis ${MAX_LENGTH} oder leer (= 12).`);
   }
   if (cfg.encryptionKey.length !== 32) {
     throw new Error('AUTH_ENCRYPTION_KEY fehlt oder ist nicht 32 Byte (base64) lang (erzeugen mit: openssl rand -base64 32)');

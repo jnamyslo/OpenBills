@@ -751,6 +751,10 @@ class ApiService {
   // Auth API
   // --------------------------------------------------------------------------
 
+  async getPasswordPolicy(): Promise<{ minLength: number; maxLength: number }> {
+    return this.request('/auth/password-policy', { skipAuthEvent: true, skipErrorLogging: true });
+  }
+
   async login(email: string, password: string): Promise<{ mfaRequired?: boolean; user?: AuthUser }> {
     return this.request('/auth/login', {
       method: 'POST',

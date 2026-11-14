@@ -1,8 +1,15 @@
 import { hash, verify, Algorithm } from '@node-rs/argon2';
 import { commonPasswords } from './commonPasswords.js';
 
-const MIN_LENGTH = 12;
-const MAX_LENGTH = 128;
+const DEFAULT_MIN_LENGTH = 12;
+export const PASSWORD_MIN_LENGTH_FLOOR = 8;
+export const MAX_LENGTH = 128;
+
+/** Mindestlänge aus PASSWORD_MIN_LENGTH (leer = 12). Gültigkeit prüft assertAuthConfig beim Start. */
+export function getPasswordMinLength() {
+  const raw = (process.env.PASSWORD_MIN_LENGTH || '').trim();
+  return raw === '' ? DEFAULT_MIN_LENGTH : Number(raw);
+}
 
 // OWASP-Empfehlung für argon2id: 19 MiB, 2 Iterationen, 1 Thread
 const OPTIONS = { algorithm: Algorithm.Argon2id, memoryCost: 19456, timeCost: 2, parallelism: 1 };
@@ -27,8 +34,9 @@ export async function verifyDummyPassword(pw) {
 }
 
 export function validatePassword(pw) {
-  if (typeof pw !== 'string' || pw.length < MIN_LENGTH) {
-    return `Das Passwort muss mindestens ${MIN_LENGTH} Zeichen lang sein.`;
+  const minLength = getPasswordMinLength();
+  if (typeof pw !== 'string' || pw.length < minLength) {
+    return `Das Passwort muss mindestens ${minLength} Zeichen lang sein.`;
   }
   if (pw.length > MAX_LENGTH) {
     return `Das Passwort darf höchstens ${MAX_LENGTH} Zeichen lang sein.`;
