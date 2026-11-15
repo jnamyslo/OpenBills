@@ -189,14 +189,15 @@ restart_all() {
 
     local failed=() project
     for name in "${names[@]}"; do
-        print_info "Starte Instanz '$name' mit neuem Image neu..."
+        print_info "Aktualisiere Instanz '$name'..."
         project=$(grep -E '^COMPOSE_PROJECT_NAME=' ".env.${name}" | tail -1 | cut -d'=' -f2- | tr -d '"'"'"'\r ')
         project=${project:-openbills-$name}
         docker tag openbills-build-backend "${project}-backend"
         docker tag openbills-build-frontend "${project}-frontend"
         compose_cmd "$name"
-        if "${COMPOSE[@]}" up -d --no-build --force-recreate; then
-            print_success "Instanz '$name' neu gestartet"
+        # Ohne --force-recreate: Compose erstellt nur Container neu, deren Image/Konfiguration sich geändert hat
+        if "${COMPOSE[@]}" up -d --no-build; then
+            print_success "Instanz '$name' aktualisiert (unveränderte Dienste blieben unberührt)"
         else
             print_error "Fehler beim Neustart von '$name'"
             failed+=("$name")
@@ -207,7 +208,7 @@ restart_all() {
         print_error "Fehlgeschlagen: ${failed[*]}"
         return 1
     fi
-    print_success "Alle ${#names[@]} Instanzen neu gestartet"
+    print_success "Alle ${#names[@]} Instanzen aktualisiert"
 }
 
 # Function to remove an instance completely

@@ -1,0 +1,20 @@
+# Frontend-Build-Kontext: nur was Vite/Typecheck/Tests brauchen.
+# Alles andere würde bei Änderungen den Layer-Cache (COPY . .) ungültig machen.
+node_modules
+dist
+.git
+.worktrees
+.superpowers
+.claude
+.agents
+.env*
+backend
+demo
+docs
+belego-video
+*.md
+*.sh
+docker-compose*.yml
+scripts/platform.sh
+scripts/seed-demo.mjs
+.DS_Store
