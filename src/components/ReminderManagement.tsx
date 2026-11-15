@@ -276,7 +276,7 @@ export function ReminderManagement() {
     : null;
 
   return (
-    <div className="min-h-screen bg-gray-50 p-3 sm:p-4 lg:p-6">
+    <div>
       {/* Reminder Send Modal */}
       {reminderModal.isOpen && reminderModal.invoice && customer && (
         <ReminderSendModal
@@ -303,11 +303,11 @@ export function ReminderManagement() {
       <div className="mb-4 lg:mb-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl lg:text-2xl font-bold text-gray-900 flex items-center">
-              <Bell className="h-6 w-6 mr-2 text-primary-custom" />
+            <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 flex items-center">
+              <Bell className="h-6 w-6 lg:h-8 lg:w-8 mr-2 lg:mr-3 text-primary-custom" />
               Mahnwesen
             </h1>
-            <p className="text-sm lg:text-base text-gray-600 mt-1">
+            <p className="text-gray-600 mt-1">
               Verwalten Sie Zahlungserinnerungen und Mahnungen
             </p>
           </div>

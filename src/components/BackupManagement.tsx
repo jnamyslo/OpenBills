@@ -205,7 +205,7 @@ export function BackupManagement({ onClose, embedded = false }: BackupManagement
 
   return (
     <div className={embedded ? '' : 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4'}>
-      <div className={embedded ? 'bg-white rounded-xl shadow-sm border border-gray-100' : 'bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto'}>
+      <div className={embedded ? 'bg-white rounded-xl shadow-sm border border-gray-100' : 'bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90dvh] overflow-y-auto'}>
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <div className="flex items-center">
             <Database className="h-6 w-6 text-primary-custom mr-3" />

@@ -515,7 +515,7 @@ export function JobEntryForm({ job, customers, defaultDate, onSubmit, onCancel, 
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-2 md:p-4 z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl h-[95vh] md:max-h-[90vh] flex flex-col">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl h-[95dvh] md:max-h-[90dvh] flex flex-col">
         <div className="flex items-center justify-between p-3 md:p-4 border-b border-gray-200 flex-shrink-0">
           <h3 className="text-base md:text-lg font-semibold text-gray-900">
             {job ? 'Auftrag bearbeiten' : 'Neuer Auftrag'}
@@ -529,16 +529,16 @@ export function JobEntryForm({ job, customers, defaultDate, onSubmit, onCancel, 
         </div>
 
         <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden">
-          <div className="flex-1 overflow-y-auto p-3 md:p-4">
+          <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 md:p-4">
             <div className="space-y-4 md:space-y-6">
               {/* Basic Information */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 [&>*]:min-w-0">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Kunde *
               </label>
               <div className="flex gap-2">
-                <div className="w-full max-w-sm relative">
+                <div className="flex-1 min-w-0 max-w-sm relative">
                   <input
                     type="text"
                     value={customerSearchTerm}
@@ -644,7 +644,7 @@ Musterstraße 123
 
           <div className="col-span-1 md:col-span-2 lg:col-span-3">
             {/* Job Numbers */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 [&>*]:min-w-0">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Auftragsnummer
@@ -706,14 +706,14 @@ Musterstraße 123
 
           {/* Time Tracking */}
           <div className="bg-gray-50 rounded-lg p-3 md:p-4">
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 gap-3">
               <h4 className="text-sm font-medium text-gray-900 flex items-center">
                 <Clock className="h-4 w-4 mr-2" />
                 Zeiterfassung
               </h4>
-              <div className="flex items-center space-x-2">
-                <div className="flex items-center space-x-1">
-                  <label className="text-xs text-gray-600">Aus Vorlage:</label>
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="flex items-center gap-1 min-w-0 flex-1">
+                  <label className="text-xs text-gray-600 whitespace-nowrap hidden sm:block">Aus Vorlage:</label>
                   <select
                     onChange={(e) => {
                       if (e.target.value) {
@@ -721,7 +721,7 @@ Musterstraße 123
                         e.target.value = ''; // Reset dropdown
                       }
                     }}
-                    className="text-xs px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary-custom"
+                    className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom text-sm min-w-0 flex-1 sm:flex-none sm:max-w-xs"
                     defaultValue=""
                   >
                     <option value="">Stundensatz wählen...</option>
@@ -737,7 +737,7 @@ Musterstraße 123
                       isOpen: true,
                       type: 'hourlyRates'
                     })}
-                    className="p-1 text-blue-600 hover:text-blue-800 border border-gray-300 rounded hover:bg-blue-50 transition-colors"
+                    className="btn-secondary p-2 rounded-lg flex-shrink-0"
                     title="Stundensätze verwalten"
                   >
                     <Edit className="h-3 w-3" />
@@ -746,11 +746,11 @@ Musterstraße 123
                 <button
                   type="button"
                   onClick={addTimeEntry}
-                  className="btn-secondary px-2 md:px-3 py-1 rounded text-xs md:text-sm flex items-center space-x-1"
+                  className="btn-secondary px-3 py-2 rounded-lg text-sm flex items-center space-x-1 flex-shrink-0"
+                  title="Manuell hinzufügen"
                 >
                   <Plus className="h-3 w-3" />
                   <span className="hidden sm:inline">Manuell</span>
-                  <span className="sm:hidden">+</span>
                 </button>
               </div>
             </div>
@@ -953,7 +953,7 @@ Musterstraße 123
                 <DollarSign className="h-4 w-4 mr-2" />
                 Materialien & Zusatzkosten
               </h4>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-2 min-w-0 w-full sm:w-auto">
                 <select
                   onChange={(e) => {
                     if (e.target.value) {
@@ -961,7 +961,7 @@ Musterstraße 123
                       e.target.value = ''; // Reset dropdown
                     }
                   }}
-                  className="text-xs px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary-custom"
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom text-sm min-w-0 flex-1 sm:flex-none sm:max-w-xs"
                   defaultValue=""
                 >
                   <option value="">Vorlage wählen...</option>
@@ -985,7 +985,7 @@ Musterstraße 123
                     isOpen: true,
                     type: 'materials'
                   })}
-                  className="btn-secondary px-2 py-1 rounded text-xs flex items-center space-x-1"
+                  className="btn-secondary px-3 py-2 rounded-lg text-sm flex items-center space-x-1 flex-shrink-0"
                   title="Materialien verwalten"
                 >
                   <Edit className="h-3 w-3" />
@@ -994,7 +994,8 @@ Musterstraße 123
                 <button
                   type="button"
                   onClick={() => addMaterial()}
-                  className="btn-secondary px-2 py-1 rounded text-xs flex items-center space-x-1"
+                  className="btn-secondary px-3 py-2 rounded-lg text-sm flex items-center space-x-1 flex-shrink-0"
+                  title="Manuell hinzufügen"
                 >
                   <Plus className="h-3 w-3" />
                   <span className="hidden sm:inline">Manuell</span>
@@ -1238,7 +1239,7 @@ Musterstraße 123
       {/* Customer Creation Modal */}
       {showCustomerForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[200] p-4">
-          <div className="bg-white rounded-lg p-4 lg:p-6 w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl">
+          <div className="bg-white rounded-lg p-4 lg:p-6 w-full max-w-md max-h-[90dvh] overflow-y-auto shadow-2xl">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">
               Neuer Kunde
             </h3>

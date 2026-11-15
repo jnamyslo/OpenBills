@@ -129,10 +129,10 @@ export function Settings({ section, onNavigate }: SettingsProps) {
 
   return (
     <SettingsDirtyContext.Provider value={dirtyContext}>
-      <div className="min-h-screen bg-gray-50 p-3 sm:p-4 lg:p-6">
+      <div>
         <div className="mb-4 lg:mb-6">
-          <h1 className="text-xl lg:text-2xl font-bold text-gray-900">Einstellungen</h1>
-          <p className="text-sm lg:text-base text-gray-600 mt-1">Verwalten Sie Ihre Firmendaten und Anwendungseinstellungen</p>
+          <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">Einstellungen</h1>
+          <p className="text-gray-600 mt-1">Verwalten Sie Ihre Firmendaten und Anwendungseinstellungen</p>
         </div>
 
         {showMobileList && (

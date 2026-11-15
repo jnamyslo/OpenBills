@@ -757,7 +757,7 @@ export function CustomerManagement({ autoCreate }: CustomerManagementProps = {})
       {/* Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-4 lg:p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-xl p-4 lg:p-6 w-full max-w-md max-h-[90dvh] overflow-y-auto">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">
               {editingCustomer ? 'Kunde bearbeiten' : 'Neuer Kunde'}
             </h3>
@@ -1144,7 +1144,7 @@ export function CustomerManagement({ autoCreate }: CustomerManagementProps = {})
       {/* Hourly Rate Edit Modal */}
       {isHourlyRateModalOpen && editingHourlyRate && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90dvh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold text-gray-900">
                 Stundensatz bearbeiten
@@ -1168,7 +1168,7 @@ export function CustomerManagement({ autoCreate }: CustomerManagementProps = {})
       {/* Material Edit Modal */}
       {isMaterialModalOpen && editingMaterial && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90dvh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold text-gray-900">
                 Material bearbeiten
@@ -1192,7 +1192,7 @@ export function CustomerManagement({ autoCreate }: CustomerManagementProps = {})
       {/* Create Hourly Rate Modal */}
       {isCreateHourlyRateModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90dvh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold text-gray-900">
                 Neuer Stundensatz
@@ -1297,7 +1297,7 @@ export function CustomerManagement({ autoCreate }: CustomerManagementProps = {})
       {/* Create Material Modal */}
       {isCreateMaterialModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90dvh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold text-gray-900">
                 Neues Material

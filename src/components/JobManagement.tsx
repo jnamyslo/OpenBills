@@ -552,7 +552,7 @@ export function JobManagement({ onNavigate, autoCreate }: JobManagementProps = {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center">
           <Briefcase className="h-6 w-6 lg:h-8 lg:w-8 text-primary-custom mr-2 lg:mr-3" />
-          <h1 className="text-xl lg:text-3xl font-bold text-gray-900">Auftragsmanagement</h1>
+          <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">Auftragsmanagement</h1>
         </div>
         
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
@@ -1167,7 +1167,7 @@ export function JobManagement({ onNavigate, autoCreate }: JobManagementProps = {
       {/* Customer Creation Modal */}
       {showCustomerForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4">
-          <div className="bg-white rounded-lg p-4 lg:p-6 w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl">
+          <div className="bg-white rounded-lg p-4 lg:p-6 w-full max-w-md max-h-[90dvh] overflow-y-auto shadow-2xl">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">
               Neuer Kunde
             </h3>
