@@ -2,9 +2,8 @@ import React, { useState, useEffect } from 'react';
 import logger from '../utils/logger';
 import { mergeAttachmentContent, jobNeedsContent } from '../utils/attachmentContent';
 import { apiService } from '../services/api';
-import { X, Plus, Trash2, Save, Clock, Calendar, DollarSign, Edit, PenTool, Percent } from 'lucide-react';
+import { Plus, Trash2, Save, Clock, Calendar, DollarSign, Edit, PenTool, Percent } from 'lucide-react';
 import { JobEntry, Customer, JobMaterial, JobAttachment, JobTimeEntry, JobSignature } from '../types';
-import { useCustomers } from '../context/CustomerContext';
 import { useCompany } from '../context/CompanyContext';
 import { DocumentChain } from './DocumentChain';
 import { useDocumentHelpers } from '../hooks/useDocumentHelpers';
@@ -14,22 +13,24 @@ import { SignaturePad } from './SignaturePad';
 import { RatesAndMaterialsRedirectModal } from './RatesAndMaterialsRedirectModal';
 import { createDefaultTimeEntry } from '../utils/jobUtils';
 import { generateUUID } from '../utils/uuid';
-import { findDuplicateCustomer, showDuplicateCustomerAlert, formatCustomerNumber } from '../utils/customerUtils';
+import { formatCustomerNumber } from '../utils/customerUtils';
+import { CustomerCreateModal } from './CustomerCreateModal';
+import { PageShell } from './PageShell';
 
 interface JobEntryFormProps {
   job?: JobEntry | null;
   customers: Customer[];
   defaultDate?: Date | null;
+  /** Vorbelegung für neue Aufträge (z. B. aus dem Kalender-Schnell-Overlay). */
+  initialValues?: Partial<Pick<JobEntry, 'customerId' | 'customerName' | 'customerAddress' | 'title' | 'description'>>;
   onSubmit: (jobData: Omit<JobEntry, 'id' | 'createdAt' | 'updatedAt'>) => void;
   onCancel: () => void;
-  onCreateCustomer?: () => void;
   onNavigateToCustomers?: () => void;
   onNavigateToSettings?: () => void;
 }
 
-export function JobEntryForm({ job, customers, defaultDate, onSubmit, onCancel, onCreateCustomer, onNavigateToCustomers, onNavigateToSettings }: JobEntryFormProps) {
-  const { addCustomer, refreshCustomers } = useCustomers();
-  const { company, getHourlyRates } = useCompany();
+export function JobEntryForm({ job, customers, defaultDate, initialValues, onSubmit, onCancel, onNavigateToCustomers, onNavigateToSettings }: JobEntryFormProps) {
+    const { company, getHourlyRates } = useCompany();
 
   const { getHourlyRatesForCustomer, getCombinedHourlyRatesForCustomer, getCombinedMaterialTemplatesForCustomer } = useDocumentHelpers();
 
@@ -44,16 +45,6 @@ export function JobEntryForm({ job, customers, defaultDate, onSubmit, onCancel, 
     type: 'hourlyRates'
   });
 
-  const [newCustomerData, setNewCustomerData] = useState({
-    name: '',
-    email: '',
-    address: '',
-    postalCode: '',
-    city: '',
-    country: 'Deutschland',
-    taxId: '',
-    phone: ''
-  });
 
   // Customer search states
   const [customerSearchTerm, setCustomerSearchTerm] = useState('');
@@ -147,7 +138,8 @@ export function JobEntryForm({ job, customers, defaultDate, onSubmit, onCancel, 
         status: 'draft', // Standard-Status ist "Entwurf"
         notes: '',
         attachments: [],
-        signature: undefined
+        signature: undefined,
+        ...initialValues
       };
       
       if (defaultRate) {
@@ -517,24 +509,45 @@ export function JobEntryForm({ job, customers, defaultDate, onSubmit, onCancel, 
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-2 md:p-4 z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl h-[95dvh] md:max-h-[90dvh] flex flex-col">
-        <div className="flex items-center justify-between p-3 md:p-4 border-b border-gray-200 flex-shrink-0">
-          <h3 className="text-base md:text-lg font-semibold text-gray-900">
-            {job ? 'Auftrag bearbeiten' : 'Neuer Auftrag'}
-          </h3>
-          <button
-            onClick={onCancel}
-            className="text-gray-400 hover:text-gray-600 p-1"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden">
-          <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 md:p-4">
+    <div>
+      <PageShell
+        title={job ? 'Auftrag bearbeiten' : 'Neuer Auftrag'}
+        subtitle={job ? job.title : 'Erfassen Sie einen neuen Auftrag'}
+        onClose={onCancel}
+        header={job ? <DocumentChain kind="job" id={job.id} /> : undefined}
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={onCancel}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+            >
+              Abbrechen
+            </button>
+            {!job && (
+              <button
+                type="button"
+                onClick={handleSubmitAsDraft}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center justify-center space-x-2"
+              >
+                <Save className="h-4 w-4" />
+                <span>Als Entwurf speichern</span>
+              </button>
+            )}
+            <button
+              type="submit"
+              form="job-form"
+              className="btn-primary text-white px-4 py-2 rounded-lg flex items-center justify-center space-x-2 text-sm"
+            >
+              <Save className="h-4 w-4" />
+              <span>{job ? 'Aktualisieren' : 'Erstellen'}</span>
+            </button>
+          </>
+        }
+      >
+        <form id="job-form" onSubmit={handleSubmit} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6">
+          <div>
             <div className="space-y-4 md:space-y-6">
-              {job && <DocumentChain kind="job" id={job.id} />}
               {/* Basic Information */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 [&>*]:min-w-0">
             <div>
@@ -580,19 +593,17 @@ export function JobEntryForm({ job, customers, defaultDate, onSubmit, onCancel, 
                     </div>
                   )}
                 </div>
-                {onCreateCustomer && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      logger.debug('Plus button clicked in JobEntryForm');
-                      setShowCustomerForm(true);
-                    }}
-                    className="px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors flex items-center text-sm"
-                    title="Neuen Kunden anlegen"
-                  >
-                    <Plus className="h-4 w-4" />
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    logger.debug('Plus button clicked in JobEntryForm');
+                    setShowCustomerForm(true);
+                  }}
+                  className="px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors flex items-center text-sm"
+                  title="Neuen Kunden anlegen"
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
               </div>
             </div>
 
@@ -1260,198 +1271,14 @@ Musterstraße 123
               </div>
             </div>
           </div>
-
-          {/* Action Buttons - Fixed at bottom */}
-          <div className="flex-shrink-0 border-t border-gray-200 p-3 md:p-4">
-            <div className="flex flex-col sm:flex-row justify-end space-y-2 sm:space-y-0 sm:space-x-3">
-              <button
-                type="button"
-                onClick={onCancel}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
-              >
-                Abbrechen
-              </button>
-              {!job && (
-                <button
-                  type="button"
-                  onClick={handleSubmitAsDraft}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center justify-center space-x-2"
-                >
-                  <Save className="h-4 w-4" />
-                  <span>Als Entwurf speichern</span>
-                </button>
-              )}
-              <button
-                type="submit"
-                className="btn-primary text-white px-4 py-2 rounded-lg flex items-center justify-center space-x-2 text-sm"
-              >
-                <Save className="h-4 w-4" />
-                <span>{job ? 'Aktualisieren' : 'Erstellen'}</span>
-              </button>
-            </div>
-          </div>
         </form>
-      </div>
+      </PageShell>
 
-      {/* Customer Creation Modal */}
       {showCustomerForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[200] p-4">
-          <div className="bg-white rounded-lg p-4 lg:p-6 w-full max-w-md max-h-[90dvh] overflow-y-auto shadow-2xl">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              Neuer Kunde
-            </h3>
-            <form onSubmit={async (e) => {
-              e.preventDefault();
-              
-              // Check for duplicates
-              const existingCustomer = findDuplicateCustomer(customers, newCustomerData);
-              
-              if (existingCustomer) {
-                showDuplicateCustomerAlert(existingCustomer);
-                return;
-              }
-              
-              try {
-                const createdCustomer = await addCustomer(newCustomerData);
-                
-                // Pre-select the newly created customer
-                if (createdCustomer && createdCustomer.id) {
-                  setFormData(prev => ({ ...prev, customerId: createdCustomer.id }));
-                }
-                
-                setNewCustomerData({
-                  name: '',
-                  email: '',
-                  address: '',
-                  postalCode: '',
-                  city: '',
-                  country: 'Deutschland',
-                  taxId: '',
-                  phone: ''
-                });
-                setShowCustomerForm(false);
-                
-                // Refresh customers in other components
-                await refreshCustomers();
-              } catch (error) {
-                logger.error('Error creating customer:', error);
-                alert('Fehler beim Erstellen des Kunden. Bitte versuchen Sie es erneut.');
-              }
-            }} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Name *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={newCustomerData.name}
-                  onChange={(e) => setNewCustomerData({ ...newCustomerData, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  E-Mail
-                </label>
-                <input
-                  type="email"
-                  value={newCustomerData.email}
-                  onChange={(e) => setNewCustomerData({ ...newCustomerData, email: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom"
-                  placeholder="optional"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Adresse *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={newCustomerData.address}
-                  onChange={(e) => setNewCustomerData({ ...newCustomerData, address: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom"
-                />
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    PLZ *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={newCustomerData.postalCode}
-                    onChange={(e) => setNewCustomerData({ ...newCustomerData, postalCode: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Stadt *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={newCustomerData.city}
-                    onChange={(e) => setNewCustomerData({ ...newCustomerData, city: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Land *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={newCustomerData.country}
-                  onChange={(e) => setNewCustomerData({ ...newCustomerData, country: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  USt-IdNr.
-                </label>
-                <input
-                  type="text"
-                  value={newCustomerData.taxId}
-                  onChange={(e) => setNewCustomerData({ ...newCustomerData, taxId: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Telefon
-                </label>
-                <input
-                  type="tel"
-                  value={newCustomerData.phone}
-                  onChange={(e) => setNewCustomerData({ ...newCustomerData, phone: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom"
-                />
-              </div>
-              <div className="flex flex-col sm:flex-row gap-4 pt-4">
-                <button
-                  type="submit"
-                  className="flex-1 bg-primary-custom text-white py-2 px-4 rounded-lg hover:bg-primary-custom/90 transition-colors"
-                >
-                  Kunde erstellen
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowCustomerForm(false)}
-                  className="flex-1 bg-gray-300 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-400 transition-colors"
-                >
-                  Abbrechen
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <CustomerCreateModal
+          onClose={() => setShowCustomerForm(false)}
+          onCreated={(c) => setFormData(prev => ({ ...prev, customerId: c.id }))}
+        />
       )}
 
       {/* Signature Pad Modal */}

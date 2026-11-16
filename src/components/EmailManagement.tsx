@@ -1,3 +1,4 @@
+import { Modal } from './Modal';
 import React, { useState, useEffect } from 'react';
 import { useDemo } from '../context/DemoContext';
 import { DemoDisabledNotice } from './DemoDisabledNotice';
@@ -952,19 +953,8 @@ export function EmailManagement({ onClose, embedded = false }: EmailManagementPr
 
         {/* Email Detail Modal */}
         {selectedEmail && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-60 p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90dvh] overflow-hidden">
-              <div className="flex items-center justify-between p-6 border-b border-gray-200">
-                <h3 className="text-lg font-semibold text-gray-900">E-Mail-Details</h3>
-                <button
-                  onClick={() => setSelectedEmail(null)}
-                  className="text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  <X className="h-6 w-6" />
-                </button>
-              </div>
-              
-              <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+          <Modal title="E-Mail-Details" onClose={() => setSelectedEmail(null)} size="xl" zClass="z-[60]">
+              <div>
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -1047,8 +1037,7 @@ export function EmailManagement({ onClose, embedded = false }: EmailManagementPr
                   )}
                 </div>
               </div>
-            </div>
-          </div>
+          </Modal>
         )}
       </div>
     </div>

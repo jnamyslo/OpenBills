@@ -1,3 +1,4 @@
+import { Modal } from './Modal';
 import React, { useState, useEffect } from 'react';
 import { demoMailNote } from '../utils/demo';
 import { X, Download, Mail, Eye } from 'lucide-react';
@@ -372,25 +373,63 @@ export function ReminderSendModal({
   return (
     <>
       {/* Main Modal */}
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full max-h-[90dvh] overflow-y-auto">
-          {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-gray-200">
-            <h2 className="text-xl font-semibold text-gray-900">
-              {stage}. Mahnung versenden
-              {isBulkMode && <span className="ml-2 text-sm font-normal text-gray-600">({bulkInvoices.length} Rechnungen)</span>}
-            </h2>
+      <Modal
+        title={`${stage}. Mahnung versenden${isBulkMode ? ` (${bulkInvoices.length} Rechnungen)` : ''}`}
+        onClose={onClose}
+        closeDisabled={isLoading}
+        size="xl"
+        zClass="z-50"
+        footer={
+          <div className="flex flex-col-reverse sm:flex-row sm:items-center justify-between gap-3 w-full">
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 transition-colors"
               disabled={isLoading}
+              className="px-4 py-2 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50"
             >
-              <X className="h-6 w-6" />
+              Abbrechen
             </button>
-          </div>
+            
+            <div className="flex items-center gap-3">
+              {/* Preview Button */}
+              <button
+                onClick={handlePreview}
+                disabled={isLoading}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50"
+              >
+                <Eye className="h-5 w-5" />
+                Vorschau
+              </button>
 
-          {/* Content */}
-          <div className="p-6 space-y-6">
+              {/* Download Button */}
+              <button
+                onClick={handleDownload}
+                disabled={isLoading}
+                className="flex items-center gap-2 px-4 py-2 bg-primary-custom text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50"
+              >
+                <Download className="h-5 w-5" />
+                {isLoading ? 'Wird heruntergeladen...' : 'Download'}
+              </button>
+
+              {/* Email Button */}
+              <button
+                onClick={() => {
+                  if (!showEmailSection) {
+                    setShowEmailSection(true);
+                  } else {
+                    handleSendEmail();
+                  }
+                }}
+                disabled={isLoading}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+              >
+                <Mail className="h-5 w-5" />
+                {showEmailSection ? (isLoading ? 'Wird versendet...' : 'Jetzt versenden') : 'Per E-Mail'}
+              </button>
+            </div>
+          </div>
+        }
+      >
+          <div className="space-y-6">
             {/* Invoice Info */}
             <div className="bg-gray-50 rounded-lg p-4">
               <h3 className="text-sm font-medium text-gray-700 mb-3">
@@ -673,57 +712,7 @@ export function ReminderSendModal({
               </div>
             )}
           </div>
-
-          {/* Actions */}
-          <div className="flex items-center justify-between gap-3 p-6 bg-gray-50 border-t border-gray-200">
-            <button
-              onClick={onClose}
-              disabled={isLoading}
-              className="px-4 py-2 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50"
-            >
-              Abbrechen
-            </button>
-            
-            <div className="flex items-center gap-3">
-              {/* Preview Button */}
-              <button
-                onClick={handlePreview}
-                disabled={isLoading}
-                className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50"
-              >
-                <Eye className="h-5 w-5" />
-                Vorschau
-              </button>
-
-              {/* Download Button */}
-              <button
-                onClick={handleDownload}
-                disabled={isLoading}
-                className="flex items-center gap-2 px-4 py-2 bg-primary-custom text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50"
-              >
-                <Download className="h-5 w-5" />
-                {isLoading ? 'Wird heruntergeladen...' : 'Download'}
-              </button>
-
-              {/* Email Button */}
-              <button
-                onClick={() => {
-                  if (!showEmailSection) {
-                    setShowEmailSection(true);
-                  } else {
-                    handleSendEmail();
-                  }
-                }}
-                disabled={isLoading}
-                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
-              >
-                <Mail className="h-5 w-5" />
-                {showEmailSection ? (isLoading ? 'Wird versendet...' : 'Jetzt versenden') : 'Per E-Mail'}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
+      </Modal>
 
       {/* Preview Modal - Higher z-index to appear on top */}
       <DocumentPreview

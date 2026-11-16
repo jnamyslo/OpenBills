@@ -30,7 +30,7 @@ interface InvoiceManagementProps {
 }
 
 export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate, autoCreate }: InvoiceManagementProps = {}) {
-  const { customers, addCustomer } = useCustomers();
+  const { customers } = useCustomers();
   const { invoices, deleteInvoice, updateInvoice } = useInvoices();
   const { company } = useCompany();
   const { hasFeature, showUpgrade } = usePlan();
@@ -40,20 +40,9 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
   const [filterStatus, setFilterStatus] = useState(initialFilter || 'not-paid');
   const [isExporting, setIsExporting] = useState<string | null>(null);
   const [isSendingEmail, setIsSendingEmail] = useState<string | null>(null);
-  const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
   const [isBulkOperation, setIsBulkOperation] = useState(false);
   
-  const [newCustomerData, setNewCustomerData] = useState({
-    name: '',
-    email: '',
-    address: '',
-    postalCode: '',
-    city: '',
-    country: 'Deutschland',
-    taxId: '',
-    phone: ''
-  });
   
   // Get locale from company settings, default to 'de-DE'
   const locale = company?.locale || 'de-DE';
@@ -786,10 +775,6 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
       <InvoiceEditor
         invoice={editingInvoice}
         onClose={handleCloseEditor}
-        onCreateCustomer={() => {
-          logger.debug('onCreateCustomer called in InvoiceManagement');
-          setShowCustomerForm(true);
-        }}
         onNavigateToCustomers={() => onNavigate && onNavigate('customers')}
         onNavigateToSettings={() => onNavigate && onNavigate('settings')}
       />
@@ -1243,137 +1228,6 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
         initialIndex={documentPreview.initialIndex}
       />
 
-      {/* Customer Creation Modal */}
-      {showCustomerForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4">
-          <div className="bg-white rounded-xl p-4 lg:p-6 w-full max-w-md max-h-[90dvh] overflow-y-auto shadow-2xl">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              Neuer Kunde
-            </h3>
-            <form onSubmit={async (e) => {
-              e.preventDefault();
-              try {
-                await addCustomer(newCustomerData);
-                setNewCustomerData({
-                  name: '',
-                  email: '',
-                  address: '',
-                  postalCode: '',
-                  city: '',
-                  country: 'Deutschland',
-                  taxId: '',
-                  phone: ''
-                });
-                setShowCustomerForm(false);
-              } catch (error) {
-                logger.error('Error creating customer', { error });
-                alert('Fehler beim Erstellen des Kunden. Bitte versuchen Sie es erneut.');
-              }
-            }} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Name *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={newCustomerData.name}
-                  onChange={(e) => setNewCustomerData({ ...newCustomerData, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  E-Mail
-                </label>
-                <input
-                  type="email"
-                  value={newCustomerData.email}
-                  onChange={(e) => setNewCustomerData({ ...newCustomerData, email: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom"
-                  placeholder="optional"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Adresse *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={newCustomerData.address}
-                  onChange={(e) => setNewCustomerData({ ...newCustomerData, address: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom"
-                />
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    PLZ *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={newCustomerData.postalCode}
-                    onChange={(e) => setNewCustomerData({ ...newCustomerData, postalCode: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Stadt *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={newCustomerData.city}
-                    onChange={(e) => setNewCustomerData({ ...newCustomerData, city: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Land *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={newCustomerData.country}
-                  onChange={(e) => setNewCustomerData({ ...newCustomerData, country: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Telefon
-                </label>
-                <input
-                  type="tel"
-                  value={newCustomerData.phone}
-                  onChange={(e) => setNewCustomerData({ ...newCustomerData, phone: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom"
-                />
-              </div>
-              <div className="flex flex-col sm:flex-row gap-4 pt-4">
-                <button
-                  type="submit"
-                  className="flex-1 bg-primary-custom text-white py-2 px-4 rounded-xl hover:bg-primary-custom/90 transition-all duration-300 hover:scale-105"
-                >
-                  Kunde erstellen
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowCustomerForm(false)}
-                  className="flex-1 bg-gray-300 text-gray-700 py-2 px-4 rounded-xl hover:bg-gray-400 transition-all duration-300"
-                >
-                  Abbrechen
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

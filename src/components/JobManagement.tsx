@@ -26,7 +26,7 @@ interface JobManagementProps {
 }
 
 export function JobManagement({ onNavigate, autoCreate, initialFilter, initialSearchTerm }: JobManagementProps = {}) {
-  const { customers, addCustomer, refreshCustomers } = useCustomers();
+  const { customers } = useCustomers();
   const { jobEntries, addJobEntry, updateJobEntry, deleteJobEntry, refreshJobEntries, addJobSignature } = useJobs();
   const { company } = useCompany();
 
@@ -39,17 +39,6 @@ export function JobManagement({ onNavigate, autoCreate, initialFilter, initialSe
   const [statusFilter, setStatusFilter] = useState<string>('not-invoiced');
   const [customerFilter, setCustomerFilter] = useState<string>('all');
   const [dateFilter, setDateFilter] = useState<string>('all');
-  const [showCustomerForm, setShowCustomerForm] = useState(false);
-  const [newCustomerData, setNewCustomerData] = useState({
-    name: '',
-    email: '',
-    address: '',
-    postalCode: '',
-    city: '',
-    country: 'Deutschland',
-    taxId: '',
-    phone: ''
-  });
   
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
@@ -180,6 +169,12 @@ export function JobManagement({ onNavigate, autoCreate, initialFilter, initialSe
       setEditingJob(job);
       setShowForm(true);
     }
+  };
+
+  // Klick auf eine Zeile öffnet den Auftrag; Klicks auf Bedienelemente in der Zeile nicht
+  const handleRowClick = (e: React.MouseEvent, job: JobEntry) => {
+    if ((e.target as HTMLElement).closest('button, a, input, label, select, textarea')) return;
+    handleEdit(job);
   };
 
   const handleDelete = (job: JobEntry) => {
@@ -522,10 +517,6 @@ export function JobManagement({ onNavigate, autoCreate, initialFilter, initialSe
           setShowForm(false);
           setEditingJob(null);
         }}
-        onCreateCustomer={() => {
-          logger.debug('onCreateCustomer called in JobManagement');
-          setShowCustomerForm(true);
-        }}
         onNavigateToCustomers={() => onNavigate && onNavigate('customers')}
         onNavigateToSettings={() => onNavigate && onNavigate('settings')}
       />
@@ -867,7 +858,7 @@ export function JobManagement({ onNavigate, autoCreate, initialFilter, initialSe
               
               <div className="divide-y divide-gray-200">
                 {filteredJobs.map((job) => (
-                  <div key={job.id} className="p-4 hover:bg-gray-50">
+                  <div key={job.id} className="p-4 hover:bg-gray-50 cursor-pointer" onClick={(e) => handleRowClick(e, job)}>
                     <div className="flex items-start space-x-3">
                       <div className="flex-shrink-0 pt-1">
                         <input
@@ -1029,7 +1020,7 @@ export function JobManagement({ onNavigate, autoCreate, initialFilter, initialSe
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {filteredJobs.map((job) => (
-                    <tr key={job.id} className="hover:bg-gray-50">
+                    <tr key={job.id} className="hover:bg-gray-50 cursor-pointer" onClick={(e) => handleRowClick(e, job)}>
                       <td className="px-2 py-4 w-12">
                         <div className="flex items-center">
                           <input
@@ -1172,140 +1163,6 @@ export function JobManagement({ onNavigate, autoCreate, initialFilter, initialSe
         initialIndex={documentPreview.initialIndex}
       />
 
-      {/* Customer Creation Modal */}
-      {showCustomerForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4">
-          <div className="bg-white rounded-lg p-4 lg:p-6 w-full max-w-md max-h-[90dvh] overflow-y-auto shadow-2xl">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              Neuer Kunde
-            </h3>
-            <form onSubmit={async (e) => {
-              e.preventDefault();
-              try {
-                await addCustomer(newCustomerData);
-                setNewCustomerData({
-                  name: '',
-                  email: '',
-                  address: '',
-                  postalCode: '',
-                  city: '',
-                  country: 'Deutschland',
-                  taxId: '',
-                  phone: ''
-                });
-                setShowCustomerForm(false);
-                
-                // Refresh customers in other components
-                await refreshCustomers();
-              } catch (error) {
-                logger.error('Error creating customer', { error });
-                alert('Fehler beim Erstellen des Kunden. Bitte versuchen Sie es erneut.');
-              }
-            }} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Name *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={newCustomerData.name}
-                  onChange={(e) => setNewCustomerData({ ...newCustomerData, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  E-Mail
-                </label>
-                <input
-                  type="email"
-                  value={newCustomerData.email}
-                  onChange={(e) => setNewCustomerData({ ...newCustomerData, email: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom"
-                  placeholder="optional"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Adresse *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={newCustomerData.address}
-                  onChange={(e) => setNewCustomerData({ ...newCustomerData, address: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom"
-                />
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    PLZ *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={newCustomerData.postalCode}
-                    onChange={(e) => setNewCustomerData({ ...newCustomerData, postalCode: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Stadt *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={newCustomerData.city}
-                    onChange={(e) => setNewCustomerData({ ...newCustomerData, city: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Land *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={newCustomerData.country}
-                  onChange={(e) => setNewCustomerData({ ...newCustomerData, country: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Telefon
-                </label>
-                <input
-                  type="tel"
-                  value={newCustomerData.phone}
-                  onChange={(e) => setNewCustomerData({ ...newCustomerData, phone: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom"
-                />
-              </div>
-              <div className="flex flex-col sm:flex-row gap-4 pt-4">
-                <button
-                  type="submit"
-                  className="flex-1 bg-primary-custom text-white py-2 px-4 rounded-lg hover:bg-primary-custom/90 transition-colors"
-                >
-                  Kunde erstellen
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowCustomerForm(false)}
-                  className="flex-1 bg-gray-300 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-400 transition-colors"
-                >
-                  Abbrechen
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
       
       {/* Signature Pad Modal */}
       <SignaturePad

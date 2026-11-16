@@ -1,6 +1,7 @@
+import { Modal } from './Modal';
 import React, { useRef, useState, useEffect } from 'react';
 import logger from '../utils/logger';
-import { X, RotateCcw, Check } from 'lucide-react';
+import { RotateCcw, Check } from 'lucide-react';
 
 interface SignaturePadProps {
   isOpen: boolean;
@@ -229,19 +230,39 @@ export function SignaturePad({ isOpen, onClose, onSave, title = "Unterschrift", 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[200] p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90dvh] overflow-hidden">
-        <div className="flex items-center justify-between p-4 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 p-1"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+    <Modal
+      title={title}
+      onClose={onClose}
+      size="lg"
+      footer={
+        <div className="flex justify-between items-center w-full">
+            <button
+              onClick={clearSignature}
+              className="flex items-center space-x-2 px-4 py-2 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+            >
+              <RotateCcw className="h-4 w-4" />
+              <span>Löschen</span>
+            </button>
 
-        <div className="p-4 space-y-4">
+            <div className="flex space-x-3">
+              <button
+                onClick={onClose}
+                className="px-4 py-2 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                Abbrechen
+              </button>
+              <button
+                onClick={saveSignature}
+                className="flex items-center space-x-2 px-4 py-2 bg-primary-custom text-white rounded-lg hover:bg-primary-custom/90 transition-colors"
+              >
+                <Check className="h-4 w-4" />
+                <span>Unterschrift speichern</span>
+              </button>
+            </div>
+        </div>
+      }
+    >
+        <div className="space-y-4">
           {/* Customer Name Input */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -281,35 +302,7 @@ export function SignaturePad({ isOpen, onClose, onSave, title = "Unterschrift", 
               </p>
             </div>
           </div>
-
-          {/* Action Buttons */}
-          <div className="flex justify-between items-center pt-4">
-            <button
-              onClick={clearSignature}
-              className="flex items-center space-x-2 px-4 py-2 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-            >
-              <RotateCcw className="h-4 w-4" />
-              <span>Löschen</span>
-            </button>
-
-            <div className="flex space-x-3">
-              <button
-                onClick={onClose}
-                className="px-4 py-2 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-              >
-                Abbrechen
-              </button>
-              <button
-                onClick={saveSignature}
-                className="flex items-center space-x-2 px-4 py-2 bg-primary-custom text-white rounded-lg hover:bg-primary-custom/90 transition-colors"
-              >
-                <Check className="h-4 w-4" />
-                <span>Unterschrift speichern</span>
-              </button>
-            </div>
-          </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

@@ -167,9 +167,9 @@ export async function createQuote(data) {
       const item = processedItems[i];
       const itemOrder = item.order !== undefined ? item.order : (i + 1);
       await client.query(`
-        INSERT INTO quote_items (quote_id, description, quantity, unit_price, tax_rate, total, item_order, discount_type, discount_value, discount_amount)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-      `, [quoteId, item.description, item.quantity, item.unitPrice, item.taxRate, item.total, itemOrder, item.discountType || null, item.discountValue || null, item.discountAmount || null]);
+        INSERT INTO quote_items (quote_id, description, quantity, unit_price, tax_rate, total, item_order, discount_type, discount_value, discount_amount, kind, hourly_rate_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      `, [quoteId, item.description, item.quantity, item.unitPrice, item.taxRate, item.total, itemOrder, item.discountType || null, item.discountValue || null, item.discountAmount || null, itemKind(item), item.hourlyRateId || null]);
     }
 
     // Insert attachments if provided
@@ -278,9 +278,9 @@ export async function updateQuote(id, data) {
         const item = updateData.items[i];
         const itemOrder = item.order !== undefined ? item.order : (i + 1);
         await client.query(`
-          INSERT INTO quote_items (quote_id, description, quantity, unit_price, tax_rate, total, item_order, discount_type, discount_value, discount_amount)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-        `, [id, item.description, item.quantity, item.unitPrice, item.taxRate, item.total, itemOrder, item.discountType || null, item.discountValue || null, item.discountAmount || null]);
+          INSERT INTO quote_items (quote_id, description, quantity, unit_price, tax_rate, total, item_order, discount_type, discount_value, discount_amount, kind, hourly_rate_id)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        `, [id, item.description, item.quantity, item.unitPrice, item.taxRate, item.total, itemOrder, item.discountType || null, item.discountValue || null, item.discountAmount || null, itemKind(item), item.hourlyRateId || null]);
       }
     }
 
@@ -347,7 +347,9 @@ export async function convertQuoteToInvoice(id) {
                    'order', item_order,
                    'discountType', discount_type,
                    'discountValue', discount_value,
-                   'discountAmount', discount_amount
+                   'discountAmount', discount_amount,
+                   'kind', kind,
+                   'hourlyRateId', hourly_rate_id
                  ) ORDER BY item_order
                ) as items
         FROM quote_items
@@ -493,6 +495,11 @@ export async function convertQuoteToInvoice(id) {
   }
 }
 
+/** Art einer Angebotsposition; alles Unbekannte gilt als Material. */
+function itemKind(item) {
+  return item.kind === 'labor' ? 'labor' : 'material';
+}
+
 /** Nächste freie Auftragsnummer (AB-YYYY-XXX). */
 async function nextJobNumber(client) {
   const year = new Date().getFullYear();
@@ -532,7 +539,7 @@ export async function convertQuoteToJob(id) {
     }
 
     const itemsResult = await client.query('SELECT * FROM quote_items WHERE quote_id = $1 ORDER BY item_order', [id]);
-    const materials = itemsResult.rows.map((row) => ({
+    const materials = itemsResult.rows.filter((row) => row.kind !== 'labor').map((row) => ({
       id: row.id,
       description: row.description,
       quantity: parseFloat(row.quantity),
@@ -543,6 +550,8 @@ export async function convertQuoteToJob(id) {
       discountValue: row.discount_value != null ? parseFloat(row.discount_value) : undefined,
       discountAmount: row.discount_amount != null ? parseFloat(row.discount_amount) : undefined,
     }));
+    // Arbeitszeit-Positionen: Menge = Stunden, Einzelpreis = Stundensatz (ohne Start-/Endzeit)
+    const laborRows = itemsResult.rows.filter((row) => row.kind === 'labor');
 
     const jobNumber = await nextJobNumber(client);
     const { rows } = await client.query(`
@@ -551,6 +560,24 @@ export async function convertQuoteToJob(id) {
       RETURNING id
     `, [jobNumber, quote.customer_id, `Auftrag zu ${quote.quote_number}`, '', JSON.stringify(materials), quote.notes || null, id,
       quote.global_discount_type || null, quote.global_discount_type ? quote.global_discount_value : null]);
+
+    for (const row of laborRows) {
+      await client.query(`
+        INSERT INTO job_time_entries (job_id, description, hours_worked, hourly_rate, hourly_rate_id, tax_rate, total, discount_type, discount_value, discount_amount)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      `, [
+        rows[0].id,
+        (row.description || '').slice(0, 255),
+        row.quantity,
+        row.unit_price,
+        row.hourly_rate_id || null,
+        row.tax_rate,
+        row.total,
+        row.discount_type || null,
+        row.discount_value != null ? row.discount_value : null,
+        row.discount_amount != null ? row.discount_amount : null,
+      ]);
+    }
 
     await client.query('COMMIT');
 

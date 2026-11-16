@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import logger from '../utils/logger';
-import { Plus, Edit, Trash2, Search, Mail, Phone, MapPin, X, Clock, Package } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Mail, Phone, MapPin, Clock, Package } from 'lucide-react';
 import { useCustomers } from '../context/CustomerContext';
 import { usePlan } from '../context/PlanContext';
 import { PlanLockedNotice } from './PlanLockedNotice';
+import { Modal } from './Modal';
 import { Customer, CustomerEmail, HourlyRate, MaterialTemplate } from '../types';
 import { apiService } from '../services/api';
 import { findDuplicateCustomer, showDuplicateCustomerAlert, formatCustomerNumber } from '../utils/customerUtils';
@@ -756,12 +757,30 @@ export function CustomerManagement({ autoCreate }: CustomerManagementProps = {})
 
       {/* Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-4 lg:p-6 w-full max-w-md max-h-[90dvh] overflow-y-auto">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              {editingCustomer ? 'Kunde bearbeiten' : 'Neuer Kunde'}
-            </h3>
-            <form onSubmit={handleSubmit} className="space-y-4">
+        <Modal
+          title={editingCustomer ? 'Kunde bearbeiten' : 'Neuer Kunde'}
+          onClose={handleCloseModal}
+          zClass="z-50"
+          footer={
+            <>
+              <button
+                type="button"
+                onClick={handleCloseModal}
+                className="bg-gray-300 text-gray-700 py-2 px-4 rounded-xl hover:bg-gray-400 transition-all duration-300"
+              >
+                Abbrechen
+              </button>
+              <button
+                type="submit"
+                form="customer-form"
+                className="btn-primary py-2 px-4 rounded-xl transition-all duration-300"
+              >
+                {editingCustomer ? 'Aktualisieren' : 'Erstellen'}
+              </button>
+            </>
+          }
+        >
+            <form id="customer-form" onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Kundennummer
@@ -1121,89 +1140,50 @@ export function CustomerManagement({ autoCreate }: CustomerManagementProps = {})
               ) : (
                 <PlanLockedNotice feature="customerPricing" compact />
               )}
-              <div className="flex flex-col sm:flex-row gap-4 pt-4">
-                <button
-                  type="submit"
-                  className="flex-1 btn-primary py-2 px-4 rounded-xl transition-all duration-300 hover:scale-105"
-                >
-                  {editingCustomer ? 'Aktualisieren' : 'Erstellen'}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCloseModal}
-                  className="flex-1 bg-gray-300 text-gray-700 py-2 px-4 rounded-xl hover:bg-gray-400 transition-all duration-300"
-                >
-                  Abbrechen
-                </button>
-              </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Hourly Rate Edit Modal */}
       {isHourlyRateModalOpen && editingHourlyRate && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90dvh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">
-                Stundensatz bearbeiten
-              </h3>
-              <button
-                onClick={handleCloseHourlyRateModal}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="h-6 w-6" />
-              </button>
-            </div>
+        <Modal title="Stundensatz bearbeiten" onClose={handleCloseHourlyRateModal} size="lg" zClass="z-50">
             <HourlyRateEditForm
               rate={editingHourlyRate}
               onSave={(updatedData) => handleUpdateHourlyRate(editingHourlyRate.id, updatedData)}
               onCancel={handleCloseHourlyRateModal}
             />
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Material Edit Modal */}
       {isMaterialModalOpen && editingMaterial && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90dvh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">
-                Material bearbeiten
-              </h3>
-              <button
-                onClick={handleCloseMaterialModal}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="h-6 w-6" />
-              </button>
-            </div>
+        <Modal title="Material bearbeiten" onClose={handleCloseMaterialModal} size="lg" zClass="z-50">
             <MaterialEditForm
               material={editingMaterial}
               onSave={(updatedData) => handleUpdateMaterial(editingMaterial.id, updatedData)}
               onCancel={handleCloseMaterialModal}
             />
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Create Hourly Rate Modal */}
       {isCreateHourlyRateModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90dvh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">
-                Neuer Stundensatz
-              </h3>
-              <button
-                onClick={handleCloseCreateHourlyRateModal}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="h-6 w-6" />
-              </button>
-            </div>
+        <Modal title="Neuer Stundensatz" onClose={handleCloseCreateHourlyRateModal} size="lg" zClass="z-50" footer={<>
+                <button
+                  type="button"
+                  onClick={handleCloseCreateHourlyRateModal}
+                  className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors text-sm"
+                >
+                  Abbrechen
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCreateHourlyRate}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
+                >
+                  Erstellen
+                </button>
+          </>}>
             <div className="w-full space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -1273,42 +1253,28 @@ export function CustomerManagement({ autoCreate }: CustomerManagementProps = {})
                   </label>
                 </div>
               </div>
-              <div className="flex space-x-2">
-                <button
-                  type="button"
-                  onClick={handleCreateHourlyRate}
-                  className="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
-                >
-                  Erstellen
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCloseCreateHourlyRateModal}
-                  className="px-3 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors text-sm"
-                >
-                  Abbrechen
-                </button>
-              </div>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Create Material Modal */}
       {isCreateMaterialModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90dvh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">
-                Neues Material
-              </h3>
-              <button
-                onClick={handleCloseCreateMaterialModal}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="h-6 w-6" />
-              </button>
-            </div>
+        <Modal title="Neues Material" onClose={handleCloseCreateMaterialModal} size="lg" zClass="z-50" footer={<>
+                <button
+                  type="button"
+                  onClick={handleCloseCreateMaterialModal}
+                  className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors text-sm"
+                >
+                  Abbrechen
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCreateMaterial}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
+                >
+                  Erstellen
+                </button>
+          </>}>
             <div className="w-full space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -1390,25 +1356,8 @@ export function CustomerManagement({ autoCreate }: CustomerManagementProps = {})
                   </label>
                 </div>
               </div>
-              <div className="flex space-x-2">
-                <button
-                  type="button"
-                  onClick={handleCreateMaterial}
-                  className="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
-                >
-                  Erstellen
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCloseCreateMaterialModal}
-                  className="px-3 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors text-sm"
-                >
-                  Abbrechen
-                </button>
-              </div>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

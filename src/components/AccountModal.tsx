@@ -1,6 +1,6 @@
+import { Modal } from './Modal';
 import { FormEvent, useState } from 'react';
 import QRCode from 'qrcode';
-import { X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { apiService } from '../services/api';
 import { errorMessage, newPasswordProblem } from '../utils/authRoutes';
@@ -154,16 +154,8 @@ export function AccountModal({ isOpen, onClose }: AccountModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-lg max-w-lg w-full max-h-[90dvh] overflow-y-auto">
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">Konto</h3>
-          <button onClick={handleClose} className="text-gray-500 hover:text-gray-700" aria-label="Schließen">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        <div className="p-6 space-y-8">
+    <Modal title="Konto" onClose={handleClose} size="lg" zClass="z-50">
+        <div className="space-y-8">
           <div className="text-sm text-gray-600">
             <p className="font-medium text-gray-900">{user.name}</p>
             <p>{user.email}</p>
@@ -277,7 +269,6 @@ export function AccountModal({ isOpen, onClose }: AccountModalProps) {
           </section>
           </fieldset>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import logger from '../utils/logger';
 import { mergeAttachmentContent, quoteNeedsContent } from '../utils/attachmentContent';
 import { apiService } from '../services/api';
-import { Save, X, Plus, Trash2, Calculator, ChevronUp, ChevronDown, GripVertical, Percent, FileText } from 'lucide-react';
+import { Save, Plus, Trash2, Calculator, ChevronUp, ChevronDown, GripVertical, Percent, FileText } from 'lucide-react';
 import {
   DndContext,
   closestCenter,
@@ -33,6 +33,8 @@ import { calculateInvoiceWithDiscounts, validateDiscount } from '../utils/discou
 import { DocumentPreview, PreviewDocument } from './DocumentPreview';
 import { RatesAndMaterialsRedirectModal } from './RatesAndMaterialsRedirectModal';
 import { formatCustomerNumber } from '../utils/customerUtils';
+import { CustomerCreateModal } from './CustomerCreateModal';
+import { PageShell } from './PageShell';
 import { generateUUID } from '../utils/uuid';
 
 // Sortable Item Component for Drag & Drop
@@ -435,12 +437,11 @@ function SortableQuoteItem({
 interface QuoteEditorProps {
   quote?: Quote | null;
   onClose: () => void;
-  onCreateCustomer?: () => void;
   onNavigateToCustomers?: () => void;
   onNavigateToSettings?: () => void;
 }
 
-export function QuoteEditor({ quote, onClose, onCreateCustomer, onNavigateToCustomers, onNavigateToSettings }: QuoteEditorProps) {
+export function QuoteEditor({ quote, onClose, onNavigateToCustomers, onNavigateToSettings }: QuoteEditorProps) {
   const { customers } = useCustomers();
   const { company } = useCompany();
   const { addQuote, updateQuote } = useQuotes();
@@ -458,6 +459,7 @@ export function QuoteEditor({ quote, onClose, onCreateCustomer, onNavigateToCust
   const [attachments, setAttachments] = useState<QuoteAttachment[]>([]);
   const [customerSearchTerm, setCustomerSearchTerm] = useState('');
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [showTemplateDropdown, setShowTemplateDropdown] = useState(false);
   const [previewDocuments, setPreviewDocuments] = useState<PreviewDocument[]>([]);
   const [showPreview, setShowPreview] = useState(false);
@@ -589,6 +591,7 @@ export function QuoteEditor({ quote, onClose, onCreateCustomer, onNavigateToCust
         const newItem: QuoteItem = {
           id: generateUUID(),
           description: template.name,
+          kind: 'material',
           quantity: 1,
           unitPrice: template.unitPrice,
           taxRate: company.isSmallBusiness ? 0 : (template.taxRate != null ? template.taxRate : 19),
@@ -611,6 +614,8 @@ export function QuoteEditor({ quote, onClose, onCreateCustomer, onNavigateToCust
         const newItem: QuoteItem = {
           id: generateUUID(),
           description: template.name + (template.description ? ` - ${template.description}` : ''),
+          kind: 'labor',
+          hourlyRateId: template.id,
           quantity: 1,
           unitPrice: template.rate,
           taxRate: company.isSmallBusiness ? 0 : (template.taxRate != null ? template.taxRate : 19),
@@ -834,24 +839,35 @@ export function QuoteEditor({ quote, onClose, onCreateCustomer, onNavigateToCust
   const hasNoTemplates = materialTemplates.length === 0 && hourlyRateTemplates.length === 0;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl my-8">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
-          <h2 className="text-2xl font-bold text-gray-900">
-            {quote ? 'Angebot bearbeiten' : 'Neues Angebot'}
-          </h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors p-2 hover:bg-white rounded-full"
-            title="Schließen"
-          >
-            <X className="w-6 h-6" />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="p-6 space-y-6 max-h-[calc(100vh-12rem)] overflow-y-auto">
-          {quote && <DocumentChain kind="quote" id={quote.id} />}
+    <div>
+      <PageShell
+        title={quote ? 'Angebot bearbeiten' : 'Neues Angebot'}
+        subtitle={quote ? quote.quoteNumber : 'Erstellen Sie ein neues Angebot'}
+        onClose={onClose}
+        header={quote ? <DocumentChain kind="quote" id={quote.id} /> : undefined}
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isSubmitting}
+              className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Abbrechen
+            </button>
+            <button
+              type="submit"
+              form="quote-form"
+              disabled={isSubmitting}
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Save className="w-5 h-5" />
+              {isSubmitting ? 'Wird gespeichert...' : (quote ? 'Änderungen speichern' : 'Angebot erstellen')}
+            </button>
+          </>
+        }
+      >
+        <form id="quote-form" onSubmit={handleSubmit} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 space-y-6">
 
           {/* Basic Information */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -908,20 +924,18 @@ export function QuoteEditor({ quote, onClose, onCreateCustomer, onNavigateToCust
                     ) : (
                       <div className="px-4 py-8 text-center">
                         <p className="text-gray-500 mb-4">Keine Kunden gefunden</p>
-                        {onCreateCustomer && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setShowCustomerDropdown(false);
-                              onCreateCustomer();
-                            }}
-                            className="text-blue-600 hover:text-blue-700 font-medium"
-                          >
-                            Neuen Kunden anlegen
-                          </button>
-                        )}
                       </div>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowCustomerDropdown(false);
+                        setShowCustomerForm(true);
+                      }}
+                      className="w-full px-4 py-3 text-left text-blue-600 hover:bg-blue-50 font-medium border-t border-gray-100"
+                    >
+                      + Neuen Kunden anlegen
+                    </button>
                   </div>
                 )}
               </div>
@@ -1254,28 +1268,8 @@ export function QuoteEditor({ quote, onClose, onCreateCustomer, onNavigateToCust
               placeholder="Optional: Zusätzliche Informationen für das Angebot..."
             />
           </div>
-
-          {/* Action Buttons */}
-          <div className="flex gap-3 pt-6 border-t border-gray-200">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isSubmitting}
-              className="flex-1 px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Abbrechen
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Save className="w-5 h-5" />
-              {isSubmitting ? 'Wird gespeichert...' : (quote ? 'Änderungen speichern' : 'Angebot erstellen')}
-            </button>
-          </div>
         </form>
-      </div>
+      </PageShell>
 
       {/* Document Preview Modal */}
       {showPreview && (
@@ -1284,6 +1278,13 @@ export function QuoteEditor({ quote, onClose, onCreateCustomer, onNavigateToCust
           onClose={handleClosePreview}
           documents={previewDocuments}
           initialIndex={0}
+        />
+      )}
+
+      {showCustomerForm && (
+        <CustomerCreateModal
+          onClose={() => setShowCustomerForm(false)}
+          onCreated={handleCustomerSelect}
         />
       )}
 

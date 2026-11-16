@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import logger from '../utils/logger';
 import { mergeAttachmentContent, invoiceNeedsContent } from '../utils/attachmentContent';
 import { apiService } from '../services/api';
-import { Save, X, Plus, Trash2, Calculator, Edit, ChevronUp, ChevronDown, GripVertical } from 'lucide-react';
+import { Save, Plus, Trash2, Calculator, Edit, ChevronUp, ChevronDown, GripVertical } from 'lucide-react';
 import {
   DndContext,
   closestCenter,
@@ -32,7 +32,10 @@ import { AttachmentManager } from './AttachmentManager';
 import { calculateInvoiceWithDiscounts, updateItemWithDiscount, formatDiscountDisplay } from '../utils/discountUtils';
 import { DocumentPreview, PreviewDocument } from './DocumentPreview';
 import { RatesAndMaterialsRedirectModal } from './RatesAndMaterialsRedirectModal';
-import { findDuplicateCustomer, showDuplicateCustomerAlert, formatCustomerNumber } from '../utils/customerUtils';
+import { formatCustomerNumber } from '../utils/customerUtils';
+import { CustomerCreateModal } from './CustomerCreateModal';
+import { PageShell } from './PageShell';
+import { Modal } from './Modal';
 import { generateUUID } from '../utils/uuid';
 
 // Sortable Item Component for Drag & Drop
@@ -461,13 +464,12 @@ function SortableInvoiceItem({
 interface InvoiceEditorProps {
   invoice?: Invoice | null;
   onClose: () => void;
-  onCreateCustomer?: () => void;
   onNavigateToCustomers?: () => void;
   onNavigateToSettings?: () => void;
 }
 
-export function InvoiceEditor({ invoice, onClose, onCreateCustomer, onNavigateToCustomers, onNavigateToSettings }: InvoiceEditorProps) {
-  const { customers, addCustomer, refreshCustomers } = useCustomers();
+export function InvoiceEditor({ invoice, onClose, onNavigateToCustomers, onNavigateToSettings }: InvoiceEditorProps) {
+  const { customers } = useCustomers();
   const { addInvoice, updateInvoice, refreshInvoices } = useInvoices();
   const {
     company,
@@ -491,17 +493,6 @@ export function InvoiceEditor({ invoice, onClose, onCreateCustomer, onNavigateTo
     type: 'hourlyRates'
   });
   const [, setEditingInvoiceTemplate] = useState<InvoiceTemplate | null>(null);
-  const [newCustomerData, setNewCustomerData] = useState({
-    name: '',
-    email: '',
-    address: '',
-    addressSupplement: '',
-    postalCode: '',
-    city: '',
-    country: 'Deutschland',
-    taxId: '',
-    phone: ''
-  });
   const [newInvoiceTemplateData, setNewInvoiceTemplateData] = useState({
     name: '',
     description: '',
@@ -917,29 +908,35 @@ export function InvoiceEditor({ invoice, onClose, onCreateCustomer, onNavigateTo
   } = calculateTotals();
 
   return (
-    <div className="space-y-4 lg:space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4">
-        <div className="flex justify-between items-start">
-          <div className="flex-1 min-w-0">
-            <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 break-words">
-              {invoice ? 'Rechnung bearbeiten' : 'Neue Rechnung'}
-            </h2>
-            <p className="text-gray-600 mt-1 text-sm sm:text-base break-words">
-              {invoice ? `${invoice.invoiceNumber}` : 'Erstellen Sie eine neue Rechnung'}
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 ml-4 flex-shrink-0"
-          >
-            <X className="h-6 w-6" />
-          </button>
-        </div>
-        {invoice && <DocumentChain kind="invoice" id={invoice.id} />}
-      </div>
-
-      <form onSubmit={handleSubmit} className="space-y-6">
+    <div>
+      <PageShell
+        title={invoice ? 'Rechnung bearbeiten' : 'Neue Rechnung'}
+        subtitle={invoice ? `${invoice.invoiceNumber}` : 'Erstellen Sie eine neue Rechnung'}
+        onClose={onClose}
+        header={invoice ? <DocumentChain kind="invoice" id={invoice.id} /> : undefined}
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isSubmitting}
+              className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Abbrechen
+            </button>
+            <button
+              type="submit"
+              form="invoice-form"
+              disabled={isSubmitting}
+              className="px-6 py-2 btn-primary rounded-lg transition-colors flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Save className="h-4 w-4" />
+              <span>{isSubmitting ? 'Wird gespeichert...' : (invoice ? 'Aktualisieren' : 'Erstellen')}</span>
+            </button>
+          </>
+        }
+      >
+      <form id="invoice-form" onSubmit={handleSubmit} className="space-y-6">
         {/* Basic Information */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Grundinformationen</h3>
@@ -1000,20 +997,18 @@ export function InvoiceEditor({ invoice, onClose, onCreateCustomer, onNavigateTo
                     </div>
                   )}
                 </div>
-                {onCreateCustomer && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      logger.debug('Plus button clicked in InvoiceEditor');
-                      setShowCustomerForm(true);
-                    }}
-                    className="px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors flex items-center justify-center text-sm sm:w-auto w-full"
-                    title="Neuen Kunden anlegen"
-                  >
-                    <Plus className="h-4 w-4 mr-2 sm:mr-0" />
-                    <span className="sm:hidden">Neuen Kunden anlegen</span>
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    logger.debug('Plus button clicked in InvoiceEditor');
+                    setShowCustomerForm(true);
+                  }}
+                  className="px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors flex items-center justify-center text-sm sm:w-auto w-full"
+                  title="Neuen Kunden anlegen"
+                >
+                  <Plus className="h-4 w-4 mr-2 sm:mr-0" />
+                  <span className="sm:hidden">Neuen Kunden anlegen</span>
+                </button>
               </div>
             </div>
             <div>
@@ -1367,210 +1362,62 @@ export function InvoiceEditor({ invoice, onClose, onCreateCustomer, onNavigateTo
             onPreview={handlePreview}
           />
         </div>
-
-        {/* Actions */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:justify-end sm:gap-0 sm:space-x-4">
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full sm:w-auto px-6 py-3 sm:py-2 btn-primary rounded-lg transition-colors flex items-center justify-center space-x-2 order-1 sm:order-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Save className="h-4 w-4" />
-            <span>{isSubmitting ? 'Wird gespeichert...' : (invoice ? 'Aktualisieren' : 'Erstellen')}</span>
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isSubmitting}
-            className="w-full sm:w-auto px-6 py-3 sm:py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors order-2 sm:order-1 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Abbrechen
-          </button>
-        </div>
       </form>
+      </PageShell>
 
-      {/* Customer Creation Modal */}
       {showCustomerForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[200] p-4">
-          <div className="bg-white rounded-lg p-4 sm:p-6 w-full max-w-md max-h-[90dvh] overflow-y-auto shadow-2xl">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              Neuer Kunde
-            </h3>
-            <form onSubmit={async (e) => {
-              e.preventDefault();
-              
-              // Check for duplicates
-              const existingCustomer = findDuplicateCustomer(customers, newCustomerData);
-              
-              if (existingCustomer) {
-                showDuplicateCustomerAlert(existingCustomer);
-                return;
-              }
-              
-              try {
-                const createdCustomer = await addCustomer(newCustomerData);
-                
-                // Pre-select the newly created customer
-                if (createdCustomer && createdCustomer.id) {
-                  setFormData(prev => ({ ...prev, customerId: createdCustomer.id }));
-                }
-                
-                setNewCustomerData({
-                  name: '',
-                  email: '',
-                  address: '',
-                  addressSupplement: '',
-                  postalCode: '',
-                  city: '',
-                  country: 'Deutschland',
-                  taxId: '',
-                  phone: ''
-                });
-                setShowCustomerForm(false);
-                
-                // Refresh customers in other components
-                await refreshCustomers();
-              } catch (error) {
-                logger.error('Failed to create customer', { error: (error as Error).message });
-                alert('Fehler beim Erstellen des Kunden. Bitte versuchen Sie es erneut.');
-              }
-            }} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Name *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={newCustomerData.name}
-                  onChange={(e) => setNewCustomerData({ ...newCustomerData, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  E-Mail
-                </label>
-                <input
-                  type="email"
-                  value={newCustomerData.email}
-                  onChange={(e) => setNewCustomerData({ ...newCustomerData, email: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom"
-                  placeholder="optional"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Adresse *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={newCustomerData.address}
-                  onChange={(e) => setNewCustomerData({ ...newCustomerData, address: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Adresszusatz
-                </label>
-                <input
-                  type="text"
-                  value={newCustomerData.addressSupplement}
-                  onChange={(e) => setNewCustomerData({ ...newCustomerData, addressSupplement: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom"
-                  placeholder="z.B. 2. Stock, Hintereingang"
-                />
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    PLZ *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={newCustomerData.postalCode}
-                    onChange={(e) => setNewCustomerData({ ...newCustomerData, postalCode: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Stadt *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={newCustomerData.city}
-                    onChange={(e) => setNewCustomerData({ ...newCustomerData, city: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Land *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={newCustomerData.country}
-                  onChange={(e) => setNewCustomerData({ ...newCustomerData, country: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  USt-IdNr.
-                </label>
-                <input
-                  type="text"
-                  value={newCustomerData.taxId}
-                  onChange={(e) => setNewCustomerData({ ...newCustomerData, taxId: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Telefon
-                </label>
-                <input
-                  type="tel"
-                  value={newCustomerData.phone}
-                  onChange={(e) => setNewCustomerData({ ...newCustomerData, phone: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom"
-                />
-              </div>
-              <div className="flex flex-col sm:flex-row gap-4 pt-4">
-                <button
-                  type="submit"
-                  className="flex-1 bg-primary-custom text-white py-2 px-4 rounded-lg hover:bg-primary-custom/90 transition-colors"
-                >
-                  Kunde erstellen
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowCustomerForm(false)}
-                  className="flex-1 bg-gray-300 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-400 transition-colors"
-                >
-                  Abbrechen
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <CustomerCreateModal
+          onClose={() => setShowCustomerForm(false)}
+          onCreated={(c) => setFormData(prev => ({ ...prev, customerId: c.id }))}
+        />
       )}
 
       {/* Invoice Template Form Modal */}
       {showInvoiceTemplateForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
-            <div className="p-6 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900">Neue Rechnungsvorlage erstellen</h3>
-            </div>
-            <form onSubmit={async (e) => {
+        <Modal
+          title="Neue Rechnungsvorlage erstellen"
+          zClass="z-[60]"
+          onClose={() => {
+            setNewInvoiceTemplateData({
+                      name: '',
+                      description: '',
+                      unitPrice: 0,
+                      unit: 'Stunde',
+                      taxRate: 19,
+                      isDefault: false
+                    });
+                    setShowInvoiceTemplateForm(false);
+          }}
+          footer={
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setNewInvoiceTemplateData({
+                      name: '',
+                      description: '',
+                      unitPrice: 0,
+                      unit: 'Stunde',
+                      taxRate: 19,
+                      isDefault: false
+                    });
+                    setShowInvoiceTemplateForm(false);
+                }}
+                className="bg-gray-300 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-400 transition-colors"
+              >
+                Abbrechen
+              </button>
+              <button
+                type="submit"
+                form="invoice-template-form"
+                className="bg-primary-custom text-white py-2 px-4 rounded-lg hover:bg-primary-custom/90 transition-colors"
+              >
+                Vorlage erstellen
+              </button>
+            </>
+          }
+        >
+            <form id="invoice-template-form" onSubmit={async (e) => {
               e.preventDefault();
               
               if (!newInvoiceTemplateData.name || newInvoiceTemplateData.unitPrice <= 0) {
@@ -1697,51 +1544,14 @@ export function InvoiceEditor({ invoice, onClose, onCreateCustomer, onNavigateTo
                   Als Standard-Vorlage markieren
                 </label>
               </div>
-              
-              <div className="flex flex-col sm:flex-row gap-4 pt-4">
-                <button
-                  type="submit"
-                  className="flex-1 bg-primary-custom text-white py-2 px-4 rounded-lg hover:bg-primary-custom/90 transition-colors"
-                >
-                  Vorlage erstellen
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setNewInvoiceTemplateData({
-                      name: '',
-                      description: '',
-                      unitPrice: 0,
-                      unit: 'Stunde',
-                      taxRate: 19,
-                      isDefault: false
-                    });
-                    setShowInvoiceTemplateForm(false);
-                  }}
-                  className="flex-1 bg-gray-300 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-400 transition-colors"
-                >
-                  Abbrechen
-                </button>
-              </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Invoice Template Manager Modal */}
       {showInvoiceTemplateManager && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90dvh] overflow-hidden">
-            <div className="p-6 border-b border-gray-200 flex justify-between items-center">
-              <h3 className="text-lg font-semibold text-gray-900">Rechnungsvorlagen verwalten</h3>
-              <button
-                onClick={() => setShowInvoiceTemplateManager(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="h-6 w-6" />
-              </button>
-            </div>
-            <div className="p-6">
+        <Modal title="Rechnungsvorlagen verwalten" size="xl" zClass="z-50" onClose={() => setShowInvoiceTemplateManager(false)}>
+            <div>
               <div className="mb-4">
                 <button
                   onClick={() => setShowInvoiceTemplateForm(true)}
@@ -1799,8 +1609,7 @@ export function InvoiceEditor({ invoice, onClose, onCreateCustomer, onNavigateTo
                 )}
               </div>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Document Preview Modal */}

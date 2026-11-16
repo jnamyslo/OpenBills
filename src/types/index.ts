@@ -107,6 +107,9 @@ export type QuoteStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired'
 
 export interface QuoteItem extends Discount {
   id: UUID;
+  /** 'labor' = Arbeitszeit (aus Stundensatz-Vorlage), sonst Material; steuert die Übernahme in den Auftrag */
+  kind?: 'labor' | 'material';
+  hourlyRateId?: UUID;
   description: string;
   quantity: number;
   unitPrice: number;

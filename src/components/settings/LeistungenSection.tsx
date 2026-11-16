@@ -1,5 +1,6 @@
+import { Modal } from '../Modal';
 import { useEffect, useState } from 'react';
-import { Clock, Edit2, Package, Plus, Trash2, X } from 'lucide-react';
+import { Clock, Edit2, Package, Plus, Trash2 } from 'lucide-react';
 import logger from '../../utils/logger';
 import { apiService } from '../../services/api';
 import { useCompany } from '../../context/CompanyContext';
@@ -320,22 +321,23 @@ function HourlyRateModal({ rate, onSave, onClose }: HourlyRateModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">
-            {rate ? 'Stundensatz bearbeiten' : 'Neuer Stundensatz'}
-          </h3>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
-          >
-            <X className="h-6 w-6" />
-          </button>
-        </div>
-        
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+    <Modal title={rate ? 'Stundensatz bearbeiten' : 'Neuer Stundensatz'} onClose={onClose} zClass="z-50" footer={<>
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 transition-all duration-300"
+            >
+              Abbrechen
+            </button>
+            <button
+              type="submit"
+              form="leistung-form-1"
+              className="px-4 py-2 bg-primary-custom text-white rounded-xl hover:brightness-90 transition-all duration-300 hover:scale-105"
+            >
+              Speichern
+            </button>
+          </>}>
+        <form id="leistung-form-1" onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Name *
@@ -391,25 +393,8 @@ function HourlyRateModal({ rate, onSave, onClose }: HourlyRateModalProps) {
               Als Standard-Stundensatz festlegen
             </label>
           </div>
-
-          <div className="flex justify-end space-x-3 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 transition-all duration-300"
-            >
-              Abbrechen
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 bg-primary-custom text-white rounded-xl hover:brightness-90 transition-all duration-300 hover:scale-105"
-            >
-              Speichern
-            </button>
-          </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -437,22 +422,23 @@ function MaterialTemplateModal({ template, onSave, onClose }: MaterialTemplateMo
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">
-            {template ? 'Materialvorlage bearbeiten' : 'Neue Materialvorlage'}
-          </h3>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
-          >
-            <X className="h-6 w-6" />
-          </button>
-        </div>
-        
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+    <Modal title={template ? 'Materialvorlage bearbeiten' : 'Neue Materialvorlage'} onClose={onClose} zClass="z-50" footer={<>
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 transition-all duration-300"
+            >
+              Abbrechen
+            </button>
+            <button
+              type="submit"
+              form="leistung-form-2"
+              className="px-4 py-2 bg-primary-custom text-white rounded-xl hover:brightness-90 transition-all duration-300 hover:scale-105"
+            >
+              Speichern
+            </button>
+          </>}>
+        <form id="leistung-form-2" onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Name *
@@ -523,24 +509,7 @@ function MaterialTemplateModal({ template, onSave, onClose }: MaterialTemplateMo
               Als Standard-Materialvorlage festlegen
             </label>
           </div>
-
-          <div className="flex justify-end space-x-3 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 transition-all duration-300"
-            >
-              Abbrechen
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 bg-primary-custom text-white rounded-xl hover:brightness-90 transition-all duration-300 hover:scale-105"
-            >
-              Speichern
-            </button>
-          </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }

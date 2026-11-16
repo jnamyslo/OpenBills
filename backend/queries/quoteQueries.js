@@ -19,7 +19,9 @@ export async function findAllQuotes() {
                    'order', item_order,
                    'discountType', discount_type,
                    'discountValue', discount_value,
-                   'discountAmount', discount_amount
+                   'discountAmount', discount_amount,
+                   'kind', kind,
+                   'hourlyRateId', hourly_rate_id
                  ) ORDER BY item_order
                ) as items
         FROM quote_items
@@ -83,7 +85,9 @@ export async function findQuoteById(id) {
                    'order', item_order,
                    'discountType', discount_type,
                    'discountValue', discount_value,
-                   'discountAmount', discount_amount
+                   'discountAmount', discount_amount,
+                   'kind', kind,
+                   'hourlyRateId', hourly_rate_id
                  ) ORDER BY item_order
                ) as items
         FROM quote_items

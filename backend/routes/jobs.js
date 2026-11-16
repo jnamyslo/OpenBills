@@ -415,7 +415,8 @@ router.put('/:id', async (req, res) => {
     }
     if (hourlyRateId !== undefined) {
       updates.push(`hourly_rate_id = $${paramIndex++}`);
-      values.push(hourlyRateId);
+      // Leerer String (Formular ohne Stundensatz) ist keine gültige uuid
+      values.push(hourlyRateId || null);
     }
     if (materials !== undefined) {
       updates.push(`materials = $${paramIndex++}`);

@@ -1,5 +1,6 @@
 import React from 'react';
-import { X, User, Settings, DollarSign, Package } from 'lucide-react';
+import { Modal } from './Modal';
+import { User, Settings, DollarSign, Package } from 'lucide-react';
 
 interface RatesAndMaterialsRedirectModalProps {
   isOpen: boolean;
@@ -24,24 +25,19 @@ export function RatesAndMaterialsRedirectModal({
     <Package className="h-8 w-8 text-green-600" />;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[200] p-4">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-2xl">
-        <div className="flex justify-between items-center mb-6">
-          <div className="flex items-center space-x-3">
-            {typeIcon}
-            <h3 className="text-lg font-semibold text-gray-900">
-              {typeLabel} verwalten
-            </h3>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 p-1"
-            title="Schließen"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
+    <Modal
+      title={`${typeLabel} verwalten`}
+      icon={typeIcon}
+      onClose={onClose}
+      footer={
+        <button
+          onClick={onClose}
+          className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+        >
+          Abbrechen
+        </button>
+      }
+    >
         <div className="text-center mb-6">
           <p className="text-gray-600 mb-4">
             Wo möchten Sie {typeLabel.toLowerCase()} verwalten?
@@ -89,16 +85,6 @@ export function RatesAndMaterialsRedirectModal({
             </div>
           </button>
         </div>
-
-        <div className="mt-6 pt-4 border-t border-gray-200">
-          <button
-            onClick={onClose}
-            className="w-full px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-          >
-            Abbrechen
-          </button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

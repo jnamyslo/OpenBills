@@ -90,6 +90,25 @@ describe.skipIf(!hasDb)('Belegkette Angebot → Auftrag → Rechnung', () => {
     ]);
   });
 
+  it('übernimmt Arbeitszeit-Positionen als Zeiteintrag (Menge x Stundensatz) und Material weiterhin als Material', async () => {
+    await pool.query('DELETE FROM quote_items WHERE quote_id = $1', [quoteId]);
+    const rateId = '11111111-1111-4111-8111-111111111111';
+    await pool.query(
+      `INSERT INTO quote_items (quote_id, description, quantity, unit_price, tax_rate, total, item_order, discount_type, discount_value, discount_amount, kind, hourly_rate_id)
+       VALUES ($1, 'Standard', 2.5, 75, 19, 168.75, 1, 'percentage', 10, 18.75, 'labor', $2),
+              ($1, 'Kabel', 4, 3, 19, 12, 2, NULL, NULL, NULL, 'material', NULL)`,
+      [quoteId, rateId]
+    );
+    const res = await post(`/api/quotes/${quoteId}/convert-to-job`);
+    expect(res.status).toBe(201);
+    expect(res.body.materials.map((m) => m.description)).toEqual(['Kabel']);
+    expect(res.body.timeEntries).toHaveLength(1);
+    expect(res.body.timeEntries[0]).toMatchObject({
+      description: 'Standard', hoursWorked: 2.5, hourlyRate: 75, hourlyRateId: rateId,
+      total: 168.75, discountType: 'percentage', discountValue: 10, discountAmount: 18.75,
+    });
+  });
+
   it('Auftrag ohne Gesamtrabatt liefert keinen Rabatt', async () => {
     const res = await post(`/api/quotes/${quoteId}/convert-to-job`);
     expect(res.body.globalDiscountType).toBeUndefined();
