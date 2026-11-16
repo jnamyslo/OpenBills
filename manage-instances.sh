@@ -431,9 +431,9 @@ operator_reset() {
 # Tarif einer Instanz ändern (Upgrade/Downgrade): OPENBILLS_PLAN in .env.backend.<name> setzen, Instanz neu starten.
 # Daten bleiben erhalten. Demo- und Self-hosted-Instanzen werden nicht umgestellt.
 set_plan() {
-    local name=$1 plan=$2 valid="free starter professional enterprise" current
-    if [ -z "$name" ] || [ -z "$plan" ]; then
-        print_error "Usage: $0 set-plan <instance_name> <${valid// /|}>"
+    local name=$1 plan=$2 notify=${3:-} notify_email=${4:-} valid="free starter professional enterprise" current
+    if [ -z "$name" ] || [ -z "$plan" ] || { [ -n "$notify" ] && [ "$notify" != "--notify" ]; }; then
+        print_error "Usage: $0 set-plan <instance_name> <${valid// /|}> [--notify [email]]"
         return 1
     fi
     if [ ! -f ".env.backend.${name}" ]; then
@@ -468,6 +468,23 @@ set_plan() {
         print_error "Neustart von '$name' fehlgeschlagen (Sicherung: .env.backend.${name}.bak)"
         return 1
     fi
+
+    # Bestätigungsmail an den Kunden (an <email> oder, ohne Angabe, an die Kunden-Admins der Instanz).
+    # Ein Mailfehler macht den bereits erfolgten Tarifwechsel nicht rückgängig.
+    if [ "$notify" = "--notify" ]; then
+        send_plan_change_mail "$name" "$current" "$notify_email" \
+            || print_warning "Tarifwechsel-Mail konnte nicht gesendet werden. Der Tarif ist trotzdem geändert."
+    fi
+}
+
+# Tarifwechsel-Mail über den Plattform-Relay (Backend-Container der Instanz)
+send_plan_change_mail() {
+    local name=$1 old_plan=$2 email=${3:-} send_args
+    send_args=$(onboarding_send_args "$name") || return 1
+    compose_cmd "$name"
+    local args=(--old "$old_plan" $send_args)
+    [ -n "$email" ] && args+=(--send-to "$email")
+    "${COMPOSE[@]}" exec -T -e LOG_LEVEL=WARN backend node scripts/planChange.js "${args[@]}" < "$PLATFORM_ENV_FILE"
 }
 
 # Neuesten Stand holen (git pull, nur fast-forward) und Instanzen aktualisieren: "all" oder eine bestimmte Instanz.
@@ -517,7 +534,7 @@ case "$1" in
         remove_instance "$2" "$3"
         ;;
     set-plan)
-        set_plan "$2" "$3" || exit 1
+        set_plan "$2" "$3" "$4" "$5" || exit 1
         ;;
     update)
         update_instances "$2" || exit 1
@@ -550,7 +567,9 @@ case "$1" in
         echo "  restart <instance>      - Instanz neu starten"
         echo "  restart all             - Einmal bauen, alle laufenden Instanzen mit neuem Image neu starten"
         echo "  remove <instance> [--yes] - Instanz löschen (⚠️  Datenverlust!), --yes ohne Rückfrage"
-        echo "  set-plan <inst> <plan>  - Tarif wechseln (Upgrade/Downgrade), Daten bleiben erhalten"
+        echo "  set-plan <inst> <plan> [--notify [email]]"
+        echo "                          - Tarif wechseln (Upgrade/Downgrade), Daten bleiben erhalten; --notify sendet"
+        echo "                            eine Bestätigungsmail (an <email> oder die Kunden-Admins der Instanz)"
         echo "  update <inst|all>       - git pull, dann Instanz(en) neu bauen und aktualisieren"
         echo "  logs <instance> [svc]   - Logs anzeigen"
         echo "  backup <instance>       - Datenbank-Backup erstellen"

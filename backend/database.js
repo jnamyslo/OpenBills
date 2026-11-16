@@ -220,7 +220,8 @@ async function insertDefaultData(client) {
       INSERT INTO company (
         id, name, address, city, postal_code, country, phone, email, 
         website, tax_id, bank_account, bic, locale, invoice_start_number, 
-        logo, icon, reminder_text_stage_1, reminder_text_stage_2, reminder_text_stage_3
+        logo, icon, reminder_text_stage_1, reminder_text_stage_2, reminder_text_stage_3,
+        job_tracking_enabled, reporting_enabled, quotes_enabled, discounts_enabled, reminders_enabled
       ) VALUES (
         1,
         'Meine Firma GmbH',
@@ -240,7 +241,8 @@ async function insertDefaultData(client) {
         $2,
         $3,
         $4,
-        $5
+        $5,
+        true, true, true, true, true
       )
     `, [
       logo,

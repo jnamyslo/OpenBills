@@ -18,7 +18,7 @@ vi.mock('../services/mailRouting.js', () => ({
   PLATFORM_SYSTEM_SENDER: { name: 'OpenBills', email: 'support@openbills.de' },
 }));
 
-const { sendInviteMail, sendPasswordResetMail, sendOnboardingMail, isSmtpConfigured } = await import('../services/authMailService.js');
+const { sendInviteMail, sendPasswordResetMail, sendOnboardingMail, sendPlanChangeMail, isSmtpConfigured } = await import('../services/authMailService.js');
 
 describe('Auth-Mails', () => {
   beforeEach(() => {
@@ -148,5 +148,17 @@ describe('renderAuthMail ohne Zusatzblöcke', () => {
     const html = renderAuthMail({ heading: 'H', paragraphs: ['P'], buttonLabel: 'B', link: 'https://x', note: 'N' });
     expect(html).not.toContain('class="details"');
     expect(html.match(/class="info-box"/g)).toHaveLength(1);
+  });
+
+  it('sendPlanChangeMail über Plattform, ohne Button', async () => {
+    route.system = 'own';
+    await sendPlanChangeMail('k@firma.de', { oldPlan: 'starter', newPlan: 'professional', instanceSender: 'k@openbills.de' });
+    expect(sendMail).not.toHaveBeenCalled();
+    const m = platformSendMail.mock.calls[0][0];
+    expect(m.to).toBe('k@firma.de');
+    expect(m.subject).toBe('Ihr OpenBills-Tarif: jetzt Professional');
+    expect(m.text).toContain('von Starter auf Professional');
+    expect(m.text).toContain('eigenen Mailserver');
+    expect(m.html).not.toContain('class="button"');
   });
 });

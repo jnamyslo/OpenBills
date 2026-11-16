@@ -9,13 +9,18 @@ const color = (value, fallback) => (HEX_COLOR.test(value ?? '') ? value : fallba
 /**
  * HTML für Systemmails (Einladung, Passwort-Reset) im Layout der Rechnungsmails.
  * Alle Texte werden escaped; Farben nur als #rrggbb übernommen.
- * Optional: steps = { title, items } als nummerierte Liste im Detail-Kasten (wie Rechnungsdetails),
+ * Optional: ohne link entfallen Button und Link-Hinweis; steps = { title, items } als nummerierte Liste im Detail-Kasten (wie Rechnungsdetails),
  * hint = Hinweis im Info-Kasten oberhalb von note.
  */
 export function renderAuthMail({ heading, paragraphs, buttonLabel, link, note, steps, hint, companyName, primaryColor, secondaryColor }) {
   const primary = color(primaryColor, DEFAULT_PRIMARY);
   const secondary = color(secondaryColor, DEFAULT_SECONDARY);
-  const safeLink = escapeHtml(link);
+  const safeLink = escapeHtml(link ?? '');
+  const buttonHtml = link ? `
+    <div class="button-wrap">
+      <a class="button" href="${safeLink}">${escapeHtml(buttonLabel)}</a>
+    </div>
+    <p class="link">Falls der Button nicht funktioniert, diesen Link im Browser öffnen:<br>${safeLink}</p>` : '';
   const stepsHtml = steps?.items?.length ? `
     <div class="details">
       <p style="margin: 0 0 10px 0;"><strong>${escapeHtml(steps.title)}</strong></p>
@@ -56,10 +61,7 @@ export function renderAuthMail({ heading, paragraphs, buttonLabel, link, note, s
   </div>
   <div class="content">
     ${paragraphs.map(p => `<p>${escapeHtml(p)}</p>`).join('\n    ')}
-    <div class="button-wrap">
-      <a class="button" href="${safeLink}">${escapeHtml(buttonLabel)}</a>
-    </div>
-    <p class="link">Falls der Button nicht funktioniert, diesen Link im Browser öffnen:<br>${safeLink}</p>${stepsHtml}${hintHtml}
+    ${buttonHtml}${stepsHtml}${hintHtml}
     <div class="info-box">
       <p style="margin: 0;">${escapeHtml(note)}</p>
     </div>

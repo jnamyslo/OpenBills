@@ -123,3 +123,29 @@ export const sendOnboardingMail = async (to, { link, plan, instanceSender }) => 
     html,
   });
 };
+
+const PLAN_LABELS = { free: 'Free', starter: 'Starter', professional: 'Professional', enterprise: 'Enterprise' };
+
+/** Bestätigung nach Tarifwechsel (Upgrade/Downgrade); geht über den Plattform-Relay, da die Instanz-Mailkonfiguration vom Tarif abhängt. */
+export const sendPlanChangeMail = async (to, { oldPlan, newPlan, instanceSender }) => {
+  const oldLabel = PLAN_LABELS[oldPlan] ?? oldPlan;
+  const newLabel = PLAN_LABELS[newPlan] ?? newPlan;
+  const planSentence = onboardingPlanSentence(newPlan, instanceSender);
+  const lead = `Ihr OpenBills-Tarif wurde erfolgreich von ${oldLabel} auf ${newLabel} umgestellt. Die Änderung gilt ab sofort, Ihre Daten bleiben unverändert erhalten.`;
+  const closing = 'Bei Fragen erreichen Sie uns unter support@openbills.de.';
+  const text = ['Hallo,', lead, planSentence, closing].filter(Boolean).join('\n\n') + '\n';
+  const html = renderAuthMail({
+    heading: 'Ihr Tarif wurde geändert',
+    paragraphs: ['Hallo,', lead],
+    hint: planSentence,
+    note: closing,
+  });
+  const transporter = createPlatformTransporter();
+  await transporter.sendMail({
+    from: `"${PLATFORM_SYSTEM_SENDER.name}" <${PLATFORM_SYSTEM_SENDER.email}>`,
+    to,
+    subject: `Ihr OpenBills-Tarif: jetzt ${newLabel}`,
+    text,
+    html,
+  });
+};
