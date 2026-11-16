@@ -16,6 +16,7 @@ import {
   X
 } from 'lucide-react';
 import { apiService } from '../services/api';
+import { PasswordInput } from './PasswordInput';
 
 const MIN_PASSPHRASE_LENGTH = 12;
 
@@ -255,16 +256,14 @@ export function BackupManagement({ onClose, embedded = false }: BackupManagement
                 </p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <input
-                  type="password"
+                <PasswordInput
                   autoComplete="new-password"
                   placeholder="Backup-Passwort"
                   value={passphrase}
                   onChange={(e) => setPassphrase(e.target.value)}
                   className={inputClass}
                 />
-                <input
-                  type="password"
+                <PasswordInput
                   autoComplete="new-password"
                   placeholder="Backup-Passwort wiederholen"
                   value={passphraseRepeat}
@@ -437,9 +436,8 @@ export function BackupManagement({ onClose, embedded = false }: BackupManagement
                   <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="restore-passphrase">
                     Backup-Passwort
                   </label>
-                  <input
+                  <PasswordInput
                     id="restore-passphrase"
-                    type="password"
                     autoComplete="off"
                     value={restorePassphrase}
                     onChange={(e) => setRestorePassphrase(e.target.value)}

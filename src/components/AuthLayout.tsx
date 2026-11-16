@@ -1,6 +1,7 @@
-import { ReactNode } from 'react';
+import { ChangeEvent, ReactNode } from 'react';
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
 import type { TokenStatus } from '../types';
+import { PasswordInput } from './PasswordInput';
 
 interface AuthLayoutProps {
   title: string;
@@ -48,21 +49,25 @@ interface AuthFieldProps {
 }
 
 export function AuthField({ label, type = 'text', value, onChange, autoComplete, autoFocus, readOnly, inputMode, placeholder }: AuthFieldProps) {
+  const common = {
+    value,
+    onChange: (e: ChangeEvent<HTMLInputElement>) => onChange?.(e.target.value),
+    autoComplete,
+    autoFocus,
+    readOnly,
+    inputMode,
+    placeholder,
+    required: !readOnly,
+    className: `w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${readOnly ? 'bg-gray-100 text-gray-600' : ''}`,
+  };
   return (
     <label className="block">
       <span className="block text-sm font-medium text-gray-700 mb-1">{label}</span>
-      <input
-        type={type}
-        value={value}
-        onChange={(e) => onChange?.(e.target.value)}
-        autoComplete={autoComplete}
-        autoFocus={autoFocus}
-        readOnly={readOnly}
-        inputMode={inputMode}
-        placeholder={placeholder}
-        required={!readOnly}
-        className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${readOnly ? 'bg-gray-100 text-gray-600' : ''}`}
-      />
+      {type === 'password' ? (
+        <PasswordInput {...common} />
+      ) : (
+        <input type={type} {...common} />
+      )}
     </label>
   );
 }

@@ -7,6 +7,7 @@ import { errorMessage, newPasswordProblem } from '../utils/authRoutes';
 import { usePasswordMinLength } from '../hooks/usePasswordMinLength';
 import { useDemo } from '../context/DemoContext';
 import { DemoDisabledNotice } from './DemoDisabledNotice';
+import { PasswordInput } from './PasswordInput';
 
 interface AccountModalProps {
   isOpen: boolean;
@@ -175,18 +176,18 @@ export function AccountModal({ isOpen, onClose }: AccountModalProps) {
             <form onSubmit={submitPassword} className="space-y-3">
               <label className="block text-sm text-gray-700">
                 Aktuelles Passwort
-                <input type="password" autoComplete="current-password" required value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)} className={`${inputClass} mt-1`} />
+                <PasswordInput autoComplete="current-password" required value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)} className={inputClass} wrapperClassName="mt-1" />
               </label>
               <label className="block text-sm text-gray-700">
                 Neues Passwort
-                <input type="password" autoComplete="new-password" required value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)} className={`${inputClass} mt-1`} />
+                <PasswordInput autoComplete="new-password" required value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)} className={inputClass} wrapperClassName="mt-1" />
               </label>
               <label className="block text-sm text-gray-700">
                 Neues Passwort bestätigen
-                <input type="password" autoComplete="new-password" required value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)} className={`${inputClass} mt-1`} />
+                <PasswordInput autoComplete="new-password" required value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)} className={inputClass} wrapperClassName="mt-1" />
               </label>
               {pwError && <p role="alert" className="text-sm text-red-600">{pwError}</p>}
               {pwSuccess && <p role="status" className="text-sm text-green-700">{pwSuccess}</p>}
@@ -214,7 +215,7 @@ export function AccountModal({ isOpen, onClose }: AccountModalProps) {
             {step === 'password' && (
               <form onSubmit={submitSetupPassword} className="space-y-3">
                 <p className="text-sm text-gray-600">Bitte bestätigen Sie zuerst Ihr aktuelles Passwort.</p>
-                <input type="password" autoComplete="current-password" required value={tfPassword}
+                <PasswordInput autoComplete="current-password" required value={tfPassword}
                   onChange={(e) => setTfPassword(e.target.value)} className={inputClass} aria-label="Aktuelles Passwort" />
                 {tfError && <p role="alert" className="text-sm text-red-600">{tfError}</p>}
                 <div className="flex gap-2">
@@ -262,7 +263,7 @@ export function AccountModal({ isOpen, onClose }: AccountModalProps) {
             {step === 'disable' && (
               <form onSubmit={submitDisable} className="space-y-3">
                 <p className="text-sm text-gray-600">Zum Deaktivieren sind Ihr Passwort und ein aktueller Code erforderlich.</p>
-                <input type="password" autoComplete="current-password" required value={tfPassword}
+                <PasswordInput autoComplete="current-password" required value={tfPassword}
                   onChange={(e) => setTfPassword(e.target.value)} className={inputClass} aria-label="Aktuelles Passwort" placeholder="Aktuelles Passwort" />
                 <input type="text" inputMode="numeric" autoComplete="one-time-code" required value={tfCode}
                   onChange={(e) => setTfCode(e.target.value)} className={inputClass} aria-label="Code aus der App" placeholder="6-stelliger Code" />

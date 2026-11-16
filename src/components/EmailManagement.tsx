@@ -4,6 +4,7 @@ import { DemoDisabledNotice } from './DemoDisabledNotice';
 import logger from '../utils/logger';
 import { usePlan } from '../context/PlanContext';
 import { Mail, Send, Settings, TestTube, RefreshCw, Search, Calendar, User, FileText, CheckCircle, XCircle, Clock, AlertTriangle, Eye, X, TrendingUp, Database, Lock } from 'lucide-react';
+import { PasswordInput } from './PasswordInput';
 
 interface EmailHistoryItem {
   id: string;
@@ -776,8 +777,7 @@ export function EmailManagement({ onClose, embedded = false }: EmailManagementPr
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Passwort *
                       </label>
-                      <input
-                        type="password"
+                      <PasswordInput
                         required
                         value={smtpSettings.smtp_pass}
                         onChange={(e) => setSmtpSettings(prev => ({ ...prev, smtp_pass: e.target.value }))}
