@@ -161,10 +161,11 @@ EOF
 # Die Images haben keine instanzspezifischen Build-Args, daher genügt ein Build; er wird auf die
 # Compose-Standardnamen <projekt>-backend/-frontend jeder Instanz getaggt.
 restart_all() {
-    local names=() env_file name
+    local only=${1:-} names=() env_file name
     for env_file in .env.*; do
         [[ "$env_file" == .env.backend.* ]] && continue
         name=${env_file#.env.}
+        [ -n "$only" ] && [ "$name" != "$only" ] && continue
         [ -f ".env.backend.$name" ] || continue
         compose_cmd "$name"
         if [ -n "$("${COMPOSE[@]}" ps --status running -q 2>/dev/null)" ]; then
@@ -214,6 +215,7 @@ restart_all() {
 # Function to remove an instance completely
 remove_instance() {
     local instance_name=$1
+    local assume_yes=${2:-}
     if [ -z "$instance_name" ]; then
         print_error "Bitte geben Sie den Instanznamen an"
         echo "Usage: $0 remove <instance_name>"
@@ -230,7 +232,11 @@ remove_instance() {
     print_warning "Dies wird die Instanz '$instance_name' vollständig entfernen!"
     print_warning "Alle Daten (Datenbank, Konfiguration) gehen verloren!"
     echo
-    read -p "$(echo -e "${RED}Sind Sie sicher? Geben Sie 'LÖSCHEN' ein um zu bestätigen${NC}: ")" confirmation
+    if [ "$assume_yes" = "--yes" ]; then
+        confirmation="LÖSCHEN"
+    else
+        read -p "$(echo -e "${RED}Sind Sie sicher? Geben Sie 'LÖSCHEN' ein um zu bestätigen${NC}: ")" confirmation
+    fi
     
     if [ "$confirmation" = "LÖSCHEN" ]; then
         print_info "Entferne Instanz: $instance_name"
@@ -422,6 +428,68 @@ operator_reset() {
     run_auth_script "$1" operator operator-reset
 }
 
+# Tarif einer Instanz ändern (Upgrade/Downgrade): OPENBILLS_PLAN in .env.backend.<name> setzen, Instanz neu starten.
+# Daten bleiben erhalten. Demo- und Self-hosted-Instanzen werden nicht umgestellt.
+set_plan() {
+    local name=$1 plan=$2 valid="free starter professional enterprise" current
+    if [ -z "$name" ] || [ -z "$plan" ]; then
+        print_error "Usage: $0 set-plan <instance_name> <${valid// /|}>"
+        return 1
+    fi
+    if [ ! -f ".env.backend.${name}" ]; then
+        print_error "Instanz '$name' nicht gefunden"
+        return 1
+    fi
+    if ! [[ " $valid " == *" $plan "* ]]; then
+        print_error "Unbekannter Tarif '$plan'. Erlaubt: $valid"
+        return 1
+    fi
+    if is_demo_instance "$name"; then
+        print_error "Demo-Instanz: Tarifwechsel nicht möglich"
+        return 1
+    fi
+    current=$(instance_plan "$name")
+    if [ -z "$current" ]; then
+        print_error "Self-hosted-Instanz (kein Tarif): Tarifwechsel nicht möglich"
+        return 1
+    fi
+    if [ "$current" = "$plan" ]; then
+        print_info "Instanz '$name' hat bereits den Tarif '$plan'"
+        return 0
+    fi
+    print_info "Tarifwechsel '$name': $current → $plan"
+    cp ".env.backend.${name}" ".env.backend.${name}.bak"
+    sed -i.tmp -E "s/^OPENBILLS_PLAN=.*/OPENBILLS_PLAN=${plan}/" ".env.backend.${name}" && rm -f ".env.backend.${name}.tmp"
+    check_platform_ready "$name" || return 1
+    compose_cmd "$name"
+    if "${COMPOSE[@]}" up -d --force-recreate backend; then
+        print_success "Instanz '$name' läuft jetzt mit Tarif '$plan'"
+    else
+        print_error "Neustart von '$name' fehlgeschlagen (Sicherung: .env.backend.${name}.bak)"
+        return 1
+    fi
+}
+
+# Neuesten Stand holen (git pull, nur fast-forward) und Instanzen aktualisieren: "all" oder eine bestimmte Instanz.
+update_instances() {
+    local target=$1
+    if [ -z "$target" ]; then
+        print_error "Usage: $0 update <instance_name|all>"
+        return 1
+    fi
+    if [ "$target" != "all" ] && [ ! -f ".env.${target}" ]; then
+        print_error "Instanz '$target' nicht gefunden"
+        return 1
+    fi
+    print_info "git pull..."
+    git pull --ff-only || { print_error "git pull fehlgeschlagen (lokale Änderungen oder Divergenz?)"; return 1; }
+    if [ "$target" = "all" ]; then
+        restart_all
+    else
+        restart_all "$target"
+    fi
+}
+
 # Main script logic
 case "$1" in
     list|ls)
@@ -446,7 +514,13 @@ case "$1" in
         fi
         ;;
     remove|delete)
-        remove_instance $2
+        remove_instance "$2" "$3"
+        ;;
+    set-plan)
+        set_plan "$2" "$3" || exit 1
+        ;;
+    update)
+        update_instances "$2" || exit 1
         ;;
     logs)
         logs_instance $2 $3
@@ -475,7 +549,9 @@ case "$1" in
         echo "  stop <instance>         - Instanz stoppen"
         echo "  restart <instance>      - Instanz neu starten"
         echo "  restart all             - Einmal bauen, alle laufenden Instanzen mit neuem Image neu starten"
-        echo "  remove <instance>       - Instanz löschen (⚠️  Datenverlust!)"
+        echo "  remove <instance> [--yes] - Instanz löschen (⚠️  Datenverlust!), --yes ohne Rückfrage"
+        echo "  set-plan <inst> <plan>  - Tarif wechseln (Upgrade/Downgrade), Daten bleiben erhalten"
+        echo "  update <inst|all>       - git pull, dann Instanz(en) neu bauen und aktualisieren"
         echo "  logs <instance> [svc]   - Logs anzeigen"
         echo "  backup <instance>       - Datenbank-Backup erstellen"
         echo "  config <instance>       - Konfiguration bearbeiten"
