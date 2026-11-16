@@ -85,7 +85,7 @@ const onboardingPlanSentence = (plan, instanceSender) => {
     case 'professional':
       return `${starter} Sie können in den Einstellungen einen eigenen Mailserver hinterlegen.`;
     case 'enterprise':
-      return 'Bitte hinterlegen Sie in den Einstellungen Ihren eigenen Mailserver; darüber laufen alle Mails.';
+      return `E-Mails an Ihre Kunden gehen von ${instanceSender} raus, Antworten landen bei Ihrer Firmen-E-Mail; bis zu 100 Mails pro Tag. Optional können Sie in den Einstellungen einen eigenen Mailserver hinterlegen.`;
     default:
       return '';
   }

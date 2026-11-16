@@ -1,11 +1,11 @@
 #!/bin/bash
 # Gemeinsame Logik für Plattform-Mailversand (von deploy-instance.sh und manage-instances.sh geladen).
-# Tarife free/starter/professional versenden über den Plattform-Relay; Zugangsdaten liegen nur in
+# Alle Tarife (free/starter/professional/enterprise) versenden über den Plattform-Relay; Zugangsdaten liegen nur in
 # .env.platform (nicht im Repo) und werden per docker-compose.platform.yml nur diesen Instanzen gegeben.
 # Erwartet print_info/print_error/print_success aus dem aufrufenden Skript und das Repo-Root als cwd.
 # Spec: docs/superpowers/specs/2026-11-14-platform-mail-design.md
 
-PLATFORM_PLANS="free starter professional"
+PLATFORM_PLANS="free starter professional enterprise"
 PLATFORM_ENV_FILE=".env.platform"
 PLATFORM_COMPOSE_FILE="docker-compose.platform.yml"
 PLATFORM_INSTANCE_NAME_REGEX='^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'

@@ -19,13 +19,13 @@ Self-Hosted bleibt unverändert: eigenes SMTP, alles erlaubt.
 | free | Plattform, `support@openbills.de` | kein Versand (Feature `email` fehlt, wie heute) |
 | starter | Plattform, `support@openbills.de` | Plattform, `<instanz>@openbills.de`, Reply-To = Firmen-E-Mail |
 | professional | Plattform, `support@openbills.de` | eigenes SMTP; solange keins aktiviert ist: Plattform wie Starter |
-| enterprise | eigenes SMTP | eigenes SMTP |
+| enterprise | Plattform, `support@openbills.de` | eigenes SMTP; solange keins aktiviert ist: Plattform wie Starter (Limit 100/Tag) |
 
 „Eigenes SMTP" = heutige Logik (`smtp_settings` in DB, Fallback `SMTP_*`-Env).
 
-**Plattform-Tarife** = free, starter, professional. Nur diese bekommen `.env.platform`, die Deploy-Abfrage und die Namensregel. Enterprise nutzt die Plattform nie und bekommt keine Zugangsdaten.
+**Plattform-Tarife** = alle Tarife außer selfhosted (free, starter, professional, enterprise). Nur diese bekommen `.env.platform`, die Deploy-Abfrage und die Namensregel. Nur selfhosted trägt eigenes SMTP für alles selbst ein.
 
-Professional „eigenes SMTP aktiviert" = Zeile in `smtp_settings` mit `is_enabled = true` und `smtp_host`. Sonst (z. B. direkt nach Upgrade von Starter) laufen Kundenmails über die Plattform, damit ein Upgrade nichts kaputt macht.
+Professional/Enterprise „eigenes SMTP aktiviert" = Zeile in `smtp_settings` mit `is_enabled = true` und `smtp_host`. Sonst (z. B. direkt nach Upgrade von Starter) laufen Kundenmails über die Plattform, damit ein Upgrade nichts kaputt macht.
 
 ## Ziele
 
@@ -74,7 +74,7 @@ Professional „eigenes SMTP aktiviert" = Zeile in `smtp_settings` mit `is_enabl
 - Systemmails (`authMailService.js`): bei Plattform-Route Absender `"OpenBills" <support@openbills.de>`; `isSmtpConfigured()` liefert dann `true`.
 - Kundenmails (Rechnung, Rechnung-Multiformat, Angebot, Mahnung in `emailService.js`): bei Plattform-Route Absender `"<Firmenname>" <<instanz>@openbills.de>`, `Reply-To` = Firmen-E-Mail aus den Firmeneinstellungen (fehlt sie: kein Reply-To). E-Mail-Historie speichert den tatsächlich verwendeten Absender.
 - `testEmailConnection` testet den Transport der Kundenmail-Route.
-- **Tageslimit für Plattform-Kundenmails:** max. **20 pro Tag** (Europe/Berlin) und Instanz. Gezählt werden erfolgreich versendete Einträge der E-Mail-Historie mit Plattform-Absender (`<instanz>@openbills.de`) – keine neue Tabelle. Bei Erreichen: 429, `code: 'PLATFORM_MAIL_LIMIT'`, deutsche Meldung inkl. Upgrade-Kontakt; Frontend zeigt sie wie andere Plan-Fehler. Systemmails zählen nicht (Reset hat bereits Rate-Limit). Begründung: Starter hat max. 25 Rechnungen + 25 Angebote/Monat; Limit schützt Brevo-Account und Domain-Reputation. Wert als Konstante, nicht konfigurierbar.
+- **Tageslimit für Plattform-Kundenmails:** max. **20 pro Tag** (Enterprise: **100**) (Europe/Berlin) und Instanz. Gezählt werden erfolgreich versendete Einträge der E-Mail-Historie mit Plattform-Absender (`<instanz>@openbills.de`) – keine neue Tabelle. Bei Erreichen: 429, `code: 'PLATFORM_MAIL_LIMIT'`, deutsche Meldung inkl. Upgrade-Kontakt; Frontend zeigt sie wie andere Plan-Fehler. Systemmails zählen nicht (Reset hat bereits Rate-Limit). Begründung: Starter hat max. 25 Rechnungen + 25 Angebote/Monat; Limit schützt Brevo-Account und Domain-Reputation. Wert als Konstante, nicht konfigurierbar.
 - **SMTP-Admin-Endpunkte** `send-test-email`, `test-smtp`, `diagnose-smtp`, `debug-config`, `test-network`: bei Free und Starter 403 (`FEATURE_NOT_IN_PLAN`-Stil) – sonst ließe sich über Backup-Restore eigenes SMTP nutzen bzw. Freitext über openbills.de senden. Bei Professional, Enterprise, Self-Hosted unverändert.
 - SMTP-Einstellungen (`/api/email-management/smtp-settings`): bei Free und Starter schreibt `POST` mit 403 (`FEATURE_NOT_IN_PLAN`-Stil) ab; `GET` liefert zusätzlich, welche Route gilt. Bei Professional bleibt Speichern erlaubt (betrifft nur Kundenmails). DB-Werte aus Backup-Restore werden bei Plattform-Route schlicht ignoriert.
 - `GET /api/plan` liefert die Mail-Routen mit, damit das Frontend sie anzeigen kann.

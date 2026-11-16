@@ -32,7 +32,8 @@ afterEach(() => vi.unstubAllEnvs());
 describe('getMailRoute', () => {
   it.each([
     ['', true, 'own', 'own'],
-    ['enterprise', false, 'own', 'own'],
+    ['enterprise', true, 'platform', 'own'],
+    ['enterprise', false, 'platform', 'platform'],
     ['professional', true, 'platform', 'own'],
     ['professional', false, 'platform', 'platform'],
     ['starter', true, 'platform', 'platform'],
@@ -66,11 +67,16 @@ describe('getMailRoute', () => {
 });
 
 describe('assertPlatformMailConfig', () => {
-  it('selfhosted und enterprise brauchen keine Plattform-Variablen', () => {
+  it('selfhosted braucht keine Plattform-Variablen', () => {
     vi.stubEnv('OPENBILLS_PLAN', '');
     expect(() => assertPlatformMailConfig()).not.toThrow();
+  });
+
+  it('enterprise ohne PLATFORM_SMTP_HOST wirft', () => {
     vi.stubEnv('OPENBILLS_PLAN', 'enterprise');
-    expect(() => assertPlatformMailConfig()).not.toThrow();
+    vi.stubEnv('OPENBILLS_INSTANCE', 'kunde');
+    stubPlatformEnv({ PLATFORM_SMTP_HOST: '' });
+    expect(() => assertPlatformMailConfig()).toThrow(/PLATFORM_SMTP_HOST/);
   });
 
   it('starter ohne PLATFORM_SMTP_PASS wirft', () => {
@@ -140,6 +146,17 @@ describe('enforcePlatformMailLimit', () => {
     expect(next).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(429);
     expect(res.json.mock.calls[0][0]).toMatchObject({ code: 'PLATFORM_MAIL_LIMIT', limit: 20, plan: 'starter' });
+  });
+
+  it('Enterprise: 20 Mails → weiter, 100 Mails → 429 mit limit 100', async () => {
+    vi.stubEnv('OPENBILLS_PLAN', 'enterprise');
+    stubPlatformEnv();
+    queryMock.mockResolvedValue({ rows: [{ count: '20' }] });
+    expect((await run()).next).toHaveBeenCalled();
+    queryMock.mockResolvedValue({ rows: [{ count: '100' }] });
+    const { res } = await run();
+    expect(res.status).toHaveBeenCalledWith(429);
+    expect(res.json.mock.calls[0][0]).toMatchObject({ limit: 100, plan: 'enterprise' });
   });
 
   it('Starter mit 19 Mails → weiter', async () => {
@@ -228,9 +245,9 @@ describe('platformInviteLimitReached', () => {
     expect(await platformInviteLimitReached()).toBe(false);
   });
 
-  it('Eigenes SMTP (Enterprise) → nie erreicht, keine Zählung', async () => {
+  it('Selfhosted → nie erreicht, keine Zählung', async () => {
     const { platformInviteLimitReached } = await import('../services/mailRouting.js');
-    vi.stubEnv('OPENBILLS_PLAN', 'enterprise');
+    vi.stubEnv('OPENBILLS_PLAN', '');
     expect(await platformInviteLimitReached()).toBe(false);
     expect(queryMock).not.toHaveBeenCalled();
   });

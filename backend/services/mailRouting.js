@@ -13,7 +13,7 @@ export const PLATFORM_SYSTEM_SENDER = { name: 'OpenBills', email: `support@${PLA
 
 const INSTANCE_NAME_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
 
-/** true für free/starter/professional: Systemmails laufen über die Plattform. */
+/** true für alle Tarife außer selfhosted: Systemmails laufen über die Plattform. */
 export function isPlatformInstance() {
   return !hasFeature('ownSystemSmtp');
 }
@@ -27,7 +27,7 @@ export function assertPlatformMailConfig() {
   if (!isPlatformInstance()) return;
   for (const name of ['PLATFORM_SMTP_HOST', 'PLATFORM_SMTP_USER', 'PLATFORM_SMTP_PASS']) {
     if (!(process.env[name] || '').trim()) {
-      throw new Error(`${name} fehlt. Tarife free/starter/professional versenden über den Plattform-Relay – .env.platform anlegen (./deploy-instance.sh fragt die Zugangsdaten ab).`);
+      throw new Error(`${name} fehlt. Alle Tarife außer selfhosted versenden über den Plattform-Relay – .env.platform anlegen (./deploy-instance.sh fragt die Zugangsdaten ab).`);
     }
   }
   const instance = (process.env.OPENBILLS_INSTANCE || '').trim();
@@ -68,6 +68,11 @@ export async function getMailRoute(kind) {
 
 /** Tageslimit für Kundenmails über den Plattform-Relay (schützt Brevo-Account und Domain-Reputation). */
 export const PLATFORM_MAIL_DAILY_LIMIT = 20;
+export const PLATFORM_MAIL_DAILY_LIMIT_ENTERPRISE = 100;
+
+export function getPlatformMailDailyLimit() {
+  return getPlanName() === 'enterprise' ? PLATFORM_MAIL_DAILY_LIMIT_ENTERPRISE : PLATFORM_MAIL_DAILY_LIMIT;
+}
 
 const BERLIN_DAY_START = "(date_trunc('day', now() AT TIME ZONE 'Europe/Berlin') AT TIME ZONE 'Europe/Berlin')";
 
@@ -87,12 +92,13 @@ export async function enforcePlatformMailLimit(req, res, next) {
   try {
     if (req.method === 'GET' || await getMailRoute('customer') !== 'platform') return next();
     // Ein Request kann mehrere Empfänger haben (customerEmails); jeder zählt einzeln.
+    const limit = getPlatformMailDailyLimit();
     const recipients = Array.isArray(req.body?.customerEmails) ? req.body.customerEmails.length : 1;
-    if (await countPlatformCustomerMailsToday() + recipients <= PLATFORM_MAIL_DAILY_LIMIT) return next();
+    if (await countPlatformCustomerMailsToday() + recipients <= limit) return next();
     sendPlanError(res, new PlanError(429, {
-      error: `Tageslimit für den E-Mail-Versand über OpenBills erreicht (${PLATFORM_MAIL_DAILY_LIMIT} pro Tag). Für mehr bitte Ihren Tarif upgraden.`,
+      error: `Tageslimit für den E-Mail-Versand über OpenBills erreicht (${limit} pro Tag). Für mehr bitte Ihren Tarif upgraden.`,
       code: 'PLATFORM_MAIL_LIMIT',
-      limit: PLATFORM_MAIL_DAILY_LIMIT,
+      limit,
       plan: getPlanName(),
       upgradeContact: getUpgradeContact(),
     }));

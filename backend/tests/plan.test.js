@@ -69,7 +69,7 @@ describe('Limits und Features', () => {
 
 describe('Mail-Features', () => {
   it.each([
-    ['', true, true], ['enterprise', true, true], ['professional', true, false],
+    ['', true, true], ['enterprise', true, false], ['professional', true, false],
     ['starter', false, false], ['free', false, false],
   ])('Plan "%s": ownSmtp=%s ownSystemSmtp=%s', (plan, own, ownSystem) => {
     vi.stubEnv('OPENBILLS_PLAN', plan);
