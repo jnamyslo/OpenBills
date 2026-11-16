@@ -2,31 +2,51 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Custom checkbox styles */
+/* Checkbox styles: gilt für ALLE Checkboxen (außer .sr-only Toggle-Inputs), unlayered damit
+   h-4/w-4 o. ä. nicht überschreiben; flex-shrink:0 verhindert Zusammenquetschen in Flex-Zeilen. */
+.custom-checkbox,
+input[type="checkbox"]:not(.sr-only) {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  width: 1.25rem;
+  height: 1.25rem;
+  min-width: 1.25rem;
+  background-color: #fff;
+  border: 2px solid #9ca3af;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  vertical-align: middle;
+  margin: 0;
+}
+.custom-checkbox:focus-visible,
+input[type="checkbox"]:not(.sr-only):focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px #3b82f6;
+}
+.custom-checkbox:checked,
+input[type="checkbox"]:not(.sr-only):checked {
+  background-color: #2563eb;
+  border-color: #2563eb;
+  background-image: url("data:image/svg+xml,%3csvg viewBox='0 0 16 16' fill='white' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='m13.854 3.646-8.5 8.5a.5.5 0 0 1-.708 0l-4-4a.5.5 0 0 1 .708-.708L5 11.086l8.146-8.147a.5.5 0 0 1 .708.707z'/%3e%3c/svg%3e");
+  background-size: 100% 100%;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+.custom-checkbox:disabled,
+input[type="checkbox"]:not(.sr-only):disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.custom-checkbox:disabled:checked,
+input[type="checkbox"]:not(.sr-only):disabled:checked {
+  background-color: #9ca3af;
+  border-color: #9ca3af;
+}
+
 @layer components {
-  .custom-checkbox {
-    @apply h-4 w-4 text-blue-600 bg-white border-gray-300 border-2 rounded focus:ring-blue-500 focus:ring-2 focus:border-blue-500;
-    appearance: none;
-    -webkit-appearance: none;
-    -moz-appearance: none;
-  }
-
-  .custom-checkbox:checked {
-    @apply bg-blue-600 border-blue-600;
-    background-image: url("data:image/svg+xml,%3csvg viewBox='0 0 16 16' fill='white' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='m13.854 3.646-8.5 8.5a.5.5 0 0 1-.708 0l-4-4a.5.5 0 0 1 .708-.708L5 11.086l8.146-8.147a.5.5 0 0 1 .708.707z'/%3e%3c/svg%3e");
-    background-size: 100% 100%;
-    background-position: center;
-    background-repeat: no-repeat;
-  }
-
-  .custom-checkbox:disabled {
-    @apply opacity-50 cursor-not-allowed;
-  }
-
-  .custom-checkbox:disabled:checked {
-    @apply bg-gray-400 border-gray-400;
-  }
-
   /* Custom radio button styles */
   .custom-radio {
     @apply h-4 w-4 text-blue-600 bg-white border-gray-300 border-2 rounded-full focus:ring-blue-500 focus:ring-2 focus:border-blue-500;
