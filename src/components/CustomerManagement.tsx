@@ -646,7 +646,7 @@ export function CustomerManagement({ autoCreate }: CustomerManagementProps = {})
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredCustomers.map((customer) => (
-                <tr key={customer.id} className="hover:bg-gray-50">
+                <tr key={customer.id} onClick={(e) => { if ((e.target as HTMLElement).closest('button, a, input, label, select, textarea')) return; handleOpenModal(customer); }} className="cursor-pointer hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-gray-900">{customer.name}</div>
                     <div className="text-sm text-gray-500">Kunden-Nr: {formatCustomerNumber(customer.customerNumber)}</div>
@@ -700,7 +700,7 @@ export function CustomerManagement({ autoCreate }: CustomerManagementProps = {})
         {/* Mobile Card View */}
         <div className="lg:hidden">
           {filteredCustomers.map((customer) => (
-            <div key={customer.id} className="p-4 border-b border-gray-200 last:border-b-0">
+            <div key={customer.id} onClick={(e) => { if ((e.target as HTMLElement).closest('button, a, input, label, select, textarea')) return; handleOpenModal(customer); }} className="cursor-pointer p-4 border-b border-gray-200 last:border-b-0">
               <div className="flex justify-between items-start mb-2">
                 <div className="flex-1">
                   <h3 className="text-sm font-medium text-gray-900">{customer.name}</h3>

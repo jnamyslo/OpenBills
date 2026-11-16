@@ -936,7 +936,7 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredInvoices.map((invoice) => (
-                <tr key={invoice.id} className="hover:bg-gray-50">
+                <tr key={invoice.id} onClick={(e) => { if ((e.target as HTMLElement).closest('button, a, input, label, select, textarea')) return; handleOpenEditor(invoice); }} className="cursor-pointer hover:bg-gray-50">
                   <td className="px-3 py-4 w-16">
                     <input
                       type="checkbox"
@@ -1069,7 +1069,7 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
           </div>
           
           {filteredInvoices.map((invoice) => (
-            <div key={invoice.id} className="p-4 border-b border-gray-200 last:border-b-0">
+            <div key={invoice.id} onClick={(e) => { if ((e.target as HTMLElement).closest('button, a, input, label, select, textarea')) return; handleOpenEditor(invoice); }} className="cursor-pointer p-4 border-b border-gray-200 last:border-b-0">
               <div className="flex items-start space-x-3">
                 <div className="flex-shrink-0 pt-1">
                   <input

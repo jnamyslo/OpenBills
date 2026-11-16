@@ -4,6 +4,8 @@ import { withJobContent } from '../utils/attachmentContent';
 import { Plus, Edit, Trash2, Clock, User, Calendar, FileText, Search, Timer, CheckCircle, AlertTriangle, Briefcase, Download, Eye, PenTool } from 'lucide-react';
 import { useCustomers } from '../context/CustomerContext';
 import { useJobs } from '../context/JobContext';
+import { useInvoices } from '../context/InvoiceContext';
+import { documentHash } from '../utils/documentFlow';
 import { useCompany } from '../context/CompanyContext';
 import { JobEntry } from '../types';
 import { JobEntryForm } from './JobEntryForm';
@@ -29,6 +31,12 @@ export function JobManagement({ onNavigate, autoCreate, initialFilter, initialSe
   const { customers } = useCustomers();
   const { jobEntries, addJobEntry, updateJobEntry, deleteJobEntry, refreshJobEntries, addJobSignature } = useJobs();
   const { company } = useCompany();
+  const { invoices } = useInvoices();
+
+  const goToInvoice = (job: JobEntry) => {
+    const invoice = invoices.find(i => i.id === job.invoiceId);
+    if (invoice) window.location.hash = documentHash('invoice', { id: invoice.id, number: invoice.invoiceNumber });
+  };
 
   const [showForm, setShowForm] = useState(false);
   const [editingJob, setEditingJob] = useState<JobEntry | null>(null);
@@ -879,6 +887,15 @@ export function JobManagement({ onNavigate, autoCreate, initialFilter, initialSe
                             {job.title}
                           </h3>
                           <div className="flex items-center space-x-1 ml-2">
+                            {job.status === 'invoiced' && job.invoiceId && invoices.some(i => i.id === job.invoiceId) && (
+                              <button
+                                onClick={() => goToInvoice(job)}
+                                className="text-green-600 hover:text-green-900 p-1 flex items-center text-xs font-medium"
+                                title="Zur Rechnung"
+                              >
+                                <FileText className="h-4 w-4" />
+                              </button>
+                            )}
                             <button
                               onClick={() => handleExportJobPDF(job)}
                               className="text-blue-600 hover:text-blue-900 p-1"
@@ -1096,6 +1113,15 @@ export function JobManagement({ onNavigate, autoCreate, initialFilter, initialSe
                       </td>
                       <td className="px-3 py-4 text-right w-24">
                         <div className="flex justify-end space-x-1">
+                          {job.status === 'invoiced' && job.invoiceId && invoices.some(i => i.id === job.invoiceId) && (
+                            <button
+                              onClick={() => goToInvoice(job)}
+                              className="text-green-600 hover:text-green-900 p-1 flex items-center text-xs font-medium"
+                              title="Zur Rechnung"
+                            >
+                              <FileText className="h-4 w-4" />
+                            </button>
+                          )}
                           <button
                             onClick={() => handleExportJobPDF(job)}
                             className="text-blue-600 hover:text-blue-900 p-1"
