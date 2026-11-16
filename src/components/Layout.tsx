@@ -166,7 +166,7 @@ export function Layout({ children, currentPage, onPageChange }: LayoutProps) {
           </nav>
 
           {/* Main Content */}
-          <main className="flex-1 p-3 sm:p-4 lg:p-6 lg:ml-0 min-h-screen safe-area-bottom">
+          <main className="flex-1 min-w-0 p-3 sm:p-4 lg:p-6 lg:ml-0 min-h-screen safe-area-bottom">
             <DemoBanner />
             <TwoFactorBanner onSetup={() => setIsAccountOpen(true)} />
             {children}

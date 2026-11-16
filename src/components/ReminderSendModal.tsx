@@ -389,12 +389,12 @@ export function ReminderSendModal({
               Abbrechen
             </button>
             
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
               {/* Preview Button */}
               <button
                 onClick={handlePreview}
                 disabled={isLoading}
-                className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50"
+                className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50"
               >
                 <Eye className="h-5 w-5" />
                 Vorschau
@@ -404,7 +404,7 @@ export function ReminderSendModal({
               <button
                 onClick={handleDownload}
                 disabled={isLoading}
-                className="flex items-center gap-2 px-4 py-2 bg-primary-custom text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50"
+                className="flex items-center justify-center gap-2 px-4 py-2 bg-primary-custom text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50"
               >
                 <Download className="h-5 w-5" />
                 {isLoading ? 'Wird heruntergeladen...' : 'Download'}
@@ -420,7 +420,7 @@ export function ReminderSendModal({
                   }
                 }}
                 disabled={isLoading}
-                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+                className="flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
               >
                 <Mail className="h-5 w-5" />
                 {showEmailSection ? (isLoading ? 'Wird versendet...' : 'Jetzt versenden') : 'Per E-Mail'}

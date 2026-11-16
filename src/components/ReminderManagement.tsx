@@ -447,8 +447,8 @@ function EligibleRemindersTab({
     <div>
       {/* Bulk Actions */}
       {eligibleCount > 0 && (
-        <div className="mb-4 flex items-center justify-between">
-          <div className="flex items-center space-x-4">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <label className="flex items-center cursor-pointer">
               <input
                 type="checkbox"
@@ -469,7 +469,7 @@ function EligibleRemindersTab({
           {selectedIds.length > 0 && (
             <button
               onClick={onSendBulk}
-              className="px-4 py-2 bg-primary-custom text-white rounded-lg hover:bg-primary-dark transition-colors flex items-center"
+              className="w-full sm:w-auto justify-center px-4 py-2 bg-primary-custom text-white rounded-lg hover:bg-primary-dark transition-colors flex items-center"
             >
               <Send className="h-4 w-4 mr-2" />
               Ausgewählte mahnen ({selectedIds.length})
@@ -478,8 +478,66 @@ function EligibleRemindersTab({
         </div>
       )}
 
-      {/* Reminders Table */}
-      <div className="overflow-x-auto">
+      {/* Reminders Cards (mobile) */}
+      <div className="md:hidden space-y-3">
+        {reminders.map((reminder) => (
+          <div
+            key={reminder.invoiceId}
+            className={`border border-gray-200 rounded-lg p-4 ${!reminder.isEligible ? 'bg-gray-50' : 'bg-white'}`}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3 min-w-0">
+                {reminder.isEligible && (
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(reminder.invoiceId)}
+                    onChange={() => onSelect(reminder.invoiceId)}
+                    className="custom-checkbox mt-1"
+                  />
+                )}
+                <div className="min-w-0">
+                  <p className="font-semibold text-gray-900 truncate">{reminder.invoiceNumber}</p>
+                  <p className="text-sm text-gray-600 truncate">{reminder.customerName}</p>
+                </div>
+              </div>
+              <p className="font-semibold text-gray-900 whitespace-nowrap">{formatCurrency(reminder.total)}</p>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {getStatusBadgeForReminder(reminder.currentStatus)}
+              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                reminder.nextStage === 1 ? 'bg-yellow-100 text-yellow-800' :
+                reminder.nextStage === 2 ? 'bg-orange-100 text-orange-800' :
+                'bg-red-100 text-red-800'
+              }`}>
+                {reminder.nextStage}. Mahnung
+              </span>
+            </div>
+            <div className="mt-3 text-sm text-gray-600">
+              Fällig: {new Date(reminder.dueDate).toLocaleDateString('de-DE')} · {reminder.daysSinceDue} Tage überfällig
+              {!reminder.isEligible && reminder.nextEligibleDate && (
+                <div className="text-xs text-gray-500 mt-1">
+                  Nächste Mahnung ab {new Date(reminder.nextEligibleDate).toLocaleDateString('de-DE')}
+                </div>
+              )}
+            </div>
+            <button
+              onClick={() => onSendReminder(reminder.invoiceId, reminder.nextStage)}
+              disabled={!reminder.isEligible}
+              className={`mt-3 w-full px-3 py-2 rounded-lg transition-colors flex items-center justify-center ${
+                reminder.isEligible
+                  ? 'bg-primary-custom text-white hover:bg-primary-dark'
+                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+              }`}
+            >
+              <Send className="h-4 w-4 mr-2" />
+              Mahnen
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {/* Reminders Table (desktop) */}
+      <div className="hidden md:block overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
@@ -632,9 +690,9 @@ function ReminderHistoryTab({ invoices, formatDate, getStatusBadge, onDownloadRe
         
         return (
           <div key={invoice.id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900">{invoice.invoiceNumber}</h3>
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <div className="min-w-0">
+                <h3 className="text-lg font-semibold text-gray-900 break-words">{invoice.invoiceNumber}</h3>
                 <p className="text-sm text-gray-600">{invoice.customerName}</p>
               </div>
               <div className="text-right">
@@ -780,15 +838,15 @@ function HardshipCasesTab({ invoices, formatDate, getStatusBadge, onDownloadRemi
         return (
           <div key={invoice.id} className="bg-white border-2 border-red-200 rounded-lg p-4 hover:shadow-lg transition-shadow">
             {/* Header */}
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex-1">
-                <div className="flex items-center space-x-3 mb-2">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-2">
                   <h3 className="text-lg font-semibold text-gray-900">{invoice.invoiceNumber}</h3>
                   {getStatusBadge(invoice.status)}
                 </div>
                 <p className="text-sm text-gray-600">{invoice.customerName}</p>
               </div>
-              <div className="text-right">
+              <div className="sm:text-right">
                 <p className="text-xl font-bold text-red-600">{formatCurrency(totalWithFees)}</p>
                 <p className="text-xs text-gray-500 mt-1">Offener Betrag (inkl. Mahngebühren)</p>
                 {totalWithFees !== invoice.total && (
