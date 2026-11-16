@@ -318,6 +318,10 @@ class ApiService {
     return this.request<Invoice>(`/quotes/${id}/convert-to-invoice`, { method: 'POST' });
   }
 
+  async convertQuoteToJob(id: string): Promise<JobEntry> {
+    return this.request<JobEntry>(`/quotes/${id}/convert-to-job`, { method: 'POST' });
+  }
+
   async sendQuoteEmail(
     quoteId: string,
     customerEmails: string[],

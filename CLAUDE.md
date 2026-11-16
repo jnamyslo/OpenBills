@@ -95,6 +95,13 @@ Three Docker services per instance: `database` (PostgreSQL 15), `backend`, `fron
 - Einrichtungsassistent: `users.onboarding_completed_at` (je Benutzer, Migration 010), `POST /api/auth/onboarding {completed}`; Frontend `OnboardingWizard.tsx` (Schritte je Rolle/Tarif aus `src/utils/onboarding.ts`), nicht in Demo/Support-Zugang. Demo: `DemoTour.tsx` (driver.js, Anker `data-tour` in `Layout.tsx`), startet nach jedem aktiven Login und über Benutzermenü „Demo-Tour“; mobil öffnet sie das Seitenmenü per Event `DEMO_TOUR_MOBILE_NAV_EVENT`.
 - Spec: `docs/superpowers/specs/2026-11-13-auth.md`.
 
+### Belegkette (Angebot → Auftrag → Rechnung)
+
+- `job_entries.quote_id/invoice_id`, Gesamtrabatt am Auftrag (Migrationen 011/012); `POST /quotes/:id/convert-to-job`.
+- Summen: `src/utils/discountUtils.ts` (Frontend) und `backend/utils/documentTotals.js` (Spiegel) müssen identisch rechnen — `documentTotalsParity.test.ts` prüft das.
+- Sammelabrechnung trennt Aufträge mit unterschiedlichem Gesamtrabatt (`groupJobsByGlobalDiscount`).
+- Spec: `docs/superpowers/specs/2026-11-16-document-chain.md`.
+
 ### PDF Generation
 
 Three libraries in use — pick by context:

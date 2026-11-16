@@ -25,6 +25,7 @@ import {
 import { useQuotes } from '../context/QuoteContext';
 import { useCustomers } from '../context/CustomerContext';
 import { useCompany } from '../context/CompanyContext';
+import { DocumentChain } from './DocumentChain';
 import { useDocumentHelpers } from '../hooks/useDocumentHelpers';
 import { Quote, QuoteItem, QuoteAttachment, Customer } from '../types';
 import { AttachmentManager } from './AttachmentManager';
@@ -850,6 +851,8 @@ export function QuoteEditor({ quote, onClose, onCreateCustomer, onNavigateToCust
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6 max-h-[calc(100vh-12rem)] overflow-y-auto">
+          {quote && <DocumentChain kind="quote" id={quote.id} />}
+
           {/* Basic Information */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>

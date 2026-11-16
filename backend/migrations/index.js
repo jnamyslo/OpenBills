@@ -16,6 +16,8 @@ import * as migration007 from './007_invoice_templates.js';
 import * as migration008 from './008_encrypt_smtp_pass.js';
 import * as migration009 from './009_demo_marker.js';
 import * as migration010 from './010_user_onboarding.js';
+import * as migration011 from './011_document_chain.js';
+import * as migration012 from './012_job_global_discount.js';
 
 // List of all migrations in execution order
 const migrations = [
@@ -29,6 +31,8 @@ const migrations = [
   migration008,
   migration009,
   migration010,
+  migration011,
+  migration012,
 ];
 
 /**

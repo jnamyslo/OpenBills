@@ -23,6 +23,7 @@ import {
   CSS,
 } from '@dnd-kit/utilities';
 import { useInvoices } from '../context/InvoiceContext';
+import { DocumentChain } from './DocumentChain';
 import { useCustomers } from '../context/CustomerContext';
 import { useCompany } from '../context/CompanyContext';
 import { useDocumentHelpers } from '../hooks/useDocumentHelpers';
@@ -935,6 +936,7 @@ export function InvoiceEditor({ invoice, onClose, onCreateCustomer, onNavigateTo
             <X className="h-6 w-6" />
           </button>
         </div>
+        {invoice && <DocumentChain kind="invoice" id={invoice.id} />}
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">

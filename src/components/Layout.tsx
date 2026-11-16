@@ -36,26 +36,27 @@ export function Layout({ children, currentPage, onPageChange }: LayoutProps) {
   // Module, die einen höheren Tarif erfordern: in der Navigation mit Schloss markiert
   const requiredFeature: Record<string, PlanFeature> = { jobs: 'jobs', calendar: 'jobs', reminders: 'reminders' };
 
-  const baseNavItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: Home },
-    { id: 'invoices', label: 'Rechnungen', icon: FileText },
-    { id: 'customers', label: 'Kunden', icon: Users },
-  ];
-
+  const dashboardNavItem = { id: 'dashboard', label: 'Dashboard', icon: Home };
+  const customersNavItem = { id: 'customers', label: 'Kunden', icon: Users };
   const quotesNavItem = { id: 'quotes', label: 'Angebote', icon: FileCheck };
   const jobNavItem = { id: 'jobs', label: 'Aufträge', icon: Briefcase };
+  const invoicesNavItem = { id: 'invoices', label: 'Rechnungen', icon: FileText };
+  const remindersNavItem = { id: 'reminders', label: 'Mahnungen', icon: Bell };
   const calendarNavItem = { id: 'calendar', label: 'Kalender', icon: Calendar };
   const reportingNavItem = { id: 'reporting', label: 'Reporting', icon: BarChart3 };
-  const remindersNavItem = { id: 'reminders', label: 'Mahnungen', icon: Bell };
   const settingsNavItem = { id: 'settings', label: 'Einstellungen', icon: Settings };
 
-  // Only include quotes if enabled, jobs/calendar if job tracking is enabled, reporting if reporting is enabled, reminders if reminders enabled
+  // Reihenfolge folgt dem Belegablauf: Kunde → Angebot → Auftrag → Rechnung → Mahnung.
+  // Optionale Module (Angebote, Aufträge/Kalender, Mahnungen, Reporting) nur bei Aktivierung.
   const navItems = [
-    ...baseNavItems,
+    dashboardNavItem,
+    customersNavItem,
     ...(company.quotesEnabled ? [quotesNavItem] : []),
-    ...(company.jobTrackingEnabled ? [jobNavItem, calendarNavItem] : []),
-    ...(company.reportingEnabled ? [reportingNavItem] : []),
+    ...(company.jobTrackingEnabled ? [jobNavItem] : []),
+    invoicesNavItem,
     ...(company.remindersEnabled ? [remindersNavItem] : []),
+    ...(company.jobTrackingEnabled ? [calendarNavItem] : []),
+    ...(company.reportingEnabled ? [reportingNavItem] : []),
     ...(isAdmin(user) ? [settingsNavItem] : []),
   ];
 

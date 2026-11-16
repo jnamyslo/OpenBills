@@ -206,6 +206,13 @@ export interface JobEntry extends Timestamps {
   timeEntries?: JobTimeEntry[];
   materials?: JobMaterial[];
   status: JobStatus;
+  /** Angebot, aus dem der Auftrag entstand */
+  quoteId?: UUID | null;
+  /** Gesamtrabatt, wird bei der Abrechnung auf die Rechnung angewendet */
+  globalDiscountType?: DiscountType;
+  globalDiscountValue?: number;
+  /** Rechnung, auf der der Auftrag abgerechnet wurde */
+  invoiceId?: UUID | null;
   notes?: string;
   attachments?: JobAttachment[];
   signature?: JobSignature;

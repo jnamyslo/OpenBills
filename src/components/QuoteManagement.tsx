@@ -2,10 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { demoMailNote } from '../utils/demo';
 import logger from '../utils/logger';
 import { withQuoteContent } from '../utils/attachmentContent';
-import { Plus, Edit, Trash2, Search, Download, FileText, Send, Check, Eye, FileCheck, Mail, X, CheckCircle } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Download, FileText, Send, Check, Eye, FileCheck, Mail, X, CheckCircle, Briefcase } from 'lucide-react';
 import { useCustomers } from '../context/CustomerContext';
 import { useInvoices } from '../context/InvoiceContext';
 import { useQuotes } from '../context/QuoteContext';
+import { useJobs } from '../context/JobContext';
+import { documentHash } from '../utils/documentFlow';
 import { useCompany } from '../context/CompanyContext';
 import { featureUpgradeReason, usePlan } from '../context/PlanContext';
 import { Quote } from '../types';
@@ -31,6 +33,9 @@ export function QuoteManagement({ onNavigate }: QuoteManagementProps = {}) {
   const { hasFeature, showUpgrade } = usePlan();
   // Angebote kommen aus dem QuoteContext — kein zweiter, eigener Datenbestand.
   const { quotes, updateQuote, deleteQuote, refreshQuotes } = useQuotes();
+  const { jobEntries, refreshJobEntries } = useJobs();
+  // Kette Angebot → Auftrag → Rechnung nur mit aktivem und lizenziertem Auftragsmodul.
+  const jobChainActive = Boolean(company.jobTrackingEnabled) && hasFeature('jobs');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [selectedQuoteIds, setSelectedQuoteIds] = useState<string[]>([]);
@@ -220,6 +225,24 @@ export function QuoteManagement({ onNavigate }: QuoteManagementProps = {}) {
       logger.error('Error updating quote status', { error });
       alert('Fehler beim Ändern des Status. Bitte versuchen Sie es erneut.');
     }
+  };
+
+  const handleConvertToJob = (quote: Quote) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Angebot in Auftrag umwandeln',
+      message: `Möchten Sie aus dem Angebot ${quote.quoteNumber} einen Auftrag erstellen? Die Positionen werden als Material übernommen.`,
+      onConfirm: async () => {
+        try {
+          await apiService.convertQuoteToJob(quote.id);
+          await refreshJobEntries();
+          if (onNavigate) onNavigate('jobs');
+        } catch (error) {
+          logger.error('Error converting quote to job:', error);
+          alert(error instanceof Error ? error.message : 'Fehler beim Erstellen des Auftrags.');
+        }
+      },
+    });
   };
 
   const handleConvertToInvoice = async (quote: Quote) => {
@@ -855,14 +878,37 @@ export function QuoteManagement({ onNavigate }: QuoteManagementProps = {}) {
                           </button>
                         </>
                       )}
-                      {quote.status === 'accepted' && !quote.convertedToInvoiceId && (
+                      {jobChainActive && jobEntries.some(j => j.quoteId === quote.id) && (
+                        <button
+                          className="bg-green-100 hover:bg-green-200 text-green-700 hover:text-green-800 px-2 py-1 rounded-md transition-colors duration-200 shadow-sm flex items-center text-xs font-medium"
+                          title="Zum Auftrag"
+                          onClick={() => {
+                            const job = jobEntries.find(j => j.quoteId === quote.id);
+                            if (job) window.location.hash = documentHash('job', { id: job.id, number: job.jobNumber });
+                          }}
+                        >
+                          <Briefcase className="h-3 w-3 mr-1" />
+                          <span className="hidden xl:inline">Zum Auftrag</span>
+                        </button>
+                      )}
+                      {quote.status === 'accepted' && !quote.convertedToInvoiceId && jobChainActive && !jobEntries.some(j => j.quoteId === quote.id) && (
+                        <button
+                          className="bg-green-100 hover:bg-green-200 text-green-700 hover:text-green-800 px-2 py-1 rounded-md transition-colors duration-200 shadow-sm flex items-center text-xs font-medium"
+                          title="In Auftrag umwandeln"
+                          onClick={() => handleConvertToJob(quote)}
+                        >
+                          <Briefcase className="h-3 w-3 mr-1" />
+                          <span className="hidden xl:inline">Auftrag</span>
+                        </button>
+                      )}
+                      {quote.status === 'accepted' && !quote.convertedToInvoiceId && !jobEntries.some(j => j.quoteId === quote.id) && (
                         <button
                           className="bg-blue-100 hover:bg-blue-200 text-blue-700 hover:text-blue-800 px-2 py-1 rounded-md transition-colors duration-200 shadow-sm flex items-center text-xs font-medium"
-                          title="In Rechnung umwandeln"
+                          title={jobChainActive ? 'Direkt abrechnen (ohne Auftrag)' : 'In Rechnung umwandeln'}
                           onClick={() => handleConvertToInvoice(quote)}
                         >
                           <FileCheck className="h-3 w-3 mr-1" />
-                          <span className="hidden xl:inline">Rechnung</span>
+                          <span className="hidden xl:inline">{jobChainActive ? 'Direkt abrechnen' : 'Rechnung'}</span>
                         </button>
                       )}
                     </div>

@@ -20,9 +20,12 @@ interface JobManagementProps {
   onNavigate?: (page: string) => void;
   /** Über Dashboard-Schnellaktion (#jobs/new): Formular für neuen Auftrag direkt öffnen. */
   autoCreate?: boolean;
+  /** Über die Belegkette (#jobs/all/AB-…): Status-Filter und Suche vorbelegen. */
+  initialFilter?: string;
+  initialSearchTerm?: string;
 }
 
-export function JobManagement({ onNavigate, autoCreate }: JobManagementProps = {}) {
+export function JobManagement({ onNavigate, autoCreate, initialFilter, initialSearchTerm }: JobManagementProps = {}) {
   const { customers, addCustomer, refreshCustomers } = useCustomers();
   const { jobEntries, addJobEntry, updateJobEntry, deleteJobEntry, refreshJobEntries, addJobSignature } = useJobs();
   const { company } = useCompany();
@@ -76,6 +79,11 @@ export function JobManagement({ onNavigate, autoCreate }: JobManagementProps = {
     documents: [],
     initialIndex: 0
   });
+
+  useEffect(() => {
+    if (initialFilter) setStatusFilter(initialFilter);
+    if (initialSearchTerm) setSearchTerm(initialSearchTerm);
+  }, [initialFilter, initialSearchTerm]);
 
   // Dashboard-Schnellaktion: direkt neu anlegen
   useEffect(() => {

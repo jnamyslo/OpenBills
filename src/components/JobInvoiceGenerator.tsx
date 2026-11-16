@@ -6,10 +6,11 @@ import { JobEntry, Customer } from '../types';
 import { useCustomers } from '../context/CustomerContext';
 import { useInvoices } from '../context/InvoiceContext';
 import { useJobs } from '../context/JobContext';
+import { useQuotes } from '../context/QuoteContext';
 import { useCompany } from '../context/CompanyContext';
 import { generateJobPDF } from '../utils/pdfGenerator';
 import { generateUUID } from '../utils/uuid';
-import { buildInvoiceFromJobs } from '../utils/jobInvoiceItems';
+import { buildInvoiceFromJobs, groupJobsByGlobalDiscount } from '../utils/jobInvoiceItems';
 
 interface JobInvoiceGeneratorProps {
   selectedJobIds: string[];
@@ -25,6 +26,7 @@ export function JobInvoiceGenerator({
   const { customers } = useCustomers();
   const { addInvoice, refreshInvoices } = useInvoices();
   const { jobEntries: jobs, updateJobEntry } = useJobs();
+  const { refreshQuotes } = useQuotes();
   const { company } = useCompany();
   const [generationType, setGenerationType] = useState<'single' | 'daily' | 'weekly' | 'monthly'>('single');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -74,7 +76,10 @@ export function JobInvoiceGenerator({
     const failures: string[] = [];
     const createInvoiceSafely = async (jobs: JobEntry[]) => {
       try {
-        await createInvoiceForJobs(jobs);
+        // Aufträge mit unterschiedlichem Gesamtrabatt werden getrennt abgerechnet, damit die Summen exakt bleiben.
+        for (const group of groupJobsByGlobalDiscount(jobs)) {
+          await createInvoiceForJobs(group);
+        }
       } catch (error) {
         logger.error('Error creating invoice for jobs', { error });
         failures.push(jobs.map(j => j.jobNumber || j.title).join(', '));
@@ -164,7 +169,7 @@ export function JobInvoiceGenerator({
     const customer = customers.find((c: Customer) => c.id === jobsToInvoice[0].customerId);
     if (!customer) return;
 
-    const { items: pricedItems, subtotal, taxAmount, total } = buildInvoiceFromJobs(
+    const { items: pricedItems, subtotal, taxAmount, total, globalDiscountType, globalDiscountValue, globalDiscountAmount } = buildInvoiceFromJobs(
       jobsToInvoice,
       company?.isSmallBusiness
     );
@@ -264,12 +269,15 @@ export function JobInvoiceGenerator({
       subtotal,
       taxAmount,
       total,
+      globalDiscountType,
+      globalDiscountValue,
+      globalDiscountAmount,
       status: 'draft' as const,
       notes: `Automatisch erstellt aus ${jobsToInvoice.length} Auftrag${jobsToInvoice.length > 1 ? 'en' : ''}:\n\n${jobsToInvoice.map(j => `• ${j.jobNumber}${j.externalJobNumber ? ` (Ext: ${j.externalJobNumber})` : ''}: ${j.title}`).join('\n')}`,
       attachments
     };
 
-    await addInvoice(invoice);
+    const createdInvoice = await addInvoice(invoice);
     
     // Refresh invoices in other components
     await refreshInvoices();
@@ -281,12 +289,14 @@ export function JobInvoiceGenerator({
     const unmarked: string[] = [];
     for (const job of jobsToInvoice) {
       try {
-        await updateJobEntry(job.id, { status: 'invoiced' });
+        await updateJobEntry(job.id, { status: 'invoiced', invoiceId: createdInvoice.id });
       } catch (error) {
         logger.error('Error marking job as invoiced', { error, jobId: job.id });
         unmarked.push(job.jobNumber || job.title);
       }
     }
+    // Angebote verknüpfter Aufträge gelten damit als abgerechnet.
+    await refreshQuotes();
     if (unmarked.length > 0) {
       alert(`Die Rechnung wurde erstellt, aber folgende Aufträge konnten nicht als "abgerechnet" markiert werden: ${unmarked.join(', ')}`);
     }

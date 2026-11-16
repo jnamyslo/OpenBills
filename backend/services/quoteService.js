@@ -1,9 +1,11 @@
 import { pool, query } from '../database.js';
 import { findQuoteById } from '../queries/quoteQueries.js';
 import { findInvoiceById } from '../queries/invoiceQueries.js';
+import { findJobById } from '../queries/jobQueries.js';
 import { generateInvoiceNumber } from './invoiceService.js';
 import { validateDiscountFields } from '../utils/validation.js';
 import { countReleaseIfNeeded } from './quotaService.js';
+import { calculateTotals } from '../utils/documentTotals.js';
 
 export async function createQuote(data) {
   const discountValidation = validateDiscountFields(data);
@@ -390,9 +392,34 @@ export async function convertQuoteToInvoice(id) {
       return { error: 'Only accepted quotes can be converted to invoices', status: 400 };
     }
 
+    // Existiert bereits ein Auftrag, wird über ihn abgerechnet (sonst doppelte Abrechnung).
+    const existingJob = await client.query('SELECT 1 FROM job_entries WHERE quote_id = $1 LIMIT 1', [id]);
+    if (existingJob.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return { error: 'Für dieses Angebot existiert bereits ein Auftrag. Bitte über den Auftrag abrechnen.', status: 400 };
+    }
+
     // Generate invoice number after all validation has passed
     const issueDate = new Date().toISOString().split('T')[0];
     const invoiceNumber = await generateInvoiceNumber(issueDate);
+
+    // Summen mit den Einstellungen von heute neu rechnen: Wurde die Kleinunternehmerregelung seit dem
+    // Angebot umgestellt, wären die gespeicherten Angebotssummen sonst falsch (wie beim Weg über den Auftrag).
+    const companyResult = await client.query('SELECT is_small_business FROM company LIMIT 1');
+    const isSmallBusiness = Boolean(companyResult.rows[0]?.is_small_business);
+    const quoteItems = (quote.items || []).map((item) => ({
+      quantity: parseFloat(item.quantity),
+      unitPrice: parseFloat(item.unitPrice),
+      taxRate: parseFloat(item.taxRate),
+      discountType: item.discountType || undefined,
+      discountValue: item.discountValue != null ? parseFloat(item.discountValue) : undefined,
+    }));
+    const hasGlobalDiscount = Boolean(quote.global_discount_type);
+    const totals = calculateTotals(
+      quoteItems,
+      hasGlobalDiscount ? { type: quote.global_discount_type, value: parseFloat(quote.global_discount_value) } : {},
+      isSmallBusiness
+    );
 
     // Create invoice
     const dueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -407,14 +434,14 @@ export async function convertQuoteToInvoice(id) {
       quote.customer_name,
       issueDate,
       dueDate,
-      quote.subtotal,
-      quote.tax_amount,
-      quote.total,
+      totals.subtotal,
+      totals.taxAmount,
+      totals.total,
       'draft',
       quote.notes ? `Erstellt aus Angebot ${quote.quote_number}\n\n${quote.notes}` : `Erstellt aus Angebot ${quote.quote_number}`,
       quote.global_discount_type,
       quote.global_discount_value,
-      quote.global_discount_amount
+      hasGlobalDiscount ? totals.globalDiscountAmount : quote.global_discount_amount
     ]);
 
     const invoiceId = invoiceResult.rows[0].id;
@@ -430,7 +457,7 @@ export async function convertQuoteToInvoice(id) {
         item.description,
         item.quantity,
         item.unitPrice,
-        item.taxRate,
+        isSmallBusiness ? 0 : item.taxRate,
         item.total,
         item.order,
         item.discountType || null,
@@ -458,6 +485,76 @@ export async function convertQuoteToInvoice(id) {
     await client.query('COMMIT');
 
     return { invoice: await findInvoiceById(invoiceId) };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/** Nächste freie Auftragsnummer (AB-YYYY-XXX). */
+async function nextJobNumber(client) {
+  const year = new Date().getFullYear();
+  const { rows } = await client.query(
+    'SELECT job_number FROM job_entries WHERE job_number LIKE $1 ORDER BY created_at DESC LIMIT 1',
+    [`AB-${year}-%`]
+  );
+  const last = rows.length > 0 ? parseInt(rows[0].job_number.substring(`AB-${year}-`.length), 10) : 0;
+  return `AB-${year}-${String((Number.isNaN(last) ? 0 : last) + 1).padStart(3, '0')}`;
+}
+
+/** Erzeugt aus einem angenommenen Angebot einen Auftrag; Positionen werden als Material übernommen. */
+export async function convertQuoteToJob(id) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const quoteResult = await client.query('SELECT * FROM quotes WHERE id = $1 FOR UPDATE', [id]);
+    if (quoteResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return { error: 'Quote not found', status: 404 };
+    }
+    const quote = quoteResult.rows[0];
+
+    if (quote.status !== 'accepted') {
+      await client.query('ROLLBACK');
+      return { error: 'Nur angenommene Angebote können in einen Auftrag umgewandelt werden', status: 400 };
+    }
+    if (quote.converted_to_invoice_id) {
+      await client.query('ROLLBACK');
+      return { error: 'Das Angebot wurde bereits abgerechnet', status: 400 };
+    }
+    const existing = await client.query('SELECT 1 FROM job_entries WHERE quote_id = $1 LIMIT 1', [id]);
+    if (existing.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return { error: 'Für dieses Angebot existiert bereits ein Auftrag', status: 400 };
+    }
+
+    const itemsResult = await client.query('SELECT * FROM quote_items WHERE quote_id = $1 ORDER BY item_order', [id]);
+    const materials = itemsResult.rows.map((row) => ({
+      id: row.id,
+      description: row.description,
+      quantity: parseFloat(row.quantity),
+      unitPrice: parseFloat(row.unit_price),
+      taxRate: parseFloat(row.tax_rate),
+      total: parseFloat(row.total),
+      discountType: row.discount_type || undefined,
+      discountValue: row.discount_value != null ? parseFloat(row.discount_value) : undefined,
+      discountAmount: row.discount_amount != null ? parseFloat(row.discount_amount) : undefined,
+    }));
+
+    const jobNumber = await nextJobNumber(client);
+    const { rows } = await client.query(`
+      INSERT INTO job_entries (job_number, customer_id, title, description, date, materials, status, notes, quote_id, global_discount_type, global_discount_value)
+      VALUES ($1, $2, $3, $4, CURRENT_DATE, $5, 'draft', $6, $7, $8, $9)
+      RETURNING id
+    `, [jobNumber, quote.customer_id, `Auftrag zu ${quote.quote_number}`, '', JSON.stringify(materials), quote.notes || null, id,
+      quote.global_discount_type || null, quote.global_discount_type ? quote.global_discount_value : null]);
+
+    await client.query('COMMIT');
+
+    return { job: await findJobById(rows[0].id) };
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;

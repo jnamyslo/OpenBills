@@ -9,6 +9,8 @@ dist
 .agents
 .env*
 backend
+# Einzige Ausnahme: documentTotalsParity.test.ts prüft Frontend- gegen Backend-Summen schon im Image-Build.
+!backend/utils/documentTotals.js
 demo
 docs
 belego-video

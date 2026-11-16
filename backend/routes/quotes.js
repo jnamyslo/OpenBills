@@ -5,7 +5,7 @@ import { requireFeature, sendPlanError } from '../utils/plan.js';
 import { enforcePlatformMailLimit } from '../services/mailRouting.js';
 import { stampDraftWatermark } from '../utils/draftWatermark.js';
 import { findAllQuotes, findQuoteById } from '../queries/quoteQueries.js';
-import { createQuote, updateQuote, deleteQuote, convertQuoteToInvoice } from '../services/quoteService.js';
+import { createQuote, updateQuote, deleteQuote, convertQuoteToInvoice, convertQuoteToJob } from '../services/quoteService.js';
 
 const router = express.Router();
 
@@ -196,6 +196,23 @@ router.post('/:id/convert-to-invoice', async (req, res) => {
       endpoint: '/quotes/:id/convert-to-invoice'
     });
     res.status(500).json({ error: 'Failed to convert quote to invoice' });
+  }
+});
+
+router.post('/:id/convert-to-job', requireFeature('jobs'), async (req, res) => {
+  try {
+    const result = await convertQuoteToJob(req.params.id);
+    if (result.error) return res.status(result.status).json({ error: result.error });
+    res.status(201).json(result.job);
+  } catch (error) {
+    logger.error('Failed to convert quote to job', {
+      error: error.message,
+      stack: error.stack,
+      quoteId: req.params.id,
+      method: 'POST',
+      endpoint: '/quotes/:id/convert-to-job'
+    });
+    res.status(500).json({ error: 'Failed to convert quote to job' });
   }
 });
 

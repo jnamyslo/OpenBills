@@ -34,6 +34,16 @@ interface PageState {
   quoteId?: string;
 }
 
+/** Suchbegriffe aus dem Hash sind URL-kodiert (Belegnummern können „/“ enthalten). */
+function safeDecode(value?: string): string | undefined {
+  if (!value) return undefined;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 function App() {
   return (
     <AuthProvider>
@@ -206,7 +216,14 @@ function AppContent({ currentPageState, handlePageChange }: AppContentProps) {
         if (!hasFeature('jobs')) {
           return <PlanLockedNotice feature="jobs" />;
         }
-        return <JobManagement onNavigate={handlePageChange} autoCreate={currentPageState.filter === 'new'} />;
+        return (
+          <JobManagement
+            onNavigate={handlePageChange}
+            autoCreate={currentPageState.filter === 'new'}
+            initialFilter={currentPageState.filter === 'new' ? undefined : currentPageState.filter}
+            initialSearchTerm={safeDecode(currentPageState.searchTerm)}
+          />
+        );
       case 'calendar':
         // Disabled if job tracking is not enabled; effect above redirects to settings
         if (!company.jobTrackingEnabled) {
@@ -220,7 +237,7 @@ function AppContent({ currentPageState, handlePageChange }: AppContentProps) {
         return (
           <InvoiceManagement
             initialFilter={currentPageState.filter === 'new' ? undefined : currentPageState.filter}
-            initialSearchTerm={currentPageState.searchTerm}
+            initialSearchTerm={safeDecode(currentPageState.searchTerm)}
             onNavigate={handlePageChange}
             autoCreate={currentPageState.filter === 'new'}
           />

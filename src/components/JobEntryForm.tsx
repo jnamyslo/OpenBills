@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import logger from '../utils/logger';
 import { mergeAttachmentContent, jobNeedsContent } from '../utils/attachmentContent';
 import { apiService } from '../services/api';
-import { X, Plus, Trash2, Save, Clock, Calendar, DollarSign, Edit, PenTool } from 'lucide-react';
+import { X, Plus, Trash2, Save, Clock, Calendar, DollarSign, Edit, PenTool, Percent } from 'lucide-react';
 import { JobEntry, Customer, JobMaterial, JobAttachment, JobTimeEntry, JobSignature } from '../types';
 import { useCustomers } from '../context/CustomerContext';
 import { useCompany } from '../context/CompanyContext';
+import { DocumentChain } from './DocumentChain';
 import { useDocumentHelpers } from '../hooks/useDocumentHelpers';
 import { AttachmentManager } from './AttachmentManager';
 import { DocumentPreview, PreviewDocument } from './DocumentPreview';
@@ -119,7 +120,9 @@ export function JobEntryForm({ job, customers, defaultDate, onSubmit, onCancel, 
         status: job.status,
         notes: job.notes || '',
         attachments: job.attachments || [],
-        signature: job.signature || undefined
+        signature: job.signature || undefined,
+        globalDiscountType: job.globalDiscountType,
+        globalDiscountValue: job.globalDiscountValue
       });
     } else {
       // Für neue Aufträge: keine Standard-Zeiteinträge, Nutzer muss explizit hinzufügen
@@ -531,6 +534,7 @@ export function JobEntryForm({ job, customers, defaultDate, onSubmit, onCancel, 
         <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 md:p-4">
             <div className="space-y-4 md:space-y-6">
+              {job && <DocumentChain kind="job" id={job.id} />}
               {/* Basic Information */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 [&>*]:min-w-0">
             <div>
@@ -1128,6 +1132,59 @@ Musterstraße 123
               </div>
             )}
           </div>
+
+          {/* Global discount: applied to the invoice when the job is billed */}
+          {(company.discountsEnabled !== false || formData.globalDiscountType) && (
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 md:p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Percent className="w-5 h-5 text-orange-600" />
+                <h3 className="text-sm font-semibold text-gray-900">Gesamtrabatt</h3>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Rabattart</label>
+                  <select
+                    value={formData.globalDiscountType || ''}
+                    onChange={(e) => {
+                      const type = e.target.value as 'percentage' | 'fixed' | '';
+                      setFormData(prev => ({
+                        ...prev,
+                        globalDiscountType: type || undefined,
+                        globalDiscountValue: type ? prev.globalDiscountValue : undefined,
+                      }));
+                    }}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white"
+                  >
+                    <option value="">Kein Rabatt</option>
+                    <option value="percentage">Prozentual (%)</option>
+                    <option value="fixed">Festbetrag (€)</option>
+                  </select>
+                </div>
+                {formData.globalDiscountType && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      {formData.globalDiscountType === 'percentage' ? 'Prozentsatz' : 'Betrag in €'}
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max={formData.globalDiscountType === 'percentage' ? '100' : undefined}
+                      step="0.01"
+                      value={formData.globalDiscountValue ?? ''}
+                      onChange={(e) => setFormData(prev => ({
+                        ...prev,
+                        globalDiscountValue: e.target.value === '' ? undefined : parseFloat(e.target.value),
+                      }))}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    />
+                  </div>
+                )}
+              </div>
+              <p className="mt-2 text-xs text-gray-600">
+                Der Gesamtrabatt wird bei der Abrechnung auf die Rechnung angewendet (nach Positionsrabatten).
+              </p>
+            </div>
+          )}
 
           {/* Notes */}
           <div>
