@@ -377,10 +377,10 @@ export function EmailManagement({ onClose, embedded = false }: EmailManagementPr
         )}
 
         {/* Tabs */}
-        <div className="flex border-b border-gray-200 px-6 flex-shrink-0">
+        <div className="flex border-b border-gray-200 px-2 sm:px-6 flex-shrink-0 overflow-x-auto">
           <button
             onClick={() => setActiveTab('history')}
-            className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
+            className={`py-4 px-3 sm:px-6 text-sm font-medium border-b-2 transition-colors flex-shrink-0 whitespace-nowrap ${
               activeTab === 'history'
                 ? 'border-primary-custom text-primary-custom'
                 : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -393,7 +393,7 @@ export function EmailManagement({ onClose, embedded = false }: EmailManagementPr
           </button>
           <button
             onClick={() => setActiveTab('statistics')}
-            className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
+            className={`py-4 px-3 sm:px-6 text-sm font-medium border-b-2 transition-colors flex-shrink-0 whitespace-nowrap ${
               activeTab === 'statistics'
                 ? 'border-primary-custom text-primary-custom'
                 : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -406,7 +406,7 @@ export function EmailManagement({ onClose, embedded = false }: EmailManagementPr
           </button>
           <button
             onClick={() => setActiveTab('settings')}
-            className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
+            className={`py-4 px-3 sm:px-6 text-sm font-medium border-b-2 transition-colors flex-shrink-0 whitespace-nowrap ${
               activeTab === 'settings'
                 ? 'border-primary-custom text-primary-custom'
                 : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -420,7 +420,7 @@ export function EmailManagement({ onClose, embedded = false }: EmailManagementPr
           {ownSmtpAllowed && (
           <button
             onClick={() => setActiveTab('test')}
-            className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
+            className={`py-4 px-3 sm:px-6 text-sm font-medium border-b-2 transition-colors flex-shrink-0 whitespace-nowrap ${
               activeTab === 'test'
                 ? 'border-primary-custom text-primary-custom'
                 : 'border-transparent text-gray-500 hover:text-gray-700'

@@ -1,6 +1,7 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, ReactNode } from 'react';
 import { apiService, AuthRequiredError, AUTH_REQUIRED_EVENT } from '../services/api';
 import type { AuthUser } from '../types';
+import { isAdmin } from '../utils/authRoutes';
 
 export type AuthStatus = 'loading' | 'anonymous' | 'mfa' | 'authenticated';
 
@@ -13,10 +14,13 @@ interface AuthContextType {
   refresh(): Promise<void>;
   /** Einrichtungsassistent als abgeschlossen/übersprungen markieren (false = erneut starten). */
   setOnboardingCompleted(completed: boolean): Promise<void>;
-  /** true, solange seit dem letzten aktiven Login (oder requestDemoTour) noch keine Demo-Tour gestartet wurde. */
+  /** true, solange seit dem letzten aktiven Login noch keine Demo-Tour gestartet wurde (nur Demo-Instanz). */
   freshLogin: boolean;
+  /** true, wenn die Tour ausdrücklich angefordert wurde (Benutzermenü oder nach der Ersteinrichtung). */
+  tourRequested: boolean;
+  /** Setzt freshLogin und tourRequested zurück. */
   consumeFreshLogin(): void;
-  /** Demo-Tour erneut starten (Benutzermenü). */
+  /** Tour erneut starten (Benutzermenü). */
   requestDemoTour(): void;
 }
 
@@ -34,10 +38,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [status, setStatus] = useState<AuthStatus>('loading');
   const [freshLogin, setFreshLogin] = useState(false);
+  const [tourRequested, setTourRequested] = useState(false);
+  // Erstes Onboarding dieses Admins: danach läuft einmalig die Tour (nicht beim erneuten Start des Assistenten).
+  const tourAfterOnboarding = useRef(false);
+  const trackFirstOnboarding = (me: AuthUser) => {
+    const first = !me.isOperator && !me.onboardingCompleted;
+    tourAfterOnboarding.current = first && isAdmin(me);
+    // Normale Benutzer haben keinen Assistenten: die Tour startet direkt.
+    if (first && !isAdmin(me)) setTourRequested(true);
+  };
 
   const refresh = useCallback(async () => {
     try {
       const { user: me } = await apiService.getMe();
+      trackFirstOnboarding(me);
       setUser(me);
       setStatus('authenticated');
     } catch (error) {
@@ -53,6 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStatus('mfa');
       return;
     }
+    trackFirstOnboarding(result.user);
     setUser(result.user);
     setStatus('authenticated');
     setFreshLogin(true);
@@ -61,6 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const verifyTotp = useCallback(async (code: string) => {
     try {
       const { user: me } = await apiService.loginTotp(code);
+      trackFirstOnboarding(me);
       setUser(me);
       setStatus('authenticated');
       setFreshLogin(true);
@@ -83,10 +99,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const setOnboardingCompleted = useCallback(async (completed: boolean) => {
     const { user: me } = await apiService.setOnboardingCompleted(completed);
     setUser(me);
+    if (completed && tourAfterOnboarding.current) {
+      tourAfterOnboarding.current = false;
+      setTourRequested(true);
+    }
   }, []);
 
-  const consumeFreshLogin = useCallback(() => setFreshLogin(false), []);
-  const requestDemoTour = useCallback(() => setFreshLogin(true), []);
+  const consumeFreshLogin = useCallback(() => {
+    setFreshLogin(false);
+    setTourRequested(false);
+  }, []);
+  const requestDemoTour = useCallback(() => setTourRequested(true), []);
 
   useEffect(() => {
     refresh();
@@ -103,8 +126,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ user, status, login, verifyTotp, logout, refresh, setOnboardingCompleted, freshLogin, consumeFreshLogin, requestDemoTour }),
-    [user, status, login, verifyTotp, logout, refresh, setOnboardingCompleted, freshLogin, consumeFreshLogin, requestDemoTour]
+    () => ({ user, status, login, verifyTotp, logout, refresh, setOnboardingCompleted, freshLogin, tourRequested, consumeFreshLogin, requestDemoTour }),
+    [user, status, login, verifyTotp, logout, refresh, setOnboardingCompleted, freshLogin, tourRequested, consumeFreshLogin, requestDemoTour]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

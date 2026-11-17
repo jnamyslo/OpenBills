@@ -3,7 +3,8 @@ import { driver, type Driver } from 'driver.js';
 import 'driver.js/dist/driver.css';
 import { useAuth } from '../context/AuthContext';
 import { useDemo } from '../context/DemoContext';
-import { DEMO_TOUR_MOBILE_NAV_EVENT, DEMO_TOUR_STEPS } from '../utils/onboarding';
+import { isAdmin } from '../utils/authRoutes';
+import { DEMO_TOUR_MOBILE_NAV_EVENT, getTourSteps } from '../utils/onboarding';
 
 /** Unterhalb von Tailwind `lg` ist die Navigation ein ausklappbares Seitenmenü. */
 const MOBILE_QUERY = '(max-width: 1023px)';
@@ -14,10 +15,13 @@ function setMobileNav(open: boolean) {
   window.dispatchEvent(new CustomEvent<boolean>(DEMO_TOUR_MOBILE_NAV_EVENT, { detail: open }));
 }
 
-/** Geführte Tour der Demo-Instanz: startet nach jedem aktiven Login (nicht bei Seiten-Reload) und über das Benutzermenü. */
+/**
+ * Geführte Tour. Demo: nach jedem aktiven Login (nicht bei Seiten-Reload) und über das Benutzermenü.
+ * Normale Instanzen: einmalig nach dem ersten Einrichtungsassistenten eines Benutzers und über das Benutzermenü.
+ */
 export function DemoTour({ ready }: { ready: boolean }) {
   const { demo } = useDemo();
-  const { freshLogin, consumeFreshLogin } = useAuth();
+  const { user, freshLogin, tourRequested, consumeFreshLogin, setOnboardingCompleted } = useAuth();
   const tourRef = useRef<Driver | null>(null);
   const timerRef = useRef<number>();
 
@@ -28,7 +32,12 @@ export function DemoTour({ ready }: { ready: boolean }) {
   }, []);
 
   useEffect(() => {
-    if (!demo || !freshLogin || !ready) return;
+    const triggered = (demo && freshLogin) || tourRequested;
+    // Admins: erst nach dem Einrichtungsassistenten.
+    const wizardPending = !demo && isAdmin(user) && !user?.onboardingCompleted;
+    if (!triggered || !ready || !user || wizardPending) return;
+    // Normale Benutzer: erste Tour ersetzt den Assistenten und gilt danach als erledigt.
+    const completesOnboarding = !demo && !user.onboardingCompleted;
     consumeFreshLogin();
     tourRef.current?.destroy();
 
@@ -36,7 +45,7 @@ export function DemoTour({ ready }: { ready: boolean }) {
 
     const start = () => {
       // Schritte ohne sichtbares Ziel (z. B. deaktivierte Module) entfallen.
-      const steps = DEMO_TOUR_STEPS.filter((step) => {
+      const steps = getTourSteps(demo).filter((step) => {
         if (!step.selector) return true;
         const el = document.querySelector(step.selector);
         return el !== null && el.getBoundingClientRect().right > 0;
@@ -58,6 +67,7 @@ export function DemoTour({ ready }: { ready: boolean }) {
         steps,
         onDestroyed: () => {
           if (mobile) setMobileNav(false);
+          if (completesOnboarding) void setOnboardingCompleted(true).catch(() => undefined);
         },
       });
       tourRef.current = tour;
@@ -72,7 +82,7 @@ export function DemoTour({ ready }: { ready: boolean }) {
     } else {
       start();
     }
-  }, [demo, freshLogin, ready, consumeFreshLogin]);
+  }, [demo, user, freshLogin, tourRequested, ready, consumeFreshLogin, setOnboardingCompleted]);
 
   return null;
 }

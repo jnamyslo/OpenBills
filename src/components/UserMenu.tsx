@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Compass, KeyRound, LogOut, Rocket, User } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useDemo } from '../context/DemoContext';
+import { isAdmin } from '../utils/authRoutes';
 
 interface UserMenuProps {
   onOpenAccount: () => void;
@@ -55,7 +56,7 @@ export function UserMenu({ onOpenAccount }: UserMenuProps) {
             <KeyRound className="h-4 w-4 mr-2" />
             Konto
           </button>
-          {!demo && !user.isOperator && (
+          {!demo && !user.isOperator && isAdmin(user) && (
             <button
               role="menuitem"
               onClick={() => { setOpen(false); void setOnboardingCompleted(false); }}
@@ -65,14 +66,14 @@ export function UserMenu({ onOpenAccount }: UserMenuProps) {
               Einrichtungsassistent
             </button>
           )}
-          {demo && (
+          {(demo || !user.isOperator) && (
             <button
               role="menuitem"
               onClick={() => { setOpen(false); requestDemoTour(); }}
               className="w-full flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
             >
               <Compass className="h-4 w-4 mr-2" />
-              Demo-Tour
+              {demo ? 'Demo-Tour' : 'Rundgang'}
             </button>
           )}
           <button

@@ -4,7 +4,6 @@ import { useAuth } from '../context/AuthContext';
 import { useCompany } from '../context/CompanyContext';
 import { FEATURE_LABELS, usePlan } from '../context/PlanContext';
 import { getOnboardingSteps, OnboardingStepId } from '../utils/onboarding';
-import { isAdmin } from '../utils/authRoutes';
 import logger from '../utils/logger';
 import type { Company, PlanFeature } from '../types';
 
@@ -60,7 +59,7 @@ export function OnboardingWizard() {
   const { user, setOnboardingCompleted } = useAuth();
   const { company, updateCompany } = useCompany();
   const { plan, hasFeature } = usePlan();
-  const steps = getOnboardingSteps(isAdmin(user), hasFeature);
+  const steps = getOnboardingSteps(hasFeature);
   const [index, setIndex] = useState(0);
   const [draft, setDraft] = useState<Company>(company);
   const [busy, setBusy] = useState(false);
@@ -138,9 +137,7 @@ export function OnboardingWizard() {
           {step === 'welcome' && (
             <>
               <p className="text-gray-700">
-                Hallo {user?.name}! {isAdmin(user)
-                  ? 'In wenigen Schritten richten wir die wichtigsten Einstellungen ein, damit Ihre erste Rechnung vollständig und rechtssicher wird.'
-                  : 'Schön, dass Sie dabei sind. Ihr Administrator hat die Firmeneinstellungen bereits vorgenommen.'}
+                Hallo {user?.name}! In wenigen Schritten richten wir die wichtigsten Einstellungen ein, damit Ihre erste Rechnung vollständig und rechtssicher wird.
               </p>
               {plan && <p className="text-sm text-gray-500">Ihr Tarif: <strong>{plan.label}</strong></p>}
               <Hint>Alle Angaben lassen sich später jederzeit in den Einstellungen ändern. Über das Benutzermenü können Sie diesen Assistenten erneut starten.</Hint>
@@ -273,16 +270,14 @@ export function OnboardingWizard() {
           {step === 'fertig' && (
             <>
               <p className="text-gray-700">
-                {isAdmin(user)
-                  ? 'Die Grundeinrichtung ist abgeschlossen. So geht es weiter:'
-                  : 'Los geht es! Die wichtigsten Bereiche finden Sie in der Navigation links.'}
+                Die Grundeinrichtung ist abgeschlossen. So geht es weiter:
               </p>
               <ul className="list-disc pl-5 text-sm text-gray-700 space-y-1">
                 <li>Legen Sie unter <strong>Kunden</strong> Ihren ersten Kunden an.</li>
                 <li>Erstellen Sie unter <strong>Rechnungen</strong> Ihre erste Rechnung.</li>
-                {isAdmin(user) && <li>Laden Sie weitere Kolleginnen und Kollegen unter Einstellungen → Benutzer ein und aktivieren Sie die Zwei-Faktor-Anmeldung im Konto.</li>}
+                <li>Laden Sie weitere Kolleginnen und Kollegen unter Einstellungen → Benutzer ein und aktivieren Sie die Zwei-Faktor-Anmeldung im Konto.</li>
               </ul>
-              {isAdmin(user) && missing.length > 0 && (
+              {missing.length > 0 && (
                 <Hint>
                   In Ihrem Tarif nicht enthalten: {missing.map((f) => FEATURE_LABELS[f]).join(', ')}.
                   {plan?.upgradeContact && <> Kontakt für ein Upgrade: {plan.upgradeContact}.</>}

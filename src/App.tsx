@@ -168,8 +168,9 @@ function AppContent({ currentPageState, handlePageChange }: AppContentProps) {
   const { user } = useAuth();
   const { demo } = useDemo();
   const userIsAdmin = isAdmin(user);
-  // In der Demo gibt es stattdessen die geführte Tour; Support-Zugang braucht keine Einrichtung.
-  const showWizard = !loading && !demo && !!user && !user.isOperator && !user.onboardingCompleted;
+  // Nur Admins konfigurieren. Normale Benutzer starten direkt in die Tour, in der Demo gibt es ebenfalls nur die Tour;
+  // Support-Zugang braucht keine Einrichtung.
+  const showWizard = !loading && !demo && userIsAdmin && !user?.isOperator && !user?.onboardingCompleted;
 
   // Redirect to settings when the current page's module is disabled.
   // Done as an effect (not during render) to avoid updating state while rendering.
