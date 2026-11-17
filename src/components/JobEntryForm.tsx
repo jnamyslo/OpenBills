@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import logger from '../utils/logger';
 import { mergeAttachmentContent, jobNeedsContent } from '../utils/attachmentContent';
 import { apiService } from '../services/api';
-import { Plus, Trash2, Save, Clock, Calendar, DollarSign, Edit, PenTool, Percent } from 'lucide-react';
+import { Save, PenTool } from 'lucide-react';
+import { arrayMove } from '@dnd-kit/sortable';
 import { JobEntry, Customer, JobMaterial, JobAttachment, JobTimeEntry, JobSignature } from '../types';
 import { useCompany } from '../context/CompanyContext';
 import { DocumentChain } from './DocumentChain';
@@ -13,9 +14,12 @@ import { SignaturePad } from './SignaturePad';
 import { RatesAndMaterialsRedirectModal } from './RatesAndMaterialsRedirectModal';
 import { createDefaultTimeEntry } from '../utils/jobUtils';
 import { generateUUID } from '../utils/uuid';
-import { formatCustomerNumber } from '../utils/customerUtils';
 import { CustomerCreateModal } from './CustomerCreateModal';
 import { PageShell } from './PageShell';
+import { calculateInvoiceWithDiscounts, calculateItemDiscount } from '../utils/discountUtils';
+import { buildInvoiceItemsFromJobs } from '../utils/jobInvoiceItems';
+import { LineItem, LineItemList } from './LineItemList';
+import { FormSection, CustomerPicker, TemplateAddBar, GlobalDiscountSection, DocumentTotals, fieldInputClass, fieldLabelClass } from './DocumentFormParts';
 
 interface JobEntryFormProps {
   job?: JobEntry | null;
@@ -46,9 +50,6 @@ export function JobEntryForm({ job, customers, defaultDate, initialValues, onSub
   });
 
 
-  // Customer search states
-  const [customerSearchTerm, setCustomerSearchTerm] = useState('');
-  const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
   
   // We'll define these helper functions after formData is available
   
@@ -172,46 +173,10 @@ export function JobEntryForm({ job, customers, defaultDate, initialValues, onSub
     return () => { cancelled = true; };
   }, [job?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Filter customers based on search term
-  const filteredCustomers = customers.filter(customer =>
-    customer.name.toLowerCase().includes(customerSearchTerm.toLowerCase()) ||
-    (customer.customerNumber && customer.customerNumber.toLowerCase().includes(customerSearchTerm.toLowerCase()))
-  );
-  
-  // Get selected customer display name
-  const selectedCustomer = customers.find(customer => customer.id === formData.customerId);
-  const selectedCustomerDisplayName = selectedCustomer ? selectedCustomer.name : '';
-    
-  // Handle customer selection
-  const handleCustomerSelectDropdown = (customer: Customer) => {
-    handleCustomerChange(customer.id);
-    setCustomerSearchTerm(customer.name);
-    setIsCustomerDropdownOpen(false);
-  };
-  
-  // Handle customer search input
-  const handleCustomerSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setCustomerSearchTerm(e.target.value);
-    setIsCustomerDropdownOpen(true);
-    
-    // If search is cleared, clear the selected customer
-    if (!e.target.value) {
-      handleCustomerChange('');
-    }
-  };
-  
-  // Initialize search term when job is loaded
-  useEffect(() => {
-    if (formData.customerId && !customerSearchTerm) {
-      setCustomerSearchTerm(selectedCustomerDisplayName);
-    }
-  }, [formData.customerId, selectedCustomerDisplayName, customerSearchTerm]);
-
-  const handleCustomerChange = (customerId: string) => {
-    const customer = customers.find(c => c.id === customerId);
-    setFormData((prev) => ({
+  const handleCustomerSelect = (customer: Customer | null) => {
+    setFormData(prev => ({
       ...prev,
-      customerId,
+      customerId: customer?.id || '',
       customerName: customer?.name || ''
     }));
   };
@@ -251,66 +216,39 @@ export function JobEntryForm({ job, customers, defaultDate, initialValues, onSub
     }));
   };
 
-  const updateTimeEntry = (index: number, field: keyof JobTimeEntry, value: string | number) => {
-    setFormData((prev) => {
-      const timeEntries = [...(prev.timeEntries || [])];
-      timeEntries[index] = { ...timeEntries[index], [field]: value };
-      
-      // Auto-calculate total for hoursWorked and hourlyRate changes
-      if (field === 'hoursWorked' || field === 'hourlyRate') {
-        const hours = parseFloat(String(timeEntries[index].hoursWorked)) || 0;
-        const rate = parseFloat(String(timeEntries[index].hourlyRate)) || 0;
-        timeEntries[index].total = hours * rate;
-      }
-      
-      // Auto-calculate hours if both times are set
-      if (field === 'startTime' || field === 'endTime') {
-        const entry = timeEntries[index];
-        if (entry.startTime && entry.endTime) {
-          const start = new Date(`2000-01-01T${entry.startTime}:00`);
-          const end = new Date(`2000-01-01T${entry.endTime}:00`);
-          let diffMs = end.getTime() - start.getTime();
-          // End time before (or equal to) start time is treated as an overnight
-          // entry (e.g. 22:00 - 06:00) rather than silently ignored.
-          if (diffMs <= 0) {
-            diffMs += 24 * 60 * 60 * 1000;
-          }
-          const diffHours = diffMs / (1000 * 60 * 60);
+  // Positionsrabatt auf Betrag und Summe anwenden (wie bei Rechnungspositionen)
+  const withDiscount = <T extends { discountType?: 'percentage' | 'fixed'; discountValue?: number }>(entry: T, quantity: number, unitPrice: number) => {
+    const discountAmount = calculateItemDiscount(quantity, unitPrice, entry.discountType, entry.discountValue);
+    return { ...entry, discountAmount, total: quantity * unitPrice - discountAmount };
+  };
 
-          if (diffHours > 0) {
-            const minutes = Math.round(diffHours * 60);
-            timeEntries[index].hoursWorked = Math.round((minutes / 60) * 100) / 100;
-            const hours = parseFloat(String(timeEntries[index].hoursWorked)) || 0;
-            const rate = parseFloat(String(timeEntries[index].hourlyRate)) || 0;
-            timeEntries[index].total = hours * rate;
-          }
-        }
-      }
-      
-      // Update total hours in main job data for backward compatibility
-      const totalHours = timeEntries.reduce((sum, entry) => sum + (parseFloat(String(entry.hoursWorked)) || 0), 0);
-      
-      return { 
-        ...prev, 
-        timeEntries,
-        hoursWorked: totalHours
-      };
+  const totalHoursOf = (timeEntries: JobTimeEntry[]) =>
+    timeEntries.reduce((sum, entry) => sum + (parseFloat(String(entry.hoursWorked)) || 0), 0);
+
+  const timeEntryFields: Record<string, keyof JobTimeEntry> = { quantity: 'hoursWorked', unitPrice: 'hourlyRate' };
+
+  const updateTimeEntry = (id: string, field: string, value: string | number | undefined) => {
+    setFormData((prev) => {
+      const timeEntries = (prev.timeEntries || []).map(entry => {
+        if (entry.id !== id) return entry;
+        const updated = { ...entry, [timeEntryFields[field] || field]: value };
+        return withDiscount(updated, parseFloat(String(updated.hoursWorked)) || 0, parseFloat(String(updated.hourlyRate)) || 0);
+      });
+      // Gesamtstunden am Auftrag für Abwärtskompatibilität
+      return { ...prev, timeEntries, hoursWorked: totalHoursOf(timeEntries) };
     });
   };
 
-  const removeTimeEntry = (index: number) => {
+  const removeTimeEntry = (id: string) => {
     setFormData((prev) => {
-      const timeEntries = (prev.timeEntries || []).filter((_, i) => i !== index);
-      const totalHours = timeEntries.reduce((sum: number, entry) => sum + (parseFloat(String(entry.hoursWorked)) || 0), 0);
-      
-      return { 
-        ...prev, 
-        timeEntries,
-        hoursWorked: totalHours
-      };
+      const timeEntries = (prev.timeEntries || []).filter(entry => entry.id !== id);
+      return { ...prev, timeEntries, hoursWorked: totalHoursOf(timeEntries) };
     });
   };
 
+  const reorderTimeEntries = (fromIndex: number, toIndex: number) => {
+    setFormData(prev => ({ ...prev, timeEntries: arrayMove(prev.timeEntries || [], fromIndex, toIndex) }));
+  };
 
 
   const addMaterial = (templateId?: string) => {
@@ -382,28 +320,28 @@ export function JobEntryForm({ job, customers, defaultDate, initialValues, onSub
     }));
   };
 
-  const updateMaterial = (index: number, field: keyof JobMaterial, value: string | number) => {
-    setFormData(prev => {
-      const materials = [...(prev.materials || [])];
-      materials[index] = { ...materials[index], [field]: value };
-      
-      // Auto-calculate total for quantity and unitPrice changes
-      if (field === 'quantity' || field === 'unitPrice') {
-        const quantity = parseFloat(String(materials[index].quantity)) || 0;
-        const unitPrice = parseFloat(String(materials[index].unitPrice)) || 0;
-        materials[index].total = quantity * unitPrice;
-      }
-      
-      return { ...prev, materials };
-    });
-  };
-
-  const removeMaterial = (index: number) => {
+  const updateMaterial = (id: string, field: string, value: string | number | undefined) => {
     setFormData(prev => ({
       ...prev,
-      materials: prev.materials?.filter((_, i) => i !== index) || []
+      materials: (prev.materials || []).map(material => {
+        if (material.id !== id) return material;
+        const updated = { ...material, [field]: value };
+        return withDiscount(updated, parseFloat(String(updated.quantity)) || 0, parseFloat(String(updated.unitPrice)) || 0);
+      })
     }));
   };
+
+  const removeMaterial = (id: string) => {
+    setFormData(prev => ({
+      ...prev,
+      materials: (prev.materials || []).filter(material => material.id !== id)
+    }));
+  };
+
+  const reorderMaterials = (fromIndex: number, toIndex: number) => {
+    setFormData(prev => ({ ...prev, materials: arrayMove(prev.materials || [], fromIndex, toIndex) }));
+  };
+
 
   const handleAttachmentsChange = (attachments: JobAttachment[]) => {
     setFormData(prev => ({
@@ -508,6 +446,35 @@ export function JobEntryForm({ job, customers, defaultDate, initialValues, onSub
     return new Date(date).toISOString().split('T')[0];
   };
 
+  const isSmallBusiness = company?.isSmallBusiness || false;
+  const discountsEnabled = company.discountsEnabled !== false;
+
+  const toLineItem = (
+    entry: { id: string; description: string; taxRate: number; discountType?: 'percentage' | 'fixed'; discountValue?: number },
+    quantity: number,
+    unitPrice: number
+  ): LineItem => ({
+    id: entry.id,
+    description: entry.description,
+    quantity,
+    unitPrice,
+    taxRate: Number(entry.taxRate) || 0,
+    discountType: entry.discountType,
+    discountValue: entry.discountValue,
+    discountAmount: calculateItemDiscount(Number(quantity) || 0, Number(unitPrice) || 0, entry.discountType, entry.discountValue),
+  });
+
+  const timeEntryItems = (formData.timeEntries || []).map(entry => toLineItem(entry, entry.hoursWorked, entry.hourlyRate));
+  const materialItems = (formData.materials || []).map(material => toLineItem(material, material.quantity, material.unitPrice));
+
+  // Summen wie auf der späteren Auftragsrechnung (gleiche Rechenlogik)
+  const totals = calculateInvoiceWithDiscounts(
+    buildInvoiceItemsFromJobs([{ ...formData, id: job?.id || 'neu' } as JobEntry], isSmallBusiness),
+    { type: formData.globalDiscountType, value: formData.globalDiscountValue },
+    isSmallBusiness
+  );
+  const hasPositions = timeEntryItems.length > 0 || materialItems.length > 0 || formData.hoursWorked > 0;
+
   return (
     <div>
       <PageShell
@@ -520,7 +487,7 @@ export function JobEntryForm({ job, customers, defaultDate, initialValues, onSub
             <button
               type="button"
               onClick={onCancel}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+              className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
             >
               Abbrechen
             </button>
@@ -528,7 +495,7 @@ export function JobEntryForm({ job, customers, defaultDate, initialValues, onSub
               <button
                 type="button"
                 onClick={handleSubmitAsDraft}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center justify-center space-x-2"
+                className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors flex items-center justify-center space-x-2"
               >
                 <Save className="h-4 w-4" />
                 <span>Als Entwurf speichern</span>
@@ -537,7 +504,7 @@ export function JobEntryForm({ job, customers, defaultDate, initialValues, onSub
             <button
               type="submit"
               form="job-form"
-              className="btn-primary text-white px-4 py-2 rounded-lg flex items-center justify-center space-x-2 text-sm"
+              className="px-6 py-2 btn-primary rounded-lg transition-colors flex items-center justify-center space-x-2"
             >
               <Save className="h-4 w-4" />
               <span>{job ? 'Aktualisieren' : 'Erstellen'}</span>
@@ -545,739 +512,268 @@ export function JobEntryForm({ job, customers, defaultDate, initialValues, onSub
           </>
         }
       >
-        <form id="job-form" onSubmit={handleSubmit} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6">
-          <div>
-            <div className="space-y-4 md:space-y-6">
-              {/* Basic Information */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 [&>*]:min-w-0">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Kunde *
-              </label>
-              <div className="flex gap-2">
-                <div className="flex-1 min-w-0 max-w-sm relative">
-                  <input
-                    type="text"
-                    value={customerSearchTerm}
-                    onChange={handleCustomerSearchChange}
-                    onFocus={() => setIsCustomerDropdownOpen(true)}
-                    onBlur={() => setTimeout(() => setIsCustomerDropdownOpen(false), 200)}
-                    placeholder="Kunde suchen oder auswählen..."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom text-sm"
-                    required
-                  />
-                  {isCustomerDropdownOpen && (
-                    <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                      {filteredCustomers.length > 0 ? (
-                        filteredCustomers.map(customer => (
-                          <button
-                            key={customer.id}
-                            type="button"
-                            onClick={() => handleCustomerSelectDropdown(customer)}
-                            className="w-full text-left px-3 py-2 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none border-b border-gray-100 last:border-b-0 text-sm"
-                          >
-                            <div className="font-medium">{customer.name}</div>
-                            {customer.customerNumber && (
-                              <div className="text-xs text-gray-500">Nr: {formatCustomerNumber(customer.customerNumber)}</div>
-                            )}
-                            {customer.email && (
-                              <div className="text-xs text-gray-500">{customer.email}</div>
-                            )}
-                          </button>
-                        ))
-                      ) : (
-                        <div className="px-3 py-2 text-gray-500 text-xs">
-                          Keine Kunden gefunden
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    logger.debug('Plus button clicked in JobEntryForm');
-                    setShowCustomerForm(true);
-                  }}
-                  className="px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors flex items-center text-sm"
-                  title="Neuen Kunden anlegen"
-                >
-                  <Plus className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Status
-              </label>
-              <select
-                value={formData.status}
-                onChange={(e) => setFormData(prev => ({ ...prev, status: e.target.value as JobEntry['status'] }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom text-sm"
-              >
-                <option value="draft">Entwurf</option>
-                <option value="in-progress">In Bearbeitung</option>
-                <option value="completed">Abgeschlossen</option>
-                <option value="invoiced">Abgerechnet</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Titel *
-              </label>
-              <input
-                type="text"
-                value={formData.title}
-                onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
-                required
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom text-sm"
-                placeholder="z.B. Website-Entwicklung"
-              />
-            </div>
-          </div>
-
-          {/* Customer Address - Full width under customer selection */}
-          <div className="col-span-1 md:col-span-2 lg:col-span-3">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Kundenanschrift (Ausführungsort)
-              <span className="text-gray-500 text-xs ml-1">
-                - Optional, falls abweichend vom Rechnungsempfänger
-              </span>
-            </label>
-            <textarea
-              value={formData.customerAddress || ''}
-              onChange={(e) => setFormData(prev => ({ ...prev, customerAddress: e.target.value }))}
-              rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom text-sm"
-              placeholder="z.B. Max Mustermann
-Musterstraße 123
-12345 Musterstadt"
-            />
-          </div>
-
-          <div className="col-span-1 md:col-span-2 lg:col-span-3">
-            {/* Job Numbers */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 [&>*]:min-w-0">
+        <form id="job-form" onSubmit={handleSubmit} className="space-y-6">
+          <FormSection title="Grundinformationen">
+            <div className="grid grid-cols-1 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className={fieldLabelClass}>
                   Auftragsnummer
                 </label>
                 <input
                   type="text"
                   value={formData.jobNumber}
-                  readOnly
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-sm text-gray-600"
-                  placeholder="Wird automatisch generiert"
+                  placeholder={job ? "" : "Wird automatisch generiert"}
+                  disabled={true}
+                  readOnly={true}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-500 cursor-not-allowed"
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  {job ? "Auftragsnummern können nach der Erstellung nicht mehr geändert werden" : "Die Auftragsnummer wird beim Speichern automatisch generiert"}
+                </p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className={fieldLabelClass}>
                   Externe Auftragsnummer
                 </label>
                 <input
                   type="text"
                   value={formData.externalJobNumber}
                   onChange={(e) => setFormData(prev => ({ ...prev, externalJobNumber: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom text-sm"
+                  className={fieldInputClass}
                   placeholder="Optional: Externe Referenznummer"
                 />
               </div>
-            </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Datum *
-              </label>
-              <div className="relative">
-                <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <CustomerPicker
+                customers={customers}
+                selectedId={formData.customerId}
+                onSelect={handleCustomerSelect}
+                onCreateNew={() => setShowCustomerForm(true)}
+              />
+
+              <div>
+                <label className={fieldLabelClass}>
+                  Titel *
+                </label>
+                <input
+                  type="text"
+                  value={formData.title}
+                  onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
+                  required
+                  className={fieldInputClass}
+                  placeholder="z.B. Website-Entwicklung"
+                />
+              </div>
+
+              <div>
+                <label className={fieldLabelClass}>
+                  Auftragsdatum *
+                </label>
                 <input
                   type="date"
                   value={formatDateForInput(formData.date)}
                   onChange={(e) => setFormData(prev => ({ ...prev, date: new Date(e.target.value) }))}
                   required
-                  className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom text-sm"
+                  className={fieldInputClass}
+                />
+              </div>
+
+              <div>
+                <label className={fieldLabelClass}>
+                  Status
+                </label>
+                <select
+                  value={formData.status}
+                  onChange={(e) => setFormData(prev => ({ ...prev, status: e.target.value as JobEntry['status'] }))}
+                  className={fieldInputClass}
+                >
+                  <option value="draft">Entwurf</option>
+                  <option value="in-progress">In Bearbeitung</option>
+                  <option value="completed">Abgeschlossen</option>
+                  <option value="invoiced">Abgerechnet</option>
+                </select>
+              </div>
+
+              <div>
+                <label className={fieldLabelClass}>
+                  Kundenanschrift (Ausführungsort)
+                </label>
+                <textarea
+                  value={formData.customerAddress || ''}
+                  onChange={(e) => setFormData(prev => ({ ...prev, customerAddress: e.target.value }))}
+                  rows={3}
+                  className={fieldInputClass}
+                  placeholder={"z.B. Max Mustermann\nMusterstraße 123\n12345 Musterstadt"}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Optional, falls abweichend vom Rechnungsempfänger
+                </p>
+              </div>
+
+              <div>
+                <label className={fieldLabelClass}>
+                  Beschreibung *
+                </label>
+                <textarea
+                  value={formData.description}
+                  onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                  required
+                  rows={2}
+                  className={fieldInputClass}
+                  placeholder="Detaillierte Beschreibung der Arbeiten..."
                 />
               </div>
             </div>
-          </div>
+          </FormSection>
 
-          {/* Description */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Beschreibung *
-            </label>
-            <textarea
-              value={formData.description}
-              onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-              required
-              rows={2}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom text-sm"
-              placeholder="Detaillierte Beschreibung der Arbeiten..."
+          <FormSection title="Zeiterfassung">
+            <TemplateAddBar
+              groups={[{
+                label: 'Stundensätze',
+                options: getCombinedHourlyRatesForCustomer(formData.customerId).map(rate => ({
+                  value: rate.id,
+                  label: `${rate.displayName} - ${parseFloat(String(rate.rate || 0)).toFixed(2)}€/h`,
+                })),
+              }]}
+              onSelect={addTimeEntryFromTemplate}
+              onManage={() => setShowRatesRedirectModal({ isOpen: true, type: 'hourlyRates' })}
+              manageTitle="Stundensätze verwalten"
+              onAddManual={addTimeEntry}
             />
-          </div>
-
-          {/* Time Tracking */}
-          <div className="bg-gray-50 rounded-lg p-3 md:p-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 gap-3">
-              <h4 className="text-sm font-medium text-gray-900 flex items-center">
-                <Clock className="h-4 w-4 mr-2" />
-                Zeiterfassung
-              </h4>
-              <div className="flex items-center gap-2 min-w-0">
-                <div className="flex items-center gap-1 min-w-0 flex-1">
-                  <label className="text-xs text-gray-600 whitespace-nowrap hidden sm:block">Aus Vorlage:</label>
-                  <select
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        addTimeEntryFromTemplate(e.target.value);
-                        e.target.value = ''; // Reset dropdown
-                      }
-                    }}
-                    className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom text-sm min-w-0 flex-1 sm:flex-none sm:max-w-xs"
-                    defaultValue=""
-                  >
-                    <option value="">Stundensatz wählen...</option>
-                    {getCombinedHourlyRatesForCustomer(formData.customerId).map((rate) => (
-                      <option key={rate.id} value={rate.id}>
-                        {rate.displayName} - {parseFloat(String(rate.rate || 0)).toFixed(2)}€/h
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => setShowRatesRedirectModal({
-                      isOpen: true,
-                      type: 'hourlyRates'
-                    })}
-                    className="btn-secondary p-2 rounded-lg flex-shrink-0"
-                    title="Stundensätze verwalten"
-                  >
-                    <Edit className="h-3 w-3" />
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  onClick={addTimeEntry}
-                  className="btn-secondary px-3 py-2 rounded-lg text-sm flex items-center space-x-1 flex-shrink-0"
-                  title="Manuell hinzufügen"
-                >
-                  <Plus className="h-3 w-3" />
-                  <span className="hidden sm:inline">Manuell</span>
-                </button>
-              </div>
-            </div>
-
-            {formData.timeEntries && formData.timeEntries.length > 0 ? (
-              <div className="space-y-3 md:space-y-4">
-                {formData.timeEntries.map((timeEntry, index) => (
-                  <div key={timeEntry.id} className="border border-gray-200 rounded-lg p-2 md:p-4 bg-white">
-                    <div className="flex items-center justify-between mb-2 md:mb-3">
-                      <h5 className="text-xs md:text-sm font-medium text-gray-800">
-                        Zeiteintrag {index + 1}
-                      </h5>
-                      {formData.timeEntries!.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => removeTimeEntry(index)}
-                          className="text-red-600 hover:text-red-800 p-1"
-                          title="Zeiteintrag entfernen"
-                        >
-                          <Trash2 className="h-3 w-3 md:h-4 md:w-4" />
-                        </button>
-                      )}
-                    </div>
-                    
-                    {/* Mobile Layout - Simplified for space */}
-                    <div className="md:hidden space-y-2">
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">
-                          Beschreibung
-                        </label>
-                        <input
-                          type="text"
-                          value={timeEntry.description}
-                          onChange={(e) => updateTimeEntry(index, 'description', e.target.value)}
-                          className="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-primary-custom"
-                          placeholder="z.B. Anfahrt, Montage..."
-                        />
-                      </div>
-                      
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">
-                            Stunden *
-                          </label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={timeEntry.hoursWorked}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              if (value === '' || !isNaN(parseFloat(value))) {
-                                updateTimeEntry(index, 'hoursWorked', value === '' ? '' : parseFloat(value));
-                              }
-                            }}
-                            onBlur={(e) => {
-                              if (e.target.value === '') {
-                                updateTimeEntry(index, 'hoursWorked', 0);
-                              }
-                            }}
-                            required
-                            className="w-full px-1 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-primary-custom"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">
-                            Gesamt (€)
-                          </label>
-                          <input
-                            type="text"
-                            value={(parseFloat(String(timeEntry.total)) || 0).toFixed(2)}
-                            readOnly
-                            className="w-full px-1 py-1 border border-gray-300 rounded text-xs bg-gray-100"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Desktop Layout */}
-                    <div className="hidden md:block">
-                      <div className="grid grid-cols-6 gap-3">
-                        <div className="col-span-2">
-                          <label className="block text-xs font-medium text-gray-700 mb-1">
-                            Beschreibung
-                          </label>
-                          <input
-                            type="text"
-                            value={timeEntry.description}
-                            onChange={(e) => updateTimeEntry(index, 'description', e.target.value)}
-                            className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-primary-custom"
-                            placeholder="z.B. Anfahrt, Montage, Beratung..."
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">
-                            Stunden *
-                          </label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={timeEntry.hoursWorked}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              if (value === '' || !isNaN(parseFloat(value))) {
-                                updateTimeEntry(index, 'hoursWorked', value === '' ? '' : parseFloat(value));
-                              }
-                            }}
-                            onBlur={(e) => {
-                              if (e.target.value === '') {
-                                updateTimeEntry(index, 'hoursWorked', 0);
-                              }
-                            }}
-                            required
-                            className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-primary-custom"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">
-                            Stundensatz (€)
-                          </label>
-                          <input
-                            type="text"
-                            value={`${parseFloat(String(timeEntry.hourlyRate || 0)).toFixed(2)}€`}
-                            readOnly
-                            className="w-full px-2 py-1 border border-gray-300 rounded text-sm bg-gray-100"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">
-                            MwSt. (%)
-                          </label>
-                          <select
-                            value={company?.isSmallBusiness ? 0 : timeEntry.taxRate}
-                            onChange={(e) => updateTimeEntry(index, 'taxRate', parseFloat(e.target.value))}
-                            disabled={company?.isSmallBusiness}
-                            className={`w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-primary-custom ${
-                              company?.isSmallBusiness ? 'bg-gray-100 cursor-not-allowed' : ''
-                            }`}
-                          >
-                            <option value={0}>0%</option>
-                            {!company?.isSmallBusiness && <option value={7}>7%</option>}
-                            {!company?.isSmallBusiness && <option value={19}>19%</option>}
-                          </select>
-                          {company?.isSmallBusiness && (
-                            <p className="text-xs text-gray-500 mt-1">
-                              MwSt. durch Kleinunternehmerregelung deaktiviert
-                            </p>
-                          )}
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">
-                            Gesamt (€)
-                          </label>
-                          <input
-                            type="text"
-                            value={(parseFloat(String(timeEntry.total)) || 0).toFixed(2)}
-                            readOnly
-                            className="w-full px-2 py-1 border border-gray-300 rounded text-sm bg-gray-100"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 md:p-3">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-medium text-blue-900">Gesamtstunden:</span>
-                    <span className="font-bold text-blue-900">
-                      {(formData.timeEntries.reduce((sum, entry) => sum + (parseFloat(String(entry.hoursWorked)) || 0), 0)).toFixed(2)}h
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm mt-1">
-                    <span className="font-medium text-blue-900">Gesamtkosten:</span>
-                    <span className="font-bold text-blue-900">
-                      {(formData.timeEntries.reduce((sum, entry) => sum + (parseFloat(String(entry.total)) || 0), 0)).toFixed(2)}€
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-6 md:py-8">
-                <Clock className="h-10 w-10 md:h-12 md:w-12 text-gray-400 mx-auto mb-2 md:mb-3" />
-                <p className="text-sm text-gray-500">
-                  Noch keine Zeiteinträge erfasst
-                </p>
+            <LineItemList
+              items={timeEntryItems}
+              onUpdate={updateTimeEntry}
+              onRemove={removeTimeEntry}
+              onReorder={reorderTimeEntries}
+              isSmallBusiness={isSmallBusiness}
+              discountsEnabled={discountsEnabled}
+              quantityLabel="Stunden"
+              priceLabel="Satz"
+              priceReadOnly
+              emptyText="Noch keine Zeiteinträge erfasst."
+            />
+            {timeEntryItems.length > 0 && (
+              <div className="flex justify-between text-sm text-gray-600 mt-4">
+                <span>Gesamtstunden:</span>
+                <span className="font-medium text-gray-900">{totalHoursOf(formData.timeEntries || []).toFixed(2)} h</span>
               </div>
             )}
-          </div>
+          </FormSection>
 
-          {/* Materials */}
-          <div className="bg-gray-50 rounded-lg p-3 md:p-4">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-3 gap-3">
-              <h4 className="text-sm font-medium text-gray-900 flex items-center">
-                <DollarSign className="h-4 w-4 mr-2" />
-                Materialien & Zusatzkosten
-              </h4>
-              <div className="flex items-center gap-2 min-w-0 w-full sm:w-auto">
-                <select
-                  onChange={(e) => {
-                    if (e.target.value) {
-                      addMaterial(e.target.value);
-                      e.target.value = ''; // Reset dropdown
-                    }
-                  }}
-                  className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom text-sm min-w-0 flex-1 sm:flex-none sm:max-w-xs"
-                  defaultValue=""
-                >
-                  <option value="">Vorlage wählen...</option>
-                  {(() => {
-                    try {
-                      const templates = getCombinedMaterialTemplatesForCustomer(formData.customerId) || [];
-                      return templates.map((template) => (
-                        <option key={template.id} value={template.id}>
-                          {template.displayName} - {parseFloat(String(template.unitPrice || 0)).toFixed(2)}€/{template.unit || 'Stück'}
-                        </option>
-                      ));
-                    } catch (error) {
-                      logger.error('Error loading material templates:', error);
-                      return [];
-                    }
-                  })()}
-                </select>
-                <button
-                  type="button"
-                  onClick={() => setShowRatesRedirectModal({
-                    isOpen: true,
-                    type: 'materials'
-                  })}
-                  className="btn-secondary px-3 py-2 rounded-lg text-sm flex items-center space-x-1 flex-shrink-0"
-                  title="Materialien verwalten"
-                >
-                  <Edit className="h-3 w-3" />
-                </button>
+          <FormSection title="Materialien & Zusatzkosten">
+            <TemplateAddBar
+              groups={[{
+                label: 'Materialien',
+                options: getCombinedMaterialTemplatesForCustomer(formData.customerId).map(template => ({
+                  value: template.id,
+                  label: `${template.displayName} - ${parseFloat(String(template.unitPrice || 0)).toFixed(2)}€/${template.unit || 'Stück'}`,
+                })),
+              }]}
+              onSelect={(templateId) => addMaterial(templateId)}
+              onManage={() => setShowRatesRedirectModal({ isOpen: true, type: 'materials' })}
+              manageTitle="Materialien verwalten"
+              onAddManual={() => addMaterial()}
+            />
+            <LineItemList
+              items={materialItems}
+              onUpdate={updateMaterial}
+              onRemove={removeMaterial}
+              onReorder={reorderMaterials}
+              isSmallBusiness={isSmallBusiness}
+              discountsEnabled={discountsEnabled}
+              emptyText="Noch keine Materialien hinzugefügt."
+            />
+          </FormSection>
 
-                <button
-                  type="button"
-                  onClick={() => addMaterial()}
-                  className="btn-secondary px-3 py-2 rounded-lg text-sm flex items-center space-x-1 flex-shrink-0"
-                  title="Manuell hinzufügen"
-                >
-                  <Plus className="h-3 w-3" />
-                  <span className="hidden sm:inline">Manuell</span>
-                </button>
-              </div>
-            </div>
-
-            {formData.materials && formData.materials.length > 0 ? (
-              <div className="space-y-2 md:space-y-3">
-                {formData.materials.map((material, index) => (
-                  <div key={material.id} className="border border-gray-200 rounded-lg p-2 md:p-3 bg-white">
-                    {/* Simplified layout for both mobile and desktop */}
-                    <div className="grid grid-cols-1 md:grid-cols-6 gap-2 md:gap-3">
-                      <div className="md:col-span-2">
-                        <label className="block text-xs font-medium text-gray-700 mb-1">
-                          Beschreibung
-                        </label>
-                        <input
-                          type="text"
-                          value={material.description}
-                          onChange={(e) => updateMaterial(index, 'description', e.target.value)}
-                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-primary-custom"
-                          placeholder="Beschreibung..."
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Menge</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={material.quantity}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            if (value === '' || !isNaN(parseFloat(value))) {
-                              updateMaterial(index, 'quantity', value === '' ? '' : parseFloat(value));
-                            }
-                          }}
-                          onBlur={(e) => {
-                            if (e.target.value === '') {
-                              updateMaterial(index, 'quantity', 0);
-                            }
-                          }}
-                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-primary-custom"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Preis €</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={material.unitPrice}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            if (value === '' || !isNaN(parseFloat(value))) {
-                              updateMaterial(index, 'unitPrice', value === '' ? '' : parseFloat(value));
-                            }
-                          }}
-                          onBlur={(e) => {
-                            if (e.target.value === '') {
-                              updateMaterial(index, 'unitPrice', 0);
-                            }
-                          }}
-                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-primary-custom"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">MwSt. %</label>
-                        <select
-                          value={company?.isSmallBusiness ? 0 : material.taxRate}
-                          onChange={(e) => updateMaterial(index, 'taxRate', parseFloat(e.target.value))}
-                          disabled={company?.isSmallBusiness}
-                          className={`w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-primary-custom ${
-                            company?.isSmallBusiness ? 'bg-gray-100 cursor-not-allowed' : ''
-                          }`}
-                        >
-                          <option value={0}>0%</option>
-                          {!company?.isSmallBusiness && <option value={7}>7%</option>}
-                          {!company?.isSmallBusiness && <option value={19}>19%</option>}
-                        </select>
-                        {company?.isSmallBusiness && (
-                          <p className="text-xs text-gray-500 mt-1">
-                            MwSt. durch Kleinunternehmerregelung deaktiviert
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <label className="block text-xs font-medium text-gray-700 mb-1">Gesamt €</label>
-                          <input
-                            type="text"
-                            value={(parseFloat(String(material.total)) || 0).toFixed(2)}
-                            readOnly
-                            className="w-full px-2 py-1 border border-gray-300 rounded text-sm bg-gray-100"
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => removeMaterial(index)}
-                          className="text-red-600 hover:text-red-800 p-1 ml-2"
-                          title="Entfernen"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 md:p-3">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-medium text-blue-900">Gesamtkosten Materialien:</span>
-                    <span className="font-bold text-blue-900">
-                      {(formData.materials.reduce((sum, material) => sum + (parseFloat(String(material.total)) || 0), 0)).toFixed(2)}€
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-6 md:py-8">
-                <DollarSign className="h-10 w-10 md:h-12 md:w-12 text-gray-400 mx-auto mb-2 md:mb-3" />
-                <p className="text-sm text-gray-500 mb-2 md:mb-4">
-                  Noch keine Materialien hinzugefügt
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Global discount: applied to the invoice when the job is billed */}
-          {(company.discountsEnabled !== false || formData.globalDiscountType) && (
-            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 md:p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Percent className="w-5 h-5 text-orange-600" />
-                <h3 className="text-sm font-semibold text-gray-900">Gesamtrabatt</h3>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Rabattart</label>
-                  <select
-                    value={formData.globalDiscountType || ''}
-                    onChange={(e) => {
-                      const type = e.target.value as 'percentage' | 'fixed' | '';
-                      setFormData(prev => ({
-                        ...prev,
-                        globalDiscountType: type || undefined,
-                        globalDiscountValue: type ? prev.globalDiscountValue : undefined,
-                      }));
-                    }}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white"
-                  >
-                    <option value="">Kein Rabatt</option>
-                    <option value="percentage">Prozentual (%)</option>
-                    <option value="fixed">Festbetrag (€)</option>
-                  </select>
-                </div>
-                {formData.globalDiscountType && (
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">
-                      {formData.globalDiscountType === 'percentage' ? 'Prozentsatz' : 'Betrag in €'}
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      max={formData.globalDiscountType === 'percentage' ? '100' : undefined}
-                      step="0.01"
-                      value={formData.globalDiscountValue ?? ''}
-                      onChange={(e) => setFormData(prev => ({
-                        ...prev,
-                        globalDiscountValue: e.target.value === '' ? undefined : parseFloat(e.target.value),
-                      }))}
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                    />
-                  </div>
-                )}
-              </div>
-              <p className="mt-2 text-xs text-gray-600">
-                Der Gesamtrabatt wird bei der Abrechnung auf die Rechnung angewendet (nach Positionsrabatten).
-              </p>
-            </div>
+          {/* Gesamtrabatt: wird bei der Abrechnung auf die Rechnung übernommen */}
+          {hasPositions && (discountsEnabled || formData.globalDiscountType) && (
+            <GlobalDiscountSection
+              type={formData.globalDiscountType}
+              value={formData.globalDiscountValue}
+              amount={totals.globalDiscountAmount}
+              onChange={({ type, value }) => setFormData(prev => ({ ...prev, globalDiscountType: type, globalDiscountValue: value }))}
+              hint="Der Gesamtrabatt wird bei der Abrechnung auf die Rechnung angewendet (nach Positionsrabatten)."
+            />
           )}
 
-          {/* Notes */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Notizen
-            </label>
+          {hasPositions && (
+            <DocumentTotals
+              totals={totals}
+              discountsEnabled={discountsEnabled}
+              isSmallBusiness={isSmallBusiness}
+            />
+          )}
+
+          <FormSection title="Notizen">
             <textarea
               value={formData.notes}
               onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-              rows={2}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-custom text-sm"
+              rows={4}
+              className={`${fieldInputClass} resize-none`}
               placeholder="Zusätzliche Notizen oder Kommentare..."
             />
-          </div>
+          </FormSection>
 
-              {/* Attachments */}
-              <div>
-                <AttachmentManager
-                  attachments={formData.attachments || []}
-                  onAttachmentsChange={handleAttachmentsChange}
-                  allowUpload={true}
-                  allowPreview={true}
-                  onPreview={handlePreview}
-                  title="Auftrag-Anhänge"
+          <FormSection title="Anhänge">
+            <AttachmentManager
+              attachments={formData.attachments || []}
+              onAttachmentsChange={handleAttachmentsChange}
+              allowUpload={true}
+              allowPreview={true}
+              onPreview={handlePreview}
+            />
+          </FormSection>
+
+          <FormSection title="Kundenunterschrift">
+            {formData.signature ? (
+              <div className="border border-gray-300 rounded-lg p-3 bg-green-50">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-green-800">
+                    Unterschrift vorhanden
+                  </span>
+                  <span className="text-xs text-green-600">
+                    {new Date(formData.signature.signedAt).toLocaleString('de-DE')}
+                  </span>
+                </div>
+                <div className="text-sm text-gray-700 mb-2">
+                  Kunde: <strong>{formData.signature.customerName}</strong>
+                </div>
+                <img 
+                  src={formData.signature.signatureData} 
+                  alt="Kundenunterschrift" 
+                  className="max-h-20 border border-gray-200 rounded bg-white"
                 />
               </div>
-
-              {/* Signature Section */}
+            ) : (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Kundenunterschrift
-                </label>
-                {formData.signature ? (
-                  <div className="border border-gray-300 rounded-lg p-3 bg-green-50">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-green-800">
-                        Unterschrift vorhanden
-                      </span>
-                      <span className="text-xs text-green-600">
-                        {new Date(formData.signature.signedAt).toLocaleString('de-DE')}
-                      </span>
-                    </div>
-                    <div className="text-sm text-gray-700 mb-2">
-                      Kunde: <strong>{formData.signature.customerName}</strong>
-                    </div>
-                    <img 
-                      src={formData.signature.signatureData} 
-                      alt="Kundenunterschrift" 
-                      className="max-h-20 border border-gray-200 rounded bg-white"
-                    />
-                  </div>
-                ) : (
-                  <div className="border border-gray-300 rounded-lg p-3 bg-gray-50">
-                    <p className="text-sm text-gray-600 mb-3">
-                      Noch keine Unterschrift vorhanden. Nach dem Hinzufügen einer Unterschrift wird der Auftrag automatisch als "Abgeschlossen" markiert.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={handleSignature}
-                      disabled={!formData.customerId}
-                      className="inline-flex items-center px-3 py-2 border border-purple-300 rounded-lg text-sm font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <PenTool className="h-4 w-4 mr-2" />
-                      Unterschrift hinzufügen
-                    </button>
-                    {!formData.customerId && (
-                      <p className="text-xs text-red-600 mt-1">
-                        Bitte wählen Sie zuerst einen Kunden aus.
-                      </p>
-                    )}
-                  </div>
+                <p className="text-sm text-gray-600 mb-3">
+                  Noch keine Unterschrift vorhanden. Nach dem Hinzufügen einer Unterschrift wird der Auftrag automatisch als "Abgeschlossen" markiert.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleSignature}
+                  disabled={!formData.customerId}
+                  className="inline-flex items-center px-3 py-2 border border-purple-300 rounded-lg text-sm font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <PenTool className="h-4 w-4 mr-2" />
+                  Unterschrift hinzufügen
+                </button>
+                {!formData.customerId && (
+                  <p className="text-xs text-red-600 mt-1">
+                    Bitte wählen Sie zuerst einen Kunden aus.
+                  </p>
                 )}
               </div>
-            </div>
-          </div>
+            )}
+          </FormSection>
         </form>
       </PageShell>
 
       {showCustomerForm && (
         <CustomerCreateModal
           onClose={() => setShowCustomerForm(false)}
-          onCreated={(c) => setFormData(prev => ({ ...prev, customerId: c.id }))}
+          onCreated={handleCustomerSelect}
         />
       )}
 
