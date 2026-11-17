@@ -793,7 +793,7 @@ export const testEmailConnection = async () => {
 };
 
 // Send Quote Email - uses frontend PDF generation for consistency
-export const sendQuoteEmail = async (customerEmails, quoteData, companySettings, customText = null, additionalAttachments = []) => {
+export const sendQuoteEmail = async (customerEmails, quoteData, companySettings, customText = null, additionalAttachments = [], responseLink = null) => {
   try {
     const transporter = await createTransporter();
     const senderInfo = await getSenderInfo();
@@ -833,7 +833,10 @@ Das Angebot ist gültig bis zum ${new Date(quoteData.validUntil).toLocaleDateStr
 
 Mit freundlichen Grüßen
 ${companySettings.name}
-    `.trim();
+    `.trim() + (responseLink ? `
+
+Angebot annehmen: ${responseLink}/annehmen
+Angebot ablehnen: ${responseLink}/ablehnen` : '');
 
     // Get colors
     const primaryColor = companySettings.primaryColor || companySettings.primary_color || '#2563eb';
@@ -987,6 +990,13 @@ ${companySettings.name}
     <p style="margin: 25px 0;">
       Das vollständige Angebot finden Sie im Anhang dieser E-Mail.
     </p>
+    ${responseLink ? `
+    <p style="margin: 25px 0 10px 0;">Sie können das Angebot direkt online annehmen oder ablehnen:</p>
+    <div style="text-align: center; margin: 0 0 25px 0;">
+      <a href="${escapeHtml(responseLink)}/annehmen" style="display: inline-block; background: ${primaryColor}; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: 600; margin: 5px;">Angebot annehmen</a>
+      <a href="${escapeHtml(responseLink)}/ablehnen" style="display: inline-block; background: #ffffff; color: #374151; text-decoration: none; padding: 11px 23px; border-radius: 8px; font-weight: 600; border: 1px solid #d1d5db; margin: 5px;">Angebot ablehnen</a>
+    </div>
+    ` : ''}
   </div>
   
   <div class="footer">

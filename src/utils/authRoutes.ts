@@ -1,15 +1,23 @@
-import type { AuthUser } from '../types';
+import type { AuthUser, QuoteDecision } from '../types';
 
 export type PublicAuthRoute =
   | { kind: 'setup' | 'invite' | 'reset'; token: string }
+  | { kind: 'quote'; token: string; decision?: QuoteDecision }
   | { kind: 'forgot' };
 
 const TOKEN_ROUTE = /^(setup|invite|reset)\/([A-Za-z0-9_-]+)$/;
+// Link aus der Angebotsmail; der Zusatz wählt nur die Entscheidung vor, gesendet wird erst per Button.
+const QUOTE_ROUTE = /^angebot\/([A-Za-z0-9_-]+)(?:\/(annehmen|ablehnen))?$/;
 
 /** Erkennt Hash-Routen, die ohne Anmeldung erreichbar sind (mit oder ohne führendes `#`). */
 export function parsePublicAuthRoute(hash: string): PublicAuthRoute | null {
   const route = hash.startsWith('#') ? hash.slice(1) : hash;
   if (route === 'forgot-password') return { kind: 'forgot' };
+  const quote = QUOTE_ROUTE.exec(route);
+  if (quote) {
+    const decision = quote[2] === 'annehmen' ? 'accepted' : quote[2] === 'ablehnen' ? 'rejected' : undefined;
+    return decision ? { kind: 'quote', token: quote[1], decision } : { kind: 'quote', token: quote[1] };
+  }
   const match = TOKEN_ROUTE.exec(route);
   if (!match) return null;
   return { kind: match[1] as 'setup' | 'invite' | 'reset', token: match[2] };

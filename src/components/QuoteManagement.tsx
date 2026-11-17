@@ -12,6 +12,7 @@ import { useCompany } from '../context/CompanyContext';
 import { featureUpgradeReason, usePlan } from '../context/PlanContext';
 import { Quote } from '../types';
 import { ConfirmationModal } from './ConfirmationModal';
+import { QuoteCustomerResponseButton } from './QuoteCustomerResponse';
 import { EmailSendModal } from './EmailSendModal';
 import { apiService, isPlanError } from '../services/api';
 import { formatCurrency } from '../utils/formatters';
@@ -846,9 +847,12 @@ export function QuoteManagement({ onNavigate }: QuoteManagementProps = {}) {
                   </td>
                   <td className="px-3 py-4 whitespace-nowrap">
                     <div className="flex flex-col space-y-1">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(quote.status)}`}>
-                        {getStatusLabel(quote.status)}
-                      </span>
+                      <div className="flex items-center gap-1">
+                        <span className={`flex-1 inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(quote.status)}`}>
+                          {getStatusLabel(quote.status)}
+                        </span>
+                        <QuoteCustomerResponseButton response={quote.customerResponse} />
+                      </div>
                       {quote.status === 'draft' && (
                         <button
                           className="bg-primary-light-custom hover:bg-primary-medium-custom text-primary-custom hover:text-primary-custom px-2 py-1 rounded-md transition-colors duration-200 shadow-sm flex items-center text-xs font-medium"
@@ -1016,9 +1020,12 @@ export function QuoteManagement({ onNavigate }: QuoteManagementProps = {}) {
                     </div>
                     <div className="text-right ml-4">
                       <p className="text-sm font-medium text-gray-900">{formatCurrency(quote.total, locale)}</p>
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(quote.status)}`}>
-                        {getStatusLabel(quote.status)}
-                      </span>
+                      <div className="flex items-center justify-end gap-1">
+                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(quote.status)}`}>
+                          {getStatusLabel(quote.status)}
+                        </span>
+                        <QuoteCustomerResponseButton response={quote.customerResponse} />
+                      </div>
                     </div>
                   </div>
 

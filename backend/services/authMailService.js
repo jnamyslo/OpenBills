@@ -67,6 +67,25 @@ export const sendPasswordResetMail = async (to, { link }) => {
   await send(to, 'Passwort zurücksetzen – OpenBills', text, html);
 };
 
+/** Benachrichtigung an die Firmen-E-Mail, wenn ein Kunde ein Angebot per Mail-Link angenommen/abgelehnt hat. */
+export const sendQuoteResponseNotification = async (to, { quoteNumber, customerName, decision, responderName, comment, link }) => {
+  const verb = decision === 'accepted' ? 'angenommen' : 'abgelehnt';
+  const heading = `Angebot ${quoteNumber} ${verb}`;
+  const lead = `${responderName} (${customerName}) hat das Angebot ${quoteNumber} über den Link in der Angebots-E-Mail ${verb}.`;
+  const commentLine = comment ? `Kommentar: ${comment}` : '';
+  const text = ['Hallo,', lead, commentLine, `Angebote öffnen:\n${link}`].filter(Boolean).join('\n\n') + '\n';
+  const html = renderAuthMail({
+    heading,
+    paragraphs: ['Hallo,', lead],
+    hint: commentLine || undefined,
+    buttonLabel: 'Angebote öffnen',
+    link,
+    note: `Der Status des Angebots wurde automatisch auf „${verb}“ gesetzt.`,
+    ...(await loadBranding()),
+  });
+  await send(to, `${heading} – OpenBills`, text, html);
+};
+
 const ONBOARDING_STEPS = [
   'Admin-Konto anlegen',
   'Firmendaten in den Einstellungen hinterlegen',

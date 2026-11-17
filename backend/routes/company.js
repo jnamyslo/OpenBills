@@ -1,6 +1,7 @@
 import express from 'express';
 import { query, pool } from '../database.js';
 import logger from '../utils/logger.js';
+import { isSafeTermsUrl } from '../services/quoteResponseService.js';
 
 const router = express.Router();
 
@@ -34,6 +35,7 @@ router.get('/', async (req, res) => {
       phone: row.phone,
       email: row.email,
       website: row.website,
+      termsUrl: row.terms_url,
       taxId: row.tax_id,
       taxIdentificationNumber: row.tax_identification_number,
       logo: row.logo,
@@ -128,6 +130,14 @@ router.put('/', async (req, res) => {
     if (req.body.website !== undefined) {
       updates.push(`website = $${paramIndex++}`);
       values.push(req.body.website);
+    }
+    if (req.body.termsUrl !== undefined) {
+      const termsUrl = typeof req.body.termsUrl === 'string' ? req.body.termsUrl.trim() : '';
+      if (termsUrl && !isSafeTermsUrl(termsUrl)) {
+        return res.status(400).json({ error: 'Der AGB-Link muss mit http:// oder https:// beginnen.' });
+      }
+      updates.push(`terms_url = $${paramIndex++}`);
+      values.push(termsUrl || null);
     }
     if (req.body.taxId !== undefined) {
       updates.push(`tax_id = $${paramIndex++}`);
@@ -359,6 +369,7 @@ router.put('/', async (req, res) => {
       phone: row.phone,
       email: row.email,
       website: row.website,
+      termsUrl: row.terms_url,
       taxId: row.tax_id,
       taxIdentificationNumber: row.tax_identification_number,
       logo: row.logo,

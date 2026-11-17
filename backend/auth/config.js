@@ -14,7 +14,7 @@ export function getAuthConfig() {
     publicOrigin,
     secureCookies: publicUrl.startsWith('https://'),
     encryptionKey: Buffer.from((process.env.AUTH_ENCRYPTION_KEY || '').trim(), 'base64'),
-    trustProxyHops: Number.isInteger(hops) && hops >= 0 ? hops : 2,
+    trustProxyHops: Number.isInteger(hops) && hops >= 0 ? hops : 3,
   };
 }
 

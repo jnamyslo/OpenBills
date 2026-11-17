@@ -1,4 +1,4 @@
-import { Customer, Invoice, Quote, Company, JobEntry, MaterialTemplate, InvoiceTemplate, HourlyRate, YearlyInvoiceStartNumber, InvoiceJournalResponse, ReportingStatistics, ReminderEligibility, DemoInfo, PlanInfo, PlanErrorBody, AuthUser, AuthRole, TokenStatus, AuditLogFilters, AuditLogPage } from '../types';
+import { Customer, Invoice, Quote, Company, JobEntry, MaterialTemplate, InvoiceTemplate, HourlyRate, YearlyInvoiceStartNumber, InvoiceJournalResponse, ReportingStatistics, ReminderEligibility, DemoInfo, PlanInfo, PlanErrorBody, AuthUser, AuthRole, TokenStatus, AuditLogFilters, AuditLogPage, QuoteResponseView, QuoteDecision } from '../types';
 import logger from '../utils/logger';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
@@ -804,6 +804,21 @@ class ApiService {
 
   async completeSetup(data: { token: string; name: string; email: string; password: string }): Promise<{ user: AuthUser }> {
     return this.request('/auth/setup', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async getQuoteResponse(token: string): Promise<QuoteResponseView> {
+    return this.request(`/quote-response/${encodeURIComponent(token)}`, { skipAuthEvent: true });
+  }
+
+  async submitQuoteResponse(
+    token: string,
+    data: { decision: QuoteDecision; name: string; comment?: string; acceptTerms?: boolean }
+  ): Promise<{ status: 'answered'; decision: QuoteDecision }> {
+    return this.request(`/quote-response/${encodeURIComponent(token)}`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+      skipAuthEvent: true,
+    });
   }
 
   async getInvite(token: string): Promise<{ status: TokenStatus; email?: string; role?: AuthRole }> {

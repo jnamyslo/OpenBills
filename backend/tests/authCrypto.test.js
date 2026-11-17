@@ -98,11 +98,11 @@ describe('config', () => {
     expect(c.encryptionKey.length).toBe(32);
   });
 
-  it('http => secureCookies false; trustProxyHops Default 2', () => {
+  it('http => secureCookies false; trustProxyHops Default 3', () => {
     vi.stubEnv('PUBLIC_URL', 'http://localhost:8080');
     const c = getAuthConfig();
     expect(c.secureCookies).toBe(false);
-    expect(c.trustProxyHops).toBe(2);
+    expect(c.trustProxyHops).toBe(3);
   });
 
   it('TRUST_PROXY_HOPS überschreibbar', () => {

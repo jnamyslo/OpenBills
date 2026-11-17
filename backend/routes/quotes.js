@@ -6,6 +6,8 @@ import { enforcePlatformMailLimit } from '../services/mailRouting.js';
 import { stampDraftWatermark } from '../utils/draftWatermark.js';
 import { findAllQuotes, findQuoteById } from '../queries/quoteQueries.js';
 import { createQuote, updateQuote, deleteQuote, convertQuoteToInvoice, convertQuoteToJob } from '../services/quoteService.js';
+import { createQuoteResponseToken, deleteQuoteResponseToken, quoteResponseLink } from '../services/quoteResponseService.js';
+import { isDemoMode } from '../demo/index.js';
 
 const router = express.Router();
 
@@ -153,6 +155,11 @@ router.post('/:id/send-email', requireFeature('email'), enforcePlatformMailLimit
         : pdfBuffer,
     };
 
+    // Annehmen/Ablehnen per Link nur für freigegebene Angebote (Entwürfe tragen ein Wasserzeichen)
+    const responseToken = quote.status === 'sent' && !isDemoMode() && Array.isArray(customerEmails)
+      ? await createQuoteResponseToken(quote, customerEmails)
+      : null;
+
     // Note: Quote emails are simpler - just PDF, no ZUGFeRD/XRechnung
     const result = await emailService.sendQuoteEmail(
       customerEmails,
@@ -164,8 +171,11 @@ router.post('/:id/send-email', requireFeature('email'), enforcePlatformMailLimit
         secondaryColor: company.secondary_color,
       },
       customText,
-      attachments || []
+      attachments || [],
+      responseToken ? quoteResponseLink(responseToken) : null
     );
+
+    if (!result.success && responseToken) await deleteQuoteResponseToken(responseToken);
 
     if (result.success) {
       res.json(result);

@@ -35,7 +35,7 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     fields: [
       'name', 'companyHeaderTwoLine', 'companyHeaderLine1', 'companyHeaderLine2',
       'address', 'postalCode', 'city', 'country', 'taxId', 'taxIdentificationNumber',
-      'email', 'phone', 'website',
+      'email', 'phone', 'website', 'termsUrl',
     ],
   },
   {

@@ -142,6 +142,43 @@ export interface Quote extends Timestamps, GlobalDiscount {
   notes?: string;
   attachments?: QuoteAttachment[];
   convertedToInvoiceId?: UUID;
+  /** Letzte Antwort des Kunden über den Link in der Angebotsmail (nur lesend, vom Backend). */
+  customerResponse?: QuoteCustomerResponse;
+}
+
+export type QuoteDecision = 'accepted' | 'rejected';
+
+export interface QuoteCustomerResponse {
+  decision: QuoteDecision;
+  name: string;
+  comment: string | null;
+  respondedAt: string;
+  /** Bei Annahme bestätigter AGB-Link (null: keine AGB hinterlegt bzw. Ablehnung) */
+  termsUrl: string | null;
+  /** Empfänger der Angebotsmail mit diesem Link */
+  recipients: string | null;
+  /** Versandzeitpunkt der Mail mit diesem Link */
+  sentAt: string;
+}
+
+export type QuoteResponseStatus = 'valid' | 'invalid' | 'answered' | 'closed' | 'expired' | 'changed';
+
+/** Öffentliche Ansicht eines Angebots-Links (ohne Login). */
+export interface QuoteResponseView {
+  status: QuoteResponseStatus;
+  company?: { name: string; primaryColor: string | null; termsUrl: string | null };
+  quote?: {
+    quoteNumber: string;
+    customerName?: string;
+    issueDate?: string;
+    validUntil?: string;
+    subtotal?: number;
+    taxAmount?: number;
+    total?: number;
+    items?: { description: string; quantity: number; unitPrice: number; total: number }[];
+  };
+  decision?: QuoteDecision;
+  respondedAt?: string;
 }
 
 // ============================================================================
@@ -275,6 +312,8 @@ export interface Company extends ReminderSettings, CompanyHeader {
   phone: string;
   email: string;
   website?: string;
+  /** Link zu den AGB; Kunden bestätigen sie beim Annehmen eines Angebots per Mail-Link. */
+  termsUrl?: string;
   taxId: string; // USt-IdNr.
   taxIdentificationNumber?: string; // Steuernummer
   logo?: string | null;

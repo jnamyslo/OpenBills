@@ -229,7 +229,7 @@ OpenBills hat eine eigene Anmeldung (E‑Mail + Passwort, optional 2FA); ein vor
 
 Wichtige Backend‑Variablen in `.env.backend.<name>`: `PUBLIC_URL`, `AUTH_ENCRYPTION_KEY` (32 Byte base64, nicht ändern/verlieren, sonst sind hinterlegte 2FA‑Secrets unbrauchbar), `TRUST_PROXY_HOPS`.
 
-**Netzwerk (wichtig):** Die Instanz‑Ports (Web, API, DB) dürfen von außen nie erreichbar sein. Offen sind nur 80/443 der vorgelagerten Proxy‑Firewall, über den Nginx Proxy Manager (NPM). Von Docker veröffentlichte Ports umgehen `ufw`; eine Host‑Firewall allein schützt sie also nicht. `TRUST_PROXY_HOPS=2` (Standard) setzt NPM vor dem Frontend‑Nginx voraus. Ist der Web‑Port direkt erreichbar, lässt sich `X-Forwarded-For` fälschen und damit das Rate‑Limit pro IP umgehen.
+**Netzwerk (wichtig):** Die Instanz‑Ports (Web, API, DB) dürfen von außen nie erreichbar sein. Offen sind nur 80/443 der vorgelagerten Proxy‑Firewall, über den Nginx Proxy Manager (NPM). Von Docker veröffentlichte Ports umgehen `ufw`; eine Host‑Firewall allein schützt sie also nicht. `TRUST_PROXY_HOPS=3` (Standard) setzt die Kette Cloudflare‑Proxy → NPM → Frontend‑Nginx voraus. Alle Anfragen müssen über Cloudflare laufen: 80/443 nur für die Cloudflare‑Adressbereiche (https://www.cloudflare.com/ips/) öffnen. Ist NPM oder der Web‑Port direkt erreichbar, lässt sich `X-Forwarded-For` fälschen und damit das Rate‑Limit pro IP umgehen. Ohne Cloudflare davor `TRUST_PROXY_HOPS=2` setzen.
 
 ### Umstellung von Authentik
 

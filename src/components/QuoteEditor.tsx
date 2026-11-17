@@ -35,6 +35,7 @@ import { RatesAndMaterialsRedirectModal } from './RatesAndMaterialsRedirectModal
 import { formatCustomerNumber } from '../utils/customerUtils';
 import { CustomerCreateModal } from './CustomerCreateModal';
 import { PageShell } from './PageShell';
+import { QuoteCustomerResponsePanel } from './QuoteCustomerResponse';
 import { generateUUID } from '../utils/uuid';
 
 // Sortable Item Component for Drag & Drop
@@ -868,6 +869,8 @@ export function QuoteEditor({ quote, onClose, onNavigateToCustomers, onNavigateT
         }
       >
         <form id="quote-form" onSubmit={handleSubmit} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 space-y-6">
+
+          <QuoteCustomerResponsePanel response={quote?.customerResponse} />
 
           {/* Basic Information */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

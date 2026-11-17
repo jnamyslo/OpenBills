@@ -18,6 +18,7 @@ export const BACKUP_TABLES = [
   'quotes',                          // -> customers, invoices
   'quote_items',                     // -> quotes
   'quote_attachments',               // -> quotes
+  'quote_responses',                 // -> quotes
   'job_entries',                     // -> customers, quotes, invoices
   'job_attachments',                 // -> job_entries
   'job_time_entries',                // -> job_entries

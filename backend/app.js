@@ -27,6 +27,7 @@ import { demoSessionContext } from './demo/sessionSchema.js';
 import authRouter from './routes/auth.js';
 import usersRouter from './routes/users.js';
 import auditLogRouter from './routes/auditLog.js';
+import quoteResponseRouter from './routes/quoteResponse.js';
 import { requireFeature } from './utils/plan.js';
 import { enforcePlatformMailLimit } from './services/mailRouting.js';
 
@@ -67,6 +68,7 @@ export function createApp() {
 
   // Bodies erst nach der Authentifizierung parsen; öffentliche Auth-Endpunkte nur kleine Bodies
   app.use('/api/auth', express.json({ limit: '100kb' }), express.urlencoded({ limit: '100kb', extended: true }));
+  app.use('/api/quote-response', express.json({ limit: '100kb' }));
   app.use(express.json({ limit: '100mb' })); // Increase limit for PDF attachments
   app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
@@ -75,6 +77,7 @@ export function createApp() {
 
   // API routes
   app.use('/api/auth', authRouter);
+  app.use('/api/quote-response', quoteResponseRouter);
   app.use('/api/users', requireAdmin, demoBlockWrites, usersRouter);
   app.use('/api/audit-log', requireAdmin, auditLogRouter);
   app.use('/api/customers', customersRouter);

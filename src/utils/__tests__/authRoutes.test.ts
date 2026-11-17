@@ -37,6 +37,14 @@ describe('parsePublicAuthRoute', () => {
     expect(parsePublicAuthRoute('#invite/a.b')).toBeNull();
     expect(parsePublicAuthRoute('')).toBeNull();
   });
+
+  it('erkennt Angebots-Links mit optional vorgewählter Entscheidung', () => {
+    expect(parsePublicAuthRoute('#angebot/Ab_9-z')).toEqual({ kind: 'quote', token: 'Ab_9-z' });
+    expect(parsePublicAuthRoute('#angebot/x/annehmen')).toEqual({ kind: 'quote', token: 'x', decision: 'accepted' });
+    expect(parsePublicAuthRoute('#angebot/x/ablehnen')).toEqual({ kind: 'quote', token: 'x', decision: 'rejected' });
+    expect(parsePublicAuthRoute('#angebot/x/sonstwas')).toBeNull();
+    expect(parsePublicAuthRoute('#angebot/')).toBeNull();
+  });
 });
 
 describe('isAdmin', () => {

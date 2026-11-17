@@ -130,7 +130,7 @@ DB_USER=${DB_USER}
 DB_PASSWORD=${DB_PASSWORD}
 NODE_ENV=production
 AUTH_ENCRYPTION_KEY=$(openssl rand -base64 32)
-TRUST_PROXY_HOPS=2
+TRUST_PROXY_HOPS=3
 PUBLIC_URL=http://localhost:${FRONTEND_PORT}
 EOF
         print_warning "PUBLIC_URL wurde auf http://localhost:${FRONTEND_PORT} gesetzt. Bitte per './manage-instances.sh config ${instance_name}' auf die echte URL ändern."

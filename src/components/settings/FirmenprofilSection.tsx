@@ -221,6 +221,24 @@ export function FirmenprofilSection() {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Link zu den AGB
+            </label>
+            <input
+              type="url"
+              placeholder="https://"
+              pattern="https?://.+"
+              title="Der Link muss mit http:// oder https:// beginnen."
+              value={formData.termsUrl || ''}
+              onChange={(e) => setFormData(prev => ({ ...prev, termsUrl: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Kunden bestätigen die AGB, wenn sie ein Angebot über den Link in der E-Mail annehmen.
+            </p>
+          </div>
         </div>
       </div>
       <SaveBar {...form} discard={form.discard} onSave={handleSave} />

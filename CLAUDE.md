@@ -101,6 +101,7 @@ Three Docker services per instance: `database` (PostgreSQL 15), `backend`, `fron
 - Summen: `src/utils/discountUtils.ts` (Frontend) und `backend/utils/documentTotals.js` (Spiegel) müssen identisch rechnen — `documentTotalsParity.test.ts` prüft das.
 - Sammelabrechnung trennt Aufträge mit unterschiedlichem Gesamtrabatt (`groupJobsByGlobalDiscount`).
 - Spec: `docs/superpowers/specs/2026-11-16-document-chain.md`.
+- Angebot per Mail-Link annehmen/ablehnen: `send-email` legt für Angebote im Status `sent` ein Token in `quote_responses` an (Migration 014); öffentliche Seite `#angebot/<token>` (`QuoteResponsePage.tsx`), API `/api/quote-response/:token` (Whitelist, Logik in `services/quoteResponseService.js`). GET ändert nie etwas (Mail-Scanner), Link verfällt bei Antwort, Ablauf, Statusänderung oder inhaltlicher Änderung. AGB-Checkbox nur bei `company.terms_url`. Spec: `docs/superpowers/specs/2026-11-17-quote-response-link.md`.
 
 ### PDF Generation
 

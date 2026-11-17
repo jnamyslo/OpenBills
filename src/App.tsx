@@ -26,6 +26,7 @@ import { DemoTour } from './components/DemoTour';
 import { AcceptInvitePage } from './components/AcceptInvitePage';
 import { ForgotPasswordPage } from './components/ForgotPasswordPage';
 import { ResetPasswordPage } from './components/ResetPasswordPage';
+import { QuoteResponsePage } from './components/QuoteResponsePage';
 
 interface PageState {
   page: string;
@@ -84,6 +85,8 @@ function AuthGate() {
         return <ResetPasswordPage key={publicRoute.token} token={publicRoute.token} onDone={finishOnboarding} />;
       case 'forgot':
         return <ForgotPasswordPage />;
+      case 'quote':
+        return <QuoteResponsePage key={publicRoute.token} token={publicRoute.token} decision={publicRoute.decision} />;
     }
   }
 

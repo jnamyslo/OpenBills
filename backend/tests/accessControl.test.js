@@ -36,6 +36,8 @@ describe('PUBLIC_API_PATHS', () => {
     expect(isPublic('GET', '/auth/password-reset/abc')).toBe(true);
     expect(isPublic('POST', '/auth/password-reset/abc')).toBe(true);
     expect(isPublic('GET', '/auth/password-policy')).toBe(true);
+    expect(isPublic('GET', '/quote-response/abc_-1')).toBe(true);
+    expect(isPublic('POST', '/quote-response/abc_-1')).toBe(true);
   });
 
   it('lässt keine Umgehungen durch', () => {
@@ -53,6 +55,9 @@ describe('PUBLIC_API_PATHS', () => {
       ['GET', '/auth/me'],
       ['POST', '/auth/password-policy'],
       ['GET', '/auth/password-policy/x'],
+      ['GET', '/quote-response'],
+      ['GET', '/quote-response/a/b'],
+      ['PUT', '/quote-response/abc'],
       ['GET', '/customers'],
       ['POST', '/x/auth/login'],
     ]) {
