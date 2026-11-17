@@ -1,10 +1,17 @@
-import React, { ReactNode, useState } from 'react';
+import React, { ReactNode, useEffect, useState } from 'react';
 import { FileText, Users, Settings, BarChart3, Building2, Menu, X, Briefcase, Calendar, Home, FileCheck, Bell, Lock } from 'lucide-react';
 import { DynamicColors } from './DynamicColors';
 import { useCompany } from '../context/CompanyContext';
 import { usePlan } from '../context/PlanContext';
 import { PlanUsage } from './PlanUsage';
 import { PlanFeature } from '../types';
+import { useAuth } from '../context/AuthContext';
+import { isAdmin } from '../utils/authRoutes';
+import { UserMenu } from './UserMenu';
+import { AccountModal } from './AccountModal';
+import { TwoFactorBanner } from './TwoFactorBanner';
+import { DemoBanner } from './DemoBanner';
+import { DEMO_TOUR_MOBILE_NAV_EVENT } from '../utils/onboarding';
 
 interface LayoutProps {
   children: ReactNode;
@@ -15,32 +22,42 @@ interface LayoutProps {
 export function Layout({ children, currentPage, onPageChange }: LayoutProps) {
   const { company } = useCompany();
   const { hasFeature } = usePlan();
+  const { user } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  
+  const [isAccountOpen, setIsAccountOpen] = useState(false);
+
+  // Demo-Tour blendet auf kleinen Bildschirmen das Seitenmenü ein, damit die Navigation sichtbar ist.
+  useEffect(() => {
+    const handle = (event: Event) => setIsMobileMenuOpen((event as CustomEvent<boolean>).detail);
+    window.addEventListener(DEMO_TOUR_MOBILE_NAV_EVENT, handle);
+    return () => window.removeEventListener(DEMO_TOUR_MOBILE_NAV_EVENT, handle);
+  }, []);
+
   // Module, die einen höheren Tarif erfordern: in der Navigation mit Schloss markiert
   const requiredFeature: Record<string, PlanFeature> = { jobs: 'jobs', calendar: 'jobs', reminders: 'reminders' };
 
-  const baseNavItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: Home },
-    { id: 'invoices', label: 'Rechnungen', icon: FileText },
-    { id: 'customers', label: 'Kunden', icon: Users },
-  ];
-
+  const dashboardNavItem = { id: 'dashboard', label: 'Dashboard', icon: Home };
+  const customersNavItem = { id: 'customers', label: 'Kunden', icon: Users };
   const quotesNavItem = { id: 'quotes', label: 'Angebote', icon: FileCheck };
   const jobNavItem = { id: 'jobs', label: 'Aufträge', icon: Briefcase };
+  const invoicesNavItem = { id: 'invoices', label: 'Rechnungen', icon: FileText };
+  const remindersNavItem = { id: 'reminders', label: 'Mahnungen', icon: Bell };
   const calendarNavItem = { id: 'calendar', label: 'Kalender', icon: Calendar };
   const reportingNavItem = { id: 'reporting', label: 'Reporting', icon: BarChart3 };
-  const remindersNavItem = { id: 'reminders', label: 'Mahnungen', icon: Bell };
   const settingsNavItem = { id: 'settings', label: 'Einstellungen', icon: Settings };
 
-  // Only include quotes if enabled, jobs/calendar if job tracking is enabled, reporting if reporting is enabled, reminders if reminders enabled
+  // Reihenfolge folgt dem Belegablauf: Kunde → Angebot → Auftrag → Rechnung → Mahnung.
+  // Optionale Module (Angebote, Aufträge/Kalender, Mahnungen, Reporting) nur bei Aktivierung.
   const navItems = [
-    ...baseNavItems,
+    dashboardNavItem,
+    customersNavItem,
     ...(company.quotesEnabled ? [quotesNavItem] : []),
-    ...(company.jobTrackingEnabled ? [jobNavItem, calendarNavItem] : []),
-    ...(company.reportingEnabled ? [reportingNavItem] : []),
+    ...(company.jobTrackingEnabled ? [jobNavItem] : []),
+    invoicesNavItem,
     ...(company.remindersEnabled ? [remindersNavItem] : []),
-    settingsNavItem,
+    ...(company.jobTrackingEnabled ? [calendarNavItem] : []),
+    ...(company.reportingEnabled ? [reportingNavItem] : []),
+    ...(isAdmin(user) ? [settingsNavItem] : []),
   ];
 
   const handlePageChange = (page: string) => {
@@ -72,18 +89,21 @@ export function Layout({ children, currentPage, onPageChange }: LayoutProps) {
                 <h1 className="text-lg lg:text-2xl font-bold text-gray-900">OpenBills</h1>
               </button>
               
-              {/* Mobile menu button */}
-              <button
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="lg:hidden p-2 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors touch-target"
-                aria-label={isMobileMenuOpen ? 'Menü schließen' : 'Menü öffnen'}
-              >
-                {isMobileMenuOpen ? (
-                  <X className="h-6 w-6" />
-                ) : (
-                  <Menu className="h-6 w-6" />
-                )}
-              </button>
+              <div className="flex items-center gap-2">
+                <UserMenu onOpenAccount={() => setIsAccountOpen(true)} />
+                {/* Mobile menu button */}
+                <button
+                  onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                  className="lg:hidden p-2 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors touch-target"
+                  aria-label={isMobileMenuOpen ? 'Menü schließen' : 'Menü öffnen'}
+                >
+                  {isMobileMenuOpen ? (
+                    <X className="h-6 w-6" />
+                  ) : (
+                    <Menu className="h-6 w-6" />
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </header>
@@ -111,6 +131,7 @@ export function Layout({ children, currentPage, onPageChange }: LayoutProps) {
                   return (
                     <li key={item.id}>
                       <button
+                        data-tour={`nav-${item.id}`}
                         onClick={() => handlePageChange(item.id)}
                         className={`w-full flex items-center px-4 py-3 text-left rounded-lg transition-colors ${
                           currentPage === item.id
@@ -145,10 +166,13 @@ export function Layout({ children, currentPage, onPageChange }: LayoutProps) {
           </nav>
 
           {/* Main Content */}
-          <main className="flex-1 p-3 sm:p-4 lg:p-6 lg:ml-0 min-h-screen safe-area-bottom">
+          <main className="flex-1 min-w-0 p-3 sm:p-4 lg:p-6 lg:ml-0 min-h-screen safe-area-bottom">
+            <DemoBanner />
+            <TwoFactorBanner onSetup={() => setIsAccountOpen(true)} />
             {children}
           </main>
         </div>
+        <AccountModal isOpen={isAccountOpen} onClose={() => setIsAccountOpen(false)} />
       </div>
     </>
   );

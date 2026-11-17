@@ -1,14 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { demoMailNote } from '../utils/demo';
 import logger from '../utils/logger';
 import { withQuoteContent } from '../utils/attachmentContent';
-import { Plus, Edit, Trash2, Search, Download, FileText, Send, Check, Eye, FileCheck, Mail, X, CheckCircle } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Download, FileText, Send, Check, Eye, FileCheck, Mail, X, CheckCircle, Briefcase } from 'lucide-react';
 import { useCustomers } from '../context/CustomerContext';
 import { useInvoices } from '../context/InvoiceContext';
 import { useQuotes } from '../context/QuoteContext';
+import { useJobs } from '../context/JobContext';
+import { documentHash } from '../utils/documentFlow';
 import { useCompany } from '../context/CompanyContext';
 import { featureUpgradeReason, usePlan } from '../context/PlanContext';
 import { Quote } from '../types';
 import { ConfirmationModal } from './ConfirmationModal';
+import { QuoteCustomerResponseButton } from './QuoteCustomerResponse';
 import { EmailSendModal } from './EmailSendModal';
 import { apiService, isPlanError } from '../services/api';
 import { formatCurrency } from '../utils/formatters';
@@ -30,6 +34,9 @@ export function QuoteManagement({ onNavigate }: QuoteManagementProps = {}) {
   const { hasFeature, showUpgrade } = usePlan();
   // Angebote kommen aus dem QuoteContext — kein zweiter, eigener Datenbestand.
   const { quotes, updateQuote, deleteQuote, refreshQuotes } = useQuotes();
+  const { jobEntries, refreshJobEntries } = useJobs();
+  // Kette Angebot → Auftrag → Rechnung nur mit aktivem und lizenziertem Auftragsmodul.
+  const jobChainActive = Boolean(company.jobTrackingEnabled) && hasFeature('jobs');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [selectedQuoteIds, setSelectedQuoteIds] = useState<string[]>([]);
@@ -219,6 +226,24 @@ export function QuoteManagement({ onNavigate }: QuoteManagementProps = {}) {
       logger.error('Error updating quote status', { error });
       alert('Fehler beim Ändern des Status. Bitte versuchen Sie es erneut.');
     }
+  };
+
+  const handleConvertToJob = (quote: Quote) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Angebot in Auftrag umwandeln',
+      message: `Möchten Sie aus dem Angebot ${quote.quoteNumber} einen Auftrag erstellen? Die Positionen werden als Material übernommen.`,
+      onConfirm: async () => {
+        try {
+          await apiService.convertQuoteToJob(quote.id);
+          await refreshJobEntries();
+          if (onNavigate) onNavigate('jobs');
+        } catch (error) {
+          logger.error('Error converting quote to job:', error);
+          alert(error instanceof Error ? error.message : 'Fehler beim Erstellen des Auftrags.');
+        }
+      },
+    });
   };
 
   const handleConvertToInvoice = async (quote: Quote) => {
@@ -536,9 +561,9 @@ export function QuoteManagement({ onNavigate }: QuoteManagementProps = {}) {
         setSelectedQuoteIds([]);
 
         if (errorCount === 0) {
-          alert(`Alle ${successCount} Angebote erfolgreich per E-Mail versendet!`);
+          alert(`Alle ${successCount} Angebote erfolgreich per E-Mail versendet!${demoMailNote()}`);
         } else {
-          alert(`${successCount} Angebote erfolgreich versendet, ${errorCount} Fehler aufgetreten.`);
+          alert(`${successCount} Angebote erfolgreich versendet, ${errorCount} Fehler aufgetreten.${demoMailNote()}`);
         }
         
         setEmailModal({ isOpen: false, quote: null, customer: null, isBulkMode: false, bulkQuotes: [] });
@@ -622,7 +647,7 @@ export function QuoteManagement({ onNavigate }: QuoteManagementProps = {}) {
         ? ` mit ${totalAttachments} Anhang${totalAttachments > 1 ? 'en' : ''}`
         : '';
       
-      alert(`Angebot erfolgreich per E-Mail versendet!${attachmentInfo}`);
+      alert(`Angebot erfolgreich per E-Mail versendet!${attachmentInfo}${demoMailNote()}`);
       setEmailModal({ isOpen: false, quote: null, customer: null });
     } catch (error) {
       logger.error('Error sending quote email:', error);
@@ -795,7 +820,7 @@ export function QuoteManagement({ onNavigate }: QuoteManagementProps = {}) {
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredQuotes.map((quote) => (
-                <tr key={quote.id} className="hover:bg-gray-50">
+                <tr key={quote.id} onClick={(e) => { if ((e.target as HTMLElement).closest('button, a, input, label, select, textarea')) return; handleOpenEditor(quote); }} className="cursor-pointer hover:bg-gray-50">
                   <td className="px-3 py-4 w-16">
                     <input
                       type="checkbox"
@@ -822,9 +847,12 @@ export function QuoteManagement({ onNavigate }: QuoteManagementProps = {}) {
                   </td>
                   <td className="px-3 py-4 whitespace-nowrap">
                     <div className="flex flex-col space-y-1">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(quote.status)}`}>
-                        {getStatusLabel(quote.status)}
-                      </span>
+                      <div className="flex items-center gap-1">
+                        <span className={`flex-1 inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(quote.status)}`}>
+                          {getStatusLabel(quote.status)}
+                        </span>
+                        <QuoteCustomerResponseButton response={quote.customerResponse} />
+                      </div>
                       {quote.status === 'draft' && (
                         <button
                           className="bg-primary-light-custom hover:bg-primary-medium-custom text-primary-custom hover:text-primary-custom px-2 py-1 rounded-md transition-colors duration-200 shadow-sm flex items-center text-xs font-medium"
@@ -854,14 +882,37 @@ export function QuoteManagement({ onNavigate }: QuoteManagementProps = {}) {
                           </button>
                         </>
                       )}
-                      {quote.status === 'accepted' && !quote.convertedToInvoiceId && (
+                      {jobChainActive && jobEntries.some(j => j.quoteId === quote.id) && (
+                        <button
+                          className="bg-green-100 hover:bg-green-200 text-green-700 hover:text-green-800 px-2 py-1 rounded-md transition-colors duration-200 shadow-sm flex items-center text-xs font-medium"
+                          title="Zum Auftrag"
+                          onClick={() => {
+                            const job = jobEntries.find(j => j.quoteId === quote.id);
+                            if (job) window.location.hash = documentHash('job', { id: job.id, number: job.jobNumber });
+                          }}
+                        >
+                          <Briefcase className="h-3 w-3 mr-1" />
+                          <span className="hidden xl:inline">Zum Auftrag</span>
+                        </button>
+                      )}
+                      {quote.status === 'accepted' && !quote.convertedToInvoiceId && jobChainActive && !jobEntries.some(j => j.quoteId === quote.id) && (
+                        <button
+                          className="bg-green-100 hover:bg-green-200 text-green-700 hover:text-green-800 px-2 py-1 rounded-md transition-colors duration-200 shadow-sm flex items-center text-xs font-medium"
+                          title="In Auftrag umwandeln"
+                          onClick={() => handleConvertToJob(quote)}
+                        >
+                          <Briefcase className="h-3 w-3 mr-1" />
+                          <span className="hidden xl:inline">Auftrag</span>
+                        </button>
+                      )}
+                      {quote.status === 'accepted' && !quote.convertedToInvoiceId && !jobEntries.some(j => j.quoteId === quote.id) && (
                         <button
                           className="bg-blue-100 hover:bg-blue-200 text-blue-700 hover:text-blue-800 px-2 py-1 rounded-md transition-colors duration-200 shadow-sm flex items-center text-xs font-medium"
-                          title="In Rechnung umwandeln"
+                          title={jobChainActive ? 'Direkt abrechnen (ohne Auftrag)' : 'In Rechnung umwandeln'}
                           onClick={() => handleConvertToInvoice(quote)}
                         >
                           <FileCheck className="h-3 w-3 mr-1" />
-                          <span className="hidden xl:inline">Rechnung</span>
+                          <span className="hidden xl:inline">{jobChainActive ? 'Direkt abrechnen' : 'Rechnung'}</span>
                         </button>
                       )}
                     </div>
@@ -946,7 +997,7 @@ export function QuoteManagement({ onNavigate }: QuoteManagementProps = {}) {
           </div>
           
           {filteredQuotes.map((quote) => (
-            <div key={quote.id} className="p-4 border-b border-gray-200 last:border-b-0">
+            <div key={quote.id} onClick={(e) => { if ((e.target as HTMLElement).closest('button, a, input, label, select, textarea')) return; handleOpenEditor(quote); }} className="cursor-pointer p-4 border-b border-gray-200 last:border-b-0">
               <div className="flex items-start space-x-3">
                 <div className="flex-shrink-0 pt-1">
                   <input
@@ -969,9 +1020,12 @@ export function QuoteManagement({ onNavigate }: QuoteManagementProps = {}) {
                     </div>
                     <div className="text-right ml-4">
                       <p className="text-sm font-medium text-gray-900">{formatCurrency(quote.total, locale)}</p>
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(quote.status)}`}>
-                        {getStatusLabel(quote.status)}
-                      </span>
+                      <div className="flex items-center justify-end gap-1">
+                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(quote.status)}`}>
+                          {getStatusLabel(quote.status)}
+                        </span>
+                        <QuoteCustomerResponseButton response={quote.customerResponse} />
+                      </div>
                     </div>
                   </div>
 

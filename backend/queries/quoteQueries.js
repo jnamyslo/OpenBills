@@ -1,10 +1,28 @@
 import { query } from '../database.js';
 
+// Letzte Kundenantwort per Mail-Link (siehe docs/superpowers/specs/2026-11-17-quote-response-link.md)
+const CUSTOMER_RESPONSE_JOIN = `LEFT JOIN LATERAL (
+        SELECT jsonb_build_object(
+                 'decision', decision,
+                 'name', responder_name,
+                 'comment', comment,
+                 'respondedAt', responded_at,
+                 'termsUrl', terms_url,
+                 'recipients', recipients,
+                 'sentAt', created_at
+               ) AS customer_response
+        FROM quote_responses
+        WHERE quote_id = q.id AND responded_at IS NOT NULL
+        ORDER BY responded_at DESC
+        LIMIT 1
+      ) cr ON true`;
+
 export async function findAllQuotes() {
   const result = await query(`
       SELECT q.*,
              COALESCE(items_subquery.items, '{}'::jsonb[]) as items,
-             COALESCE(attachments_subquery.attachments, '[]'::jsonb) as attachments
+             COALESCE(attachments_subquery.attachments, '[]'::jsonb) as attachments,
+             cr.customer_response
       FROM quotes q
       LEFT JOIN (
         SELECT quote_id,
@@ -19,7 +37,9 @@ export async function findAllQuotes() {
                    'order', item_order,
                    'discountType', discount_type,
                    'discountValue', discount_value,
-                   'discountAmount', discount_amount
+                   'discountAmount', discount_amount,
+                   'kind', kind,
+                   'hourlyRateId', hourly_rate_id
                  ) ORDER BY item_order
                ) as items
         FROM quote_items
@@ -39,6 +59,7 @@ export async function findAllQuotes() {
         FROM quote_attachments
         GROUP BY quote_id
       ) attachments_subquery ON q.id = attachments_subquery.quote_id
+      ${CUSTOMER_RESPONSE_JOIN}
       ORDER BY q.created_at DESC
     `);
 
@@ -60,6 +81,7 @@ export async function findAllQuotes() {
     globalDiscountValue: row.global_discount_value ? parseFloat(row.global_discount_value) : null,
     globalDiscountAmount: row.global_discount_amount ? parseFloat(row.global_discount_amount) : null,
     convertedToInvoiceId: row.converted_to_invoice_id,
+    customerResponse: row.customer_response ?? undefined,
     createdAt: row.created_at
   }));
 }
@@ -68,7 +90,8 @@ export async function findQuoteById(id) {
   const result = await query(`
       SELECT q.*,
              COALESCE(items_subquery.items, '{}'::jsonb[]) as items,
-             COALESCE(attachments_subquery.attachments, '[]'::jsonb) as attachments
+             COALESCE(attachments_subquery.attachments, '[]'::jsonb) as attachments,
+             cr.customer_response
       FROM quotes q
       LEFT JOIN (
         SELECT quote_id,
@@ -83,7 +106,9 @@ export async function findQuoteById(id) {
                    'order', item_order,
                    'discountType', discount_type,
                    'discountValue', discount_value,
-                   'discountAmount', discount_amount
+                   'discountAmount', discount_amount,
+                   'kind', kind,
+                   'hourlyRateId', hourly_rate_id
                  ) ORDER BY item_order
                ) as items
         FROM quote_items
@@ -106,6 +131,7 @@ export async function findQuoteById(id) {
         WHERE quote_id = $1
         GROUP BY quote_id
       ) attachments_subquery ON q.id = attachments_subquery.quote_id
+      ${CUSTOMER_RESPONSE_JOIN}
       WHERE q.id = $1
     `, [id]);
 
@@ -132,6 +158,7 @@ export async function findQuoteById(id) {
     globalDiscountValue: row.global_discount_value ? parseFloat(row.global_discount_value) : null,
     globalDiscountAmount: row.global_discount_amount ? parseFloat(row.global_discount_amount) : null,
     convertedToInvoiceId: row.converted_to_invoice_id,
+    customerResponse: row.customer_response ?? undefined,
     createdAt: row.created_at
   };
 }

@@ -2,9 +2,12 @@ import express from 'express';
 import { query } from '../database.js';
 import logger from '../utils/logger.js';
 import { requireFeature, sendPlanError } from '../utils/plan.js';
+import { enforcePlatformMailLimit } from '../services/mailRouting.js';
 import { stampDraftWatermark } from '../utils/draftWatermark.js';
 import { findAllQuotes, findQuoteById } from '../queries/quoteQueries.js';
-import { createQuote, updateQuote, deleteQuote, convertQuoteToInvoice } from '../services/quoteService.js';
+import { createQuote, updateQuote, deleteQuote, convertQuoteToInvoice, convertQuoteToJob } from '../services/quoteService.js';
+import { createQuoteResponseToken, deleteQuoteResponseToken, quoteResponseLink } from '../services/quoteResponseService.js';
+import { isDemoMode } from '../demo/index.js';
 
 const router = express.Router();
 
@@ -103,7 +106,7 @@ router.delete('/:id', async (req, res) => {
 
 // Convert quote to invoice
 // Send quote via email
-router.post('/:id/send-email', requireFeature('email'), async (req, res) => {
+router.post('/:id/send-email', requireFeature('email'), enforcePlatformMailLimit, async (req, res) => {
   try {
     const { id } = req.params;
     const { customerEmails, customText, attachments, pdfBuffer } = req.body;
@@ -152,6 +155,11 @@ router.post('/:id/send-email', requireFeature('email'), async (req, res) => {
         : pdfBuffer,
     };
 
+    // Annehmen/Ablehnen per Link nur für freigegebene Angebote (Entwürfe tragen ein Wasserzeichen)
+    const responseToken = quote.status === 'sent' && !isDemoMode() && Array.isArray(customerEmails)
+      ? await createQuoteResponseToken(quote, customerEmails)
+      : null;
+
     // Note: Quote emails are simpler - just PDF, no ZUGFeRD/XRechnung
     const result = await emailService.sendQuoteEmail(
       customerEmails,
@@ -163,8 +171,11 @@ router.post('/:id/send-email', requireFeature('email'), async (req, res) => {
         secondaryColor: company.secondary_color,
       },
       customText,
-      attachments || []
+      attachments || [],
+      responseToken ? quoteResponseLink(responseToken) : null
     );
+
+    if (!result.success && responseToken) await deleteQuoteResponseToken(responseToken);
 
     if (result.success) {
       res.json(result);
@@ -195,6 +206,23 @@ router.post('/:id/convert-to-invoice', async (req, res) => {
       endpoint: '/quotes/:id/convert-to-invoice'
     });
     res.status(500).json({ error: 'Failed to convert quote to invoice' });
+  }
+});
+
+router.post('/:id/convert-to-job', requireFeature('jobs'), async (req, res) => {
+  try {
+    const result = await convertQuoteToJob(req.params.id);
+    if (result.error) return res.status(result.status).json({ error: result.error });
+    res.status(201).json(result.job);
+  } catch (error) {
+    logger.error('Failed to convert quote to job', {
+      error: error.message,
+      stack: error.stack,
+      quoteId: req.params.id,
+      method: 'POST',
+      endpoint: '/quotes/:id/convert-to-job'
+    });
+    res.status(500).json({ error: 'Failed to convert quote to job' });
   }
 });
 

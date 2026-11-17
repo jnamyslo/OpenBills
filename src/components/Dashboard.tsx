@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import logger from '../utils/logger';
 import { withInvoiceContent } from '../utils/attachmentContent';
-import { Clock, CheckCircle, Send, Check } from 'lucide-react';
+import { Clock, CheckCircle, Send, Check, Plus, FileText, UserPlus, FileCheck, Briefcase, Lock, Wallet, AlertTriangle, TrendingUp, type LucideIcon } from 'lucide-react';
 import { useCustomers } from '../context/CustomerContext';
 import { useInvoices } from '../context/InvoiceContext';
 import { useCompany } from '../context/CompanyContext';
@@ -229,30 +229,41 @@ export function Dashboard({ onNavigate }: DashboardProps) {
     );
   }
 
-  // Umsatz pro Monat berechnen
-  const monthlyRevenue: { [month: string]: number } = {};
-  invoices.forEach(invoice => {
-    const date = new Date(invoice.issueDate);
-    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-    monthlyRevenue[monthKey] = (monthlyRevenue[monthKey] || 0) + invoice.total;
-  });
-  const monthlyRevenueSorted = Object.entries(monthlyRevenue)
-    .sort((a, b) => b[0].localeCompare(a[0]));
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const DAY_MS = 24 * 60 * 60 * 1000;
 
-  const stats = {
-    totalInvoices: invoices.length,
-    totalCustomers: customers.length,
-    totalRevenue: invoices.reduce((sum, invoice) => sum + invoice.total, 0),
-    paidInvoices: invoices.filter(invoice => invoice.status === 'paid').length,
-    draftInvoices: invoices.filter(invoice => invoice.status === 'draft').length,
-    overdueInvoices: invoices.filter(invoice => invoice.status === 'overdue').length,
-  };
+  const isOverdue = (status: string) => status === 'overdue' || status.startsWith('reminded_');
+  const sumTotals = (list: Invoice[]) => list.reduce((sum, invoice) => sum + invoice.total, 0);
+  // Umsatz = alle nicht-Entwurf-Rechnungen nach Rechnungsdatum
+  const issuedInvoices = invoices.filter(invoice => invoice.status !== 'draft');
+  const monthKey = (date: Date) => `${date.getFullYear()}-${date.getMonth()}`;
 
-  const recentInvoices = invoices
+  const openInvoices = invoices.filter(invoice => invoice.status !== 'draft' && invoice.status !== 'paid');
+  const overdueInvoices = invoices
+    .filter(invoice => isOverdue(invoice.status))
+    .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+  const draftCount = invoices.filter(invoice => invoice.status === 'draft').length;
+
+  // Letzte 6 Monate inkl. aktuellem Monat
+  const lastMonths = Array.from({ length: 6 }, (_, i) => new Date(today.getFullYear(), today.getMonth() - 5 + i, 1));
+  const monthlyRevenue = lastMonths.map(month => ({
+    month,
+    revenue: sumTotals(issuedInvoices.filter(invoice => monthKey(new Date(invoice.issueDate)) === monthKey(month))),
+  }));
+  const maxMonthlyRevenue = Math.max(...monthlyRevenue.map(m => m.revenue), 0);
+  const currentMonthRevenue = monthlyRevenue[5].revenue;
+  const previousMonthRevenue = monthlyRevenue[4].revenue;
+  const revenueChange = previousMonthRevenue > 0
+    ? Math.round(((currentMonthRevenue - previousMonthRevenue) / previousMonthRevenue) * 100)
+    : null;
+
+  const recentInvoices = [...invoices]
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, 5);
 
   const getStatusColor = (status: string) => {
+    if (status.startsWith('reminded_')) return 'bg-red-100 text-red-800';
     switch (status) {
       case 'paid': return 'bg-green-100 text-green-800';
       case 'sent': return 'bg-primary-custom/10 text-primary-custom';
@@ -268,254 +279,324 @@ export function Dashboard({ onNavigate }: DashboardProps) {
       case 'sent': return 'Versendet';
       case 'draft': return 'Entwurf';
       case 'overdue': return 'Überfällig';
+      case 'reminded_1x': return '1. Mahnung';
+      case 'reminded_2x': return '2. Mahnung';
+      case 'reminded_3x': return '3. Mahnung';
       default: return status;
     }
   };
 
+  const remindersAvailable = company.remindersEnabled && hasFeature('reminders');
+  const jobsAvailable = hasFeature('jobs');
+
+  const quickActions: { id: string; label: string; icon: LucideIcon; onClick: () => void; locked?: boolean }[] = [
+    { id: 'invoice', label: 'Neue Rechnung', icon: FileText, onClick: () => onNavigate('invoices', 'new') },
+    { id: 'customer', label: 'Neuer Kunde', icon: UserPlus, onClick: () => onNavigate('customers', 'new') },
+    ...(company.quotesEnabled
+      ? [{ id: 'quote', label: 'Neues Angebot', icon: FileCheck, onClick: () => onNavigate('quote-editor') }]
+      : []),
+    ...(company.jobTrackingEnabled
+      ? [{
+          id: 'job',
+          label: 'Neuer Auftrag',
+          icon: Briefcase,
+          locked: !jobsAvailable,
+          onClick: () => (jobsAvailable ? onNavigate('jobs', 'new') : showUpgrade(featureUpgradeReason('jobs'))),
+        }]
+      : []),
+  ];
+
+  const kpis = [
+    {
+      id: 'open',
+      label: 'Offene Forderungen',
+      value: formatCurrency(sumTotals(openInvoices), locale),
+      hint: `${openInvoices.length} ${openInvoices.length === 1 ? 'Rechnung' : 'Rechnungen'} unbezahlt`,
+      icon: Wallet,
+      accent: 'text-primary-custom bg-primary-light-custom',
+      onClick: () => onNavigate('invoices', 'not-paid'),
+    },
+    {
+      id: 'overdue',
+      label: 'Überfällig',
+      value: formatCurrency(sumTotals(overdueInvoices), locale),
+      hint: overdueInvoices.length > 0
+        ? `${overdueInvoices.length} ${overdueInvoices.length === 1 ? 'Rechnung benötigt' : 'Rechnungen benötigen'} Aufmerksamkeit`
+        : 'Alles im grünen Bereich',
+      icon: AlertTriangle,
+      accent: overdueInvoices.length > 0 ? 'text-red-600 bg-red-50' : 'text-green-600 bg-green-50',
+      onClick: () => (remindersAvailable ? onNavigate('reminders') : onNavigate('invoices', 'overdue')),
+    },
+    {
+      id: 'drafts',
+      label: 'Entwürfe',
+      value: String(draftCount),
+      hint: 'Noch nicht versendet',
+      icon: Clock,
+      accent: 'text-orange-600 bg-orange-50',
+      onClick: () => onNavigate('invoices', 'draft'),
+    },
+    {
+      id: 'revenue',
+      label: 'Umsatz diesen Monat',
+      value: formatCurrency(currentMonthRevenue, locale),
+      hint: revenueChange === null
+        ? 'Kein Vergleich zum Vormonat'
+        : `${revenueChange >= 0 ? '+' : ''}${revenueChange} % zum Vormonat`,
+      icon: TrendingUp,
+      accent: 'text-green-600 bg-green-50',
+      onClick: () => onNavigate('invoices', 'all'),
+    },
+  ];
+
+  const actionButtons = (invoice: Invoice) => (
+    <div className="flex gap-2" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+      {invoice.status === 'draft' && (
+        <button
+          className="bg-primary-custom/10 hover:bg-primary-custom/20 text-primary-custom px-3 py-1 rounded-md transition-colors flex items-center text-xs font-medium"
+          title="Per E-Mail versenden"
+          onClick={() => handleSendEmail(invoice)}
+        >
+          <Send className="h-3 w-3 mr-1" />
+          Versenden
+        </button>
+      )}
+      {invoice.status !== 'draft' && invoice.status !== 'paid' && (
+        <button
+          className="bg-green-100 hover:bg-green-200 text-green-700 px-3 py-1 rounded-md transition-colors flex items-center text-xs font-medium"
+          title="Als bezahlt markieren"
+          onClick={() => handleMarkAsPaid(invoice.id)}
+        >
+          <Check className="h-3 w-3 mr-1" />
+          Bezahlt
+        </button>
+      )}
+    </div>
+  );
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Page Header */}
       <div>
         <h2 className="text-2xl lg:text-3xl font-bold text-gray-900">Dashboard</h2>
-        <p className="text-gray-600 mt-1">Übersicht über Ihre Rechnungen und Kunden</p>
+        <p className="text-gray-600 mt-1">
+          {today.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+          {' · '}
+          {customers.length} {customers.length === 1 ? 'Kunde' : 'Kunden'}
+        </p>
       </div>
 
-      {/* Action Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div 
-          className="bg-gradient-to-r from-orange-50 to-orange-100 rounded-xl shadow-sm p-6 border border-orange-200 cursor-pointer hover:shadow-lg transition-all duration-300 hover:scale-105 group"
-          onClick={() => onNavigate('invoices', 'draft')}
-        >
-          <div className="flex items-center mb-4">
-            <div className="p-3 bg-orange-500 rounded-lg group-hover:bg-orange-600 transition-colors">
-              <Clock className="h-6 w-6 text-white" />
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900 ml-4">Entwürfe</h3>
-          </div>
-          <p className="text-3xl font-bold text-orange-600 mb-1">{stats.draftInvoices}</p>
-          <p className="text-sm text-orange-700/70">Noch nicht versendet</p>
+      {/* Schnellaktionen */}
+      <section aria-label="Schnellaktionen">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {quickActions.map((action, index) => {
+            const Icon = action.icon;
+            const primary = index === 0;
+            return (
+              <button
+                key={action.id}
+                onClick={action.onClick}
+                className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold shadow-sm transition-all duration-200 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-gray-300 ${
+                  primary
+                    ? 'btn-primary text-white hover:brightness-90'
+                    : 'bg-white border border-gray-200 text-gray-800 hover:bg-gray-50 hover:border-gray-300'
+                }`}
+              >
+                <Plus className="h-4 w-4 flex-shrink-0" />
+                <Icon className="h-4 w-4 flex-shrink-0 hidden sm:block" />
+                <span className="truncate">{action.label}</span>
+                {action.locked && <Lock className="h-3.5 w-3.5 flex-shrink-0 text-gray-400" />}
+              </button>
+            );
+          })}
         </div>
+      </section>
 
-        <div 
-          className="bg-gradient-to-r from-green-50 to-green-100 rounded-xl shadow-sm p-6 border border-green-200 cursor-pointer hover:shadow-lg transition-all duration-300 hover:scale-105 group"
-          onClick={() => onNavigate('invoices', 'paid')}
-        >
-          <div className="flex items-center mb-4">
-            <div className="p-3 bg-green-500 rounded-lg group-hover:bg-green-600 transition-colors">
-              <CheckCircle className="h-6 w-6 text-white" />
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900 ml-4">Bezahlt</h3>
-          </div>
-          <p className="text-3xl font-bold text-green-600 mb-1">{stats.paidInvoices}</p>
-          <p className="text-sm text-green-700/70">Erfolgreich abgeschlossen</p>
-        </div>
+      {/* Kennzahlen */}
+      <section aria-label="Kennzahlen" className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        {kpis.map(kpi => {
+          const Icon = kpi.icon;
+          return (
+            <button
+              key={kpi.id}
+              onClick={kpi.onClick}
+              className="text-left bg-white rounded-xl border border-gray-100 shadow-sm p-5 hover:shadow-md hover:border-gray-200 transition-all duration-200"
+            >
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium text-gray-600">{kpi.label}</p>
+                <span className={`p-2 rounded-lg ${kpi.accent}`}>
+                  <Icon className="h-4 w-4" />
+                </span>
+              </div>
+              <p className="mt-2 text-2xl font-bold text-gray-900">{kpi.value}</p>
+              <p className="mt-1 text-xs text-gray-500">{kpi.hint}</p>
+            </button>
+          );
+        })}
+      </section>
 
-        <div 
-          className="bg-gradient-to-r from-red-50 to-red-100 rounded-xl shadow-sm p-6 border border-red-200 cursor-pointer hover:shadow-lg transition-all duration-300 hover:scale-105 group"
-          onClick={() => onNavigate('invoices', 'overdue')}
-        >
-          <div className="flex items-center mb-4">
-            <div className="p-3 bg-red-500 rounded-lg group-hover:bg-red-600 transition-colors">
-              <Clock className="h-6 w-6 text-white" />
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900 ml-4">Überfällig</h3>
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        {/* Recent Invoices */}
+        <div className="xl:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100">
+          <div className="px-4 lg:px-6 py-4 border-b border-gray-200 flex justify-between items-center gap-2">
+            <h3 className="text-base lg:text-lg font-semibold text-gray-900">Aktuelle Rechnungen</h3>
+            <button
+              onClick={() => onNavigate('invoices', 'all')}
+              className="text-sm text-primary-custom hover:text-primary-custom/80 font-medium transition-colors"
+            >
+              Alle anzeigen →
+            </button>
           </div>
-          <p className="text-3xl font-bold text-red-600 mb-1">{stats.overdueInvoices}</p>
-          <p className="text-sm text-red-700/70">Benötigt Aufmerksamkeit</p>
-        </div>
-      </div>
 
-      {/* Recent Invoices */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-        <div className="px-4 lg:px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
-          <h3 className="text-base lg:text-lg font-semibold text-gray-900">Aktuelle Rechnungen</h3>
-          <button
-            onClick={() => onNavigate('invoices')}
-            className="text-sm text-primary-custom hover:text-primary-custom/80 font-medium transition-colors self-start sm:self-auto"
-          >
-            Alle anzeigen →
-          </button>
-        </div>
-        
-        {/* Desktop Table View */}
-        <div className="hidden lg:block overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Rechnungsnummer
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Kunde
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Betrag
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Datum
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Aktionen
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {recentInvoices.map((invoice) => (
-                <tr 
-                  key={invoice.id} 
-                  className="hover:bg-gray-50 cursor-pointer transition-colors duration-200"
-                  onClick={() => onNavigate('invoices', 'all', invoice.invoiceNumber)}
-                  title={`Zur Rechnung ${invoice.invoiceNumber}`}
-                >
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-primary-custom hover:text-primary-custom/80">
-                    {invoice.invoiceNumber}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {invoice.customerName}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {formatCurrency(invoice.total, locale)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+          {/* Desktop Table View */}
+          <div className="hidden lg:block overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nummer</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kunde</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Betrag</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Datum</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Aktion</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {recentInvoices.map((invoice) => (
+                  <tr
+                    key={invoice.id}
+                    className="hover:bg-gray-50 cursor-pointer transition-colors duration-200"
+                    onClick={() => onNavigate('invoices', 'all', invoice.invoiceNumber)}
+                    title={`Zur Rechnung ${invoice.invoiceNumber}`}
+                  >
+                    <td className="px-6 py-3 whitespace-nowrap text-sm font-medium text-primary-custom">{invoice.invoiceNumber}</td>
+                    <td className="px-6 py-3 text-sm text-gray-900 max-w-[16rem] truncate">{invoice.customerName}</td>
+                    <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-900 text-right tabular-nums">{formatCurrency(invoice.total, locale)}</td>
+                    <td className="px-6 py-3 whitespace-nowrap">
+                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(invoice.status)}`}>
+                        {getStatusLabel(invoice.status)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-600">{new Date(invoice.issueDate).toLocaleDateString('de-DE')}</td>
+                    <td className="px-6 py-3 whitespace-nowrap">{actionButtons(invoice)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile Card View */}
+          <div className="lg:hidden">
+            {recentInvoices.map((invoice) => (
+              <div
+                key={invoice.id}
+                className="p-4 border-b border-gray-200 last:border-b-0 cursor-pointer hover:bg-gray-50 transition-colors"
+                onClick={() => onNavigate('invoices', 'all', invoice.invoiceNumber)}
+              >
+                <div className="flex justify-between items-start gap-3 mb-2">
+                  <div className="min-w-0">
+                    <h4 className="text-sm font-medium text-primary-custom">{invoice.invoiceNumber}</h4>
+                    <p className="text-sm text-gray-900 truncate">{invoice.customerName}</p>
+                    <p className="text-sm font-medium text-gray-900">{formatCurrency(invoice.total, locale)}</p>
+                  </div>
+                  <div className="flex flex-col items-end gap-2 flex-shrink-0">
                     <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(invoice.status)}`}>
                       {getStatusLabel(invoice.status)}
                     </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {new Date(invoice.issueDate).toLocaleDateString('de-DE')}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div 
-                      className="flex space-x-2" 
-                      onClick={(e: React.MouseEvent) => e.stopPropagation()}
-                    >
-                      {invoice.status === 'draft' && (
-                        <button
-                          className="bg-primary-custom/10 hover:bg-primary-custom/20 text-primary-custom hover:text-primary-custom px-3 py-1 rounded-md transition-colors duration-200 shadow-sm flex items-center text-xs font-medium"
-                          title="Per E-Mail versenden"
-                          onClick={() => handleSendEmail(invoice)}
-                        >
-                          <Send className="h-3 w-3 mr-1" />
-                          <span>Versenden</span>
-                        </button>
-                      )}
-                      {(invoice.status === 'sent' || invoice.status === 'overdue') && (
-                        <button
-                          className="bg-green-100 hover:bg-green-200 text-green-700 hover:text-green-800 px-3 py-1 rounded-md transition-colors duration-200 shadow-sm flex items-center text-xs font-medium"
-                          title="Als bezahlt markieren"
-                          onClick={() => handleMarkAsPaid(invoice.id)}
-                        >
-                          <Check className="h-3 w-3 mr-1" />
-                          <span>Bezahlt</span>
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Mobile Card View */}
-        <div className="lg:hidden">
-          {recentInvoices.map((invoice) => (
-            <div 
-              key={invoice.id} 
-              className="p-4 border-b border-gray-200 last:border-b-0 cursor-pointer hover:bg-gray-50 transition-colors"
-              onClick={() => onNavigate('invoices', 'all', invoice.invoiceNumber)}
-            >
-              <div className="flex justify-between items-start mb-2">
-                <div className="flex-1">
-                  <h4 className="text-sm font-medium text-primary-custom">{invoice.invoiceNumber}</h4>
-                  <p className="text-sm text-gray-900">{invoice.customerName}</p>
-                  <p className="text-sm font-medium text-gray-900">{formatCurrency(invoice.total, locale)}</p>
+                    <p className="text-xs text-gray-500">{new Date(invoice.issueDate).toLocaleDateString('de-DE')}</p>
+                  </div>
                 </div>
-                <div className="flex flex-col items-end gap-2">
-                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(invoice.status)}`}>
-                    {getStatusLabel(invoice.status)}
-                  </span>
-                  <p className="text-xs text-gray-500">
-                    {new Date(invoice.issueDate).toLocaleDateString('de-DE')}
-                  </p>
-                </div>
+                {actionButtons(invoice)}
               </div>
-              
-              <div 
-                className="flex space-x-2 mt-2" 
-                onClick={(e: React.MouseEvent) => e.stopPropagation()}
-              >
-                {invoice.status === 'draft' && (
-                  <button
-                    className="bg-primary-custom/10 hover:bg-primary-custom/20 text-primary-custom px-2 py-1 rounded-md transition-colors text-xs font-medium flex items-center"
-                    onClick={() => handleSendEmail(invoice)}
-                  >
-                    <Send className="h-3 w-3 mr-1" />
-                    Versenden
-                  </button>
-                )}
-                {(invoice.status === 'sent' || invoice.status === 'overdue') && (
-                  <button
-                    className="bg-green-100 hover:bg-green-200 text-green-700 px-2 py-1 rounded-md transition-colors text-xs font-medium flex items-center"
-                    onClick={() => handleMarkAsPaid(invoice.id)}
-                  >
-                    <Check className="h-3 w-3 mr-1" />
-                    Bezahlt
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {recentInvoices.length === 0 && (
-          <div className="text-center py-8">
-            <p className="text-gray-500">Noch keine Rechnungen vorhanden</p>
+            ))}
           </div>
-        )}
+
+          {recentInvoices.length === 0 && (
+            <div className="text-center py-10 px-4">
+              <p className="text-gray-500">Noch keine Rechnungen vorhanden.</p>
+              <button
+                onClick={() => onNavigate('invoices', 'new')}
+                className="mt-3 text-sm font-medium text-primary-custom hover:text-primary-custom/80"
+              >
+                Erste Rechnung anlegen →
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Überfällige Rechnungen */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+          <div className="px-4 lg:px-6 py-4 border-b border-gray-200 flex justify-between items-center gap-2">
+            <h3 className="text-base lg:text-lg font-semibold text-gray-900">Überfällige Rechnungen</h3>
+            {overdueInvoices.length > 0 && (
+              <button
+                onClick={() => (remindersAvailable ? onNavigate('reminders') : onNavigate('invoices', 'overdue'))}
+                className="text-sm text-primary-custom hover:text-primary-custom/80 font-medium transition-colors"
+              >
+                {remindersAvailable ? 'Mahnwesen →' : 'Alle →'}
+              </button>
+            )}
+          </div>
+          {overdueInvoices.length === 0 ? (
+            <div className="flex flex-col items-center text-center py-10 px-4">
+              <CheckCircle className="h-8 w-8 text-green-500" />
+              <p className="mt-2 text-sm text-gray-600">Keine überfälligen Rechnungen.</p>
+            </div>
+          ) : (
+            <ul className="divide-y divide-gray-200">
+              {overdueInvoices.slice(0, 5).map(invoice => {
+                const daysOverdue = Math.max(0, Math.floor((today.getTime() - new Date(invoice.dueDate).setHours(0, 0, 0, 0)) / DAY_MS));
+                return (
+                  <li
+                    key={invoice.id}
+                    className="px-4 lg:px-6 py-3 flex items-center justify-between gap-3 cursor-pointer hover:bg-gray-50 transition-colors"
+                    onClick={() => onNavigate('invoices', 'all', invoice.invoiceNumber)}
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{invoice.customerName}</p>
+                      <p className="text-xs text-gray-500">
+                        {invoice.invoiceNumber} · <span className="text-red-600">{daysOverdue} {daysOverdue === 1 ? 'Tag' : 'Tage'} überfällig</span>
+                      </p>
+                    </div>
+                    <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                      <span className="text-sm font-semibold text-gray-900 tabular-nums">{formatCurrency(invoice.total, locale)}</span>
+                      {actionButtons(invoice)}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
       </div>
 
-      {/* Umsatz pro Monat */}
+      {/* Umsatz der letzten 6 Monate */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-        <div className="px-4 lg:px-6 py-4 border-b border-gray-200">
-          <h3 className="text-base lg:text-lg font-semibold text-gray-900">Gesamtumsatz pro Monat</h3>
+        <div className="px-4 lg:px-6 py-4 border-b border-gray-200 flex justify-between items-center gap-2">
+          <h3 className="text-base lg:text-lg font-semibold text-gray-900">Umsatz der letzten 6 Monate</h3>
+          {company.reportingEnabled && (
+            <button
+              onClick={() => onNavigate('reporting')}
+              className="text-sm text-primary-custom hover:text-primary-custom/80 font-medium transition-colors"
+            >
+              Reporting →
+            </button>
+          )}
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Monat
-                </th>
-                <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Umsatz
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {monthlyRevenueSorted.map(([month, revenue]) => (
-                <tr key={month}>
-                  <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {month}
-                  </td>
-                  <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {formatCurrency(revenue, locale)}
-                  </td>
-                </tr>
-              ))}
-              {monthlyRevenueSorted.length === 0 && (
-                <tr>
-                  <td colSpan={2} className="text-center py-8 text-gray-500">
-                    Keine Umsätze vorhanden
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <ul className="px-4 lg:px-6 py-4 space-y-3">
+          {monthlyRevenue.map(({ month, revenue }) => (
+            <li key={month.toISOString()} className="grid grid-cols-[5.5rem_1fr_auto] sm:grid-cols-[7rem_1fr_8rem] items-center gap-3">
+              <span className="text-sm text-gray-600">{month.toLocaleDateString('de-DE', { month: 'short', year: 'numeric' })}</span>
+              <div className="h-2.5 rounded-full bg-gray-100 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-primary-custom"
+                  style={{ width: maxMonthlyRevenue > 0 ? `${(revenue / maxMonthlyRevenue) * 100}%` : '0%' }}
+                />
+              </div>
+              <span className="text-sm font-medium text-gray-900 text-right tabular-nums">{formatCurrency(revenue, locale)}</span>
+            </li>
+          ))}
+        </ul>
       </div>
 
       {/* Email Send Modal */}

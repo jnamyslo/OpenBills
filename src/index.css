@@ -2,31 +2,51 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Custom checkbox styles */
+/* Checkbox styles: gilt für ALLE Checkboxen (außer .sr-only Toggle-Inputs), unlayered damit
+   h-4/w-4 o. ä. nicht überschreiben; flex-shrink:0 verhindert Zusammenquetschen in Flex-Zeilen. */
+.custom-checkbox,
+input[type="checkbox"]:not(.sr-only) {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  width: 1.25rem;
+  height: 1.25rem;
+  min-width: 1.25rem;
+  background-color: #fff;
+  border: 2px solid #9ca3af;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  vertical-align: middle;
+  margin: 0;
+}
+.custom-checkbox:focus-visible,
+input[type="checkbox"]:not(.sr-only):focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px #3b82f6;
+}
+.custom-checkbox:checked,
+input[type="checkbox"]:not(.sr-only):checked {
+  background-color: #2563eb;
+  border-color: #2563eb;
+  background-image: url("data:image/svg+xml,%3csvg viewBox='0 0 16 16' fill='white' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='m13.854 3.646-8.5 8.5a.5.5 0 0 1-.708 0l-4-4a.5.5 0 0 1 .708-.708L5 11.086l8.146-8.147a.5.5 0 0 1 .708.707z'/%3e%3c/svg%3e");
+  background-size: 100% 100%;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+.custom-checkbox:disabled,
+input[type="checkbox"]:not(.sr-only):disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.custom-checkbox:disabled:checked,
+input[type="checkbox"]:not(.sr-only):disabled:checked {
+  background-color: #9ca3af;
+  border-color: #9ca3af;
+}
+
 @layer components {
-  .custom-checkbox {
-    @apply h-4 w-4 text-blue-600 bg-white border-gray-300 border-2 rounded focus:ring-blue-500 focus:ring-2 focus:border-blue-500;
-    appearance: none;
-    -webkit-appearance: none;
-    -moz-appearance: none;
-  }
-
-  .custom-checkbox:checked {
-    @apply bg-blue-600 border-blue-600;
-    background-image: url("data:image/svg+xml,%3csvg viewBox='0 0 16 16' fill='white' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='m13.854 3.646-8.5 8.5a.5.5 0 0 1-.708 0l-4-4a.5.5 0 0 1 .708-.708L5 11.086l8.146-8.147a.5.5 0 0 1 .708.707z'/%3e%3c/svg%3e");
-    background-size: 100% 100%;
-    background-position: center;
-    background-repeat: no-repeat;
-  }
-
-  .custom-checkbox:disabled {
-    @apply opacity-50 cursor-not-allowed;
-  }
-
-  .custom-checkbox:disabled:checked {
-    @apply bg-gray-400 border-gray-400;
-  }
-
   /* Custom radio button styles */
   .custom-radio {
     @apply h-4 w-4 text-blue-600 bg-white border-gray-300 border-2 rounded-full focus:ring-blue-500 focus:ring-2 focus:border-blue-500;
@@ -228,5 +248,85 @@
 
   .backface-hidden {
     backface-visibility: hidden;
+  }
+}
+
+/* Animierter Hintergrund der Auth-Seiten (AuthLayout) */
+.auth-blob {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(80px);
+  opacity: 0.55;
+  will-change: transform;
+}
+
+.auth-blob-1 {
+  width: 38rem;
+  height: 38rem;
+  top: -12rem;
+  left: -10rem;
+  background: radial-gradient(circle, #2563eb 0%, transparent 70%);
+  animation: auth-drift-1 22s ease-in-out infinite alternate;
+}
+
+.auth-blob-2 {
+  width: 32rem;
+  height: 32rem;
+  bottom: -10rem;
+  right: -8rem;
+  background: radial-gradient(circle, #7c3aed 0%, transparent 70%);
+  animation: auth-drift-2 26s ease-in-out infinite alternate;
+}
+
+.auth-blob-3 {
+  width: 26rem;
+  height: 26rem;
+  top: 40%;
+  left: 55%;
+  background: radial-gradient(circle, #06b6d4 0%, transparent 70%);
+  opacity: 0.4;
+  animation: auth-drift-3 30s ease-in-out infinite alternate;
+}
+
+.auth-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+}
+
+.auth-enter {
+  animation: auth-enter 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes auth-drift-1 {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(18vw, 12vh) scale(1.15); }
+  100% { transform: translate(8vw, 30vh) scale(0.95); }
+}
+
+@keyframes auth-drift-2 {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-20vw, -10vh) scale(1.1); }
+  100% { transform: translate(-6vw, -28vh) scale(1.2); }
+}
+
+@keyframes auth-drift-3 {
+  0% { transform: translate(-50%, -50%) scale(1); }
+  50% { transform: translate(-90%, -20%) scale(1.25); }
+  100% { transform: translate(-30%, -80%) scale(0.9); }
+}
+
+@keyframes auth-enter {
+  from { opacity: 0; transform: translateY(16px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-blob,
+  .auth-enter {
+    animation: none;
   }
 }

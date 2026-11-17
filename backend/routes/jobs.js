@@ -3,6 +3,7 @@ import { pool } from '../database.js';
 import { randomUUID } from 'crypto';
 import logger from '../utils/logger.js';
 import { findAllJobs, findJobById } from '../queries/jobQueries.js';
+import { validateDiscountFields } from '../utils/validation.js';
 
 const router = express.Router();
 
@@ -53,6 +54,10 @@ const formatJobData = (row, customerName = null) => ({
   timeEntries: row.time_entries || [],
   materials: parseMaterials(row.materials),
   status: row.status,
+  quoteId: row.quote_id || null,
+  globalDiscountType: row.global_discount_type || undefined,
+  globalDiscountValue: row.global_discount_value != null ? parseFloat(row.global_discount_value) : undefined,
+  invoiceId: row.invoice_id || null,
   notes: row.notes,
   priority: row.priority,
   attachments: row.attachments || [],
@@ -103,8 +108,15 @@ router.post('/', async (req, res) => {
     notes,
     priority,
     attachments,
-    externalJobNumber
+    externalJobNumber,
+    globalDiscountType,
+    globalDiscountValue
   } = req.body;
+
+  const discountValidation = validateDiscountFields({ globalDiscountType, globalDiscountValue });
+  if (!discountValidation.valid) {
+    return res.status(400).json({ error: discountValidation.message });
+  }
 
   // Validate required fields
   if (!customerId || !title || !description) {
@@ -171,12 +183,14 @@ router.post('/', async (req, res) => {
     const result = await client.query(`
       INSERT INTO job_entries (
         job_number, external_job_number, customer_id, customer_address, title, description, date,
-        hours_worked, hourly_rate, hourly_rate_id, materials, status, notes, priority
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        hours_worked, hourly_rate, hourly_rate_id, materials, status, notes, priority,
+        global_discount_type, global_discount_value
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
       RETURNING *
     `, [
       jobNumber, externalJobNumber || null, customerId, customerAddress || null, title, description, formattedDate,
-      hoursWorked || 0, hourlyRate || 0, hourlyRateId || null, JSON.stringify(materials || []), status || 'draft', notes, priority
+      hoursWorked || 0, hourlyRate || 0, hourlyRateId || null, JSON.stringify(materials || []), status || 'draft', notes, priority,
+      globalDiscountType || null, globalDiscountType ? parseFloat(globalDiscountValue) : null
     ]);
 
     const jobId = result.rows[0].id;
@@ -341,7 +355,10 @@ router.put('/:id', async (req, res) => {
       priority,
       attachments,
       timeEntries,
-      externalJobNumber
+      externalJobNumber,
+      invoiceId,
+      globalDiscountType,
+      globalDiscountValue
     } = req.body;
 
     // Get customer name if customerId is provided
@@ -398,7 +415,8 @@ router.put('/:id', async (req, res) => {
     }
     if (hourlyRateId !== undefined) {
       updates.push(`hourly_rate_id = $${paramIndex++}`);
-      values.push(hourlyRateId);
+      // Leerer String (Formular ohne Stundensatz) ist keine gültige uuid
+      values.push(hourlyRateId || null);
     }
     if (materials !== undefined) {
       updates.push(`materials = $${paramIndex++}`);
@@ -419,6 +437,21 @@ router.put('/:id', async (req, res) => {
     if (externalJobNumber !== undefined) {
       updates.push(`external_job_number = $${paramIndex++}`);
       values.push(externalJobNumber);
+    }
+    if (globalDiscountType !== undefined) {
+      const discountValidation = validateDiscountFields({ globalDiscountType, globalDiscountValue });
+      if (!discountValidation.valid) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: discountValidation.message });
+      }
+      updates.push(`global_discount_type = $${paramIndex++}`);
+      values.push(globalDiscountType || null);
+      updates.push(`global_discount_value = $${paramIndex++}`);
+      values.push(globalDiscountType ? parseFloat(globalDiscountValue) : null);
+    }
+    if (invoiceId !== undefined) {
+      updates.push(`invoice_id = $${paramIndex++}`);
+      values.push(invoiceId);
     }
     if (req.body.signature !== undefined) {
       updates.push(`signature = $${paramIndex++}`);
@@ -444,6 +477,14 @@ router.put('/:id', async (req, res) => {
     if (result.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Job not found' });
+    }
+
+    // Abrechnung über einen Auftrag schließt das zugehörige Angebot ab.
+    if (invoiceId) {
+      await client.query(`
+        UPDATE quotes SET converted_to_invoice_id = $1, status = 'billed'
+        WHERE id = $2 AND converted_to_invoice_id IS NULL
+      `, [invoiceId, result.rows[0].quote_id]);
     }
 
     // Handle time entries update if provided

@@ -16,6 +16,17 @@ import { useCompany } from './context/CompanyContext';
 import { useQuotes } from './context/QuoteContext';
 import { usePlan } from './context/PlanContext';
 import { PlanLockedNotice } from './components/PlanLockedNotice';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { DemoProvider, useDemo } from './context/DemoContext';
+import { isAdmin, parsePublicAuthRoute } from './utils/authRoutes';
+import { LoginPage } from './components/LoginPage';
+import { SetupPage } from './components/SetupPage';
+import { OnboardingWizard } from './components/OnboardingWizard';
+import { DemoTour } from './components/DemoTour';
+import { AcceptInvitePage } from './components/AcceptInvitePage';
+import { ForgotPasswordPage } from './components/ForgotPasswordPage';
+import { ResetPasswordPage } from './components/ResetPasswordPage';
+import { QuoteResponsePage } from './components/QuoteResponsePage';
 
 interface PageState {
   page: string;
@@ -24,7 +35,77 @@ interface PageState {
   quoteId?: string;
 }
 
+/** Suchbegriffe aus dem Hash sind URL-kodiert (Belegnummern können „/“ enthalten). */
+function safeDecode(value?: string): string | undefined {
+  if (!value) return undefined;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 function App() {
+  return (
+    <AuthProvider>
+      <DemoProvider>
+        <AuthGate />
+      </DemoProvider>
+    </AuthProvider>
+  );
+}
+
+/**
+ * Öffentliche Auth-Routen werden vor dem Login-Gate erkannt. Die App (und damit
+ * das Laden der Fachdaten im AppProvider) wird erst nach erfolgreicher Anmeldung gemountet.
+ */
+function AuthGate() {
+  const { status, refresh } = useAuth();
+  const [hash, setHash] = useState(() => window.location.hash);
+
+  useEffect(() => {
+    const handleHashChange = () => setHash(window.location.hash);
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  const finishOnboarding = async () => {
+    await refresh();
+    window.location.hash = 'dashboard';
+  };
+
+  const publicRoute = parsePublicAuthRoute(hash);
+  if (publicRoute) {
+    switch (publicRoute.kind) {
+      case 'setup':
+        return <SetupPage key={publicRoute.token} token={publicRoute.token} onDone={finishOnboarding} />;
+      case 'invite':
+        return <AcceptInvitePage key={publicRoute.token} token={publicRoute.token} onDone={finishOnboarding} />;
+      case 'reset':
+        return <ResetPasswordPage key={publicRoute.token} token={publicRoute.token} onDone={finishOnboarding} />;
+      case 'forgot':
+        return <ForgotPasswordPage />;
+      case 'quote':
+        return <QuoteResponsePage key={publicRoute.token} token={publicRoute.token} decision={publicRoute.decision} />;
+    }
+  }
+
+  if (status === 'loading') {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  if (status !== 'authenticated') {
+    return <LoginPage />;
+  }
+
+  return <MainApp />;
+}
+
+function MainApp() {
   const [currentPageState, setCurrentPageState] = useState<PageState>(() => {
     // Initialize from URL hash
     const hash = window.location.hash.slice(1); // Remove #
@@ -84,6 +165,12 @@ function AppContent({ currentPageState, handlePageChange }: AppContentProps) {
   const { company } = useCompany();
   const { quotes } = useQuotes();
   const { hasFeature } = usePlan();
+  const { user } = useAuth();
+  const { demo } = useDemo();
+  const userIsAdmin = isAdmin(user);
+  // Nur Admins konfigurieren. Normale Benutzer starten direkt in die Tour, in der Demo gibt es ebenfalls nur die Tour;
+  // Support-Zugang braucht keine Einrichtung.
+  const showWizard = !loading && !demo && userIsAdmin && !user?.isOperator && !user?.onboardingCompleted;
 
   // Redirect to settings when the current page's module is disabled.
   // Done as an effect (not during render) to avoid updating state while rendering.
@@ -95,9 +182,10 @@ function AppContent({ currentPageState, handlePageChange }: AppContentProps) {
       (currentPageState.page === 'reminders' && !company.remindersEnabled);
 
     if (isDisabled) {
-      handlePageChange('settings');
+      handlePageChange(userIsAdmin ? 'settings' : 'dashboard');
     }
   }, [
+    userIsAdmin,
     currentPageState.page,
     company.jobTrackingEnabled,
     company.quotesEnabled,
@@ -123,7 +211,7 @@ function AppContent({ currentPageState, handlePageChange }: AppContentProps) {
       case 'dashboard':
         return <Dashboard onNavigate={handlePageChange} />;
       case 'customers':
-        return <CustomerManagement />;
+        return <CustomerManagement autoCreate={currentPageState.filter === 'new'} />;
       case 'jobs':
         // Disabled if job tracking is not enabled; effect above redirects to settings
         if (!company.jobTrackingEnabled) {
@@ -132,7 +220,14 @@ function AppContent({ currentPageState, handlePageChange }: AppContentProps) {
         if (!hasFeature('jobs')) {
           return <PlanLockedNotice feature="jobs" />;
         }
-        return <JobManagement onNavigate={handlePageChange} />;
+        return (
+          <JobManagement
+            onNavigate={handlePageChange}
+            autoCreate={currentPageState.filter === 'new'}
+            initialFilter={currentPageState.filter === 'new' ? undefined : currentPageState.filter}
+            initialSearchTerm={safeDecode(currentPageState.searchTerm)}
+          />
+        );
       case 'calendar':
         // Disabled if job tracking is not enabled; effect above redirects to settings
         if (!company.jobTrackingEnabled) {
@@ -143,7 +238,14 @@ function AppContent({ currentPageState, handlePageChange }: AppContentProps) {
         }
         return <Calendar onNavigate={handlePageChange} />;
       case 'invoices':
-        return <InvoiceManagement initialFilter={currentPageState.filter} initialSearchTerm={currentPageState.searchTerm} onNavigate={handlePageChange} />;
+        return (
+          <InvoiceManagement
+            initialFilter={currentPageState.filter === 'new' ? undefined : currentPageState.filter}
+            initialSearchTerm={safeDecode(currentPageState.searchTerm)}
+            onNavigate={handlePageChange}
+            autoCreate={currentPageState.filter === 'new'}
+          />
+        );
       case 'quotes':
         // Disabled if quotes module is not enabled; effect above redirects to settings
         if (!company.quotesEnabled) {
@@ -181,7 +283,9 @@ function AppContent({ currentPageState, handlePageChange }: AppContentProps) {
         }
         return <ReminderManagement />;
       case 'settings':
-        return <Settings />;
+        return userIsAdmin
+          ? <Settings section={currentPageState.filter} onNavigate={(id) => handlePageChange('settings', id)} />
+          : <Dashboard onNavigate={handlePageChange} />;
       default:
         return <Dashboard onNavigate={handlePageChange} />;
     }
@@ -193,6 +297,8 @@ function AppContent({ currentPageState, handlePageChange }: AppContentProps) {
       <Layout currentPage={currentPageState.page} onPageChange={(page) => handlePageChange(page)}>
         {renderPage()}
       </Layout>
+      {showWizard && <OnboardingWizard />}
+      <DemoTour ready={!loading} />
     </>
   );
 }

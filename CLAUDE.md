@@ -72,14 +72,36 @@ Three Docker services per instance: `database` (PostgreSQL 15), `backend`, `fron
 
 - Env files: `.env.<instance>` for Docker Compose vars, `.env.backend.<instance>` for backend runtime.
 - `COMPOSE_PROJECT_NAME=openbills-<name>` scopes all containers, networks, and volumes per instance.
-- Nginx proxies `/api` → backend; `client_max_body_size 100M` for attachments.
+- Nginx proxies `/api` → backend; `client_max_body_size 500M` (attachments, ZIP backup restore).
 
 ### Plan-Tiers (Managed SaaS)
 
 - `OPENBILLS_PLAN` in `.env.backend.<name>` (free | starter | professional | enterprise; empty = selfhosted, unlimited). Matrix in `backend/utils/plan.js`; frontend reads it via `GET /api/plan` (`PlanContext`).
 - Backend enforces: `requireFeature()` middleware (403), quota counting on first non-draft status in `services/quotaService.js` (402). Frontend gating is UX only.
 - Drafts always get an "ENTWURF" watermark and no embedded ZUGFeRD/XRechnung; send/download "as sent" releases first via `src/utils/releaseForOutput.ts`.
+- Mailversand: alle Tarife außer selfhosted senden Systemmails (Einladung, PW-Reset) über den Plattform-Relay als `support@openbills.de`; Kundenmails bei Starter (und Pro/Enterprise ohne eigenes SMTP) als `<instanz>@openbills.de` mit Reply-To Firmen-Mail, max. 20/Tag (Enterprise 100/Tag); eigenes SMTP für Kundenmails ab Pro optional. Routing in `backend/services/mailRouting.js` (Features `ownSmtp`/`ownSystemSmtp`).
+- Plattform-Zugang nur in `.env.platform` (Host, nie im Repo), per `docker-compose.platform.yml` nur an Tarif-Instanzen (auch Enterprise); Logik für Skripte in `scripts/platform.sh`. Backend startet bei Tarif nicht ohne `PLATFORM_SMTP_*`.
 - Spec: `docs/superpowers/specs/2026-11-13-plan-tiers.md`.
+- Spec Mailversand: `docs/superpowers/specs/2026-11-14-platform-mail-design.md`.
+
+### Auth (lokal, Session-Cookie)
+
+- Module in `backend/auth/` (users, sessions, password, totp, tokens, rateLimit, audit, middleware, config). Backend startet nur mit `PUBLIC_URL` und `AUTH_ENCRYPTION_KEY`.
+- Globales Auth-Gate in `backend/auth/middleware.js`; öffentliche Routen stehen in der Whitelist dort. Neue Routen sind automatisch geschützt — nur bewusst in die Whitelist aufnehmen.
+- Rollen `admin`/`user`; Support-Zugang `support@openbills.de` (`is_operator`). Auth-Tabellen sind nicht im App-Backup.
+- Onboarding/Support-Zugang: `backend/scripts/onboarding.js`, `operator.js`; Aufruf über `deploy-instance.sh` und `manage-instances.sh onboarding-link|operator-reset`.
+- Kundenanfragen: `deploy-instance.sh --auto <name> <tarif> <public_url> [--send-onboarding <email>]` (ohne Rückfragen, nächste freie Ports, gibt Frontend-Port für Nginx Proxy Manager aus).
+- Onboarding-Mail optional: `deploy-instance.sh --auto|--legacy … --send-onboarding <email>` (interaktiv: Abfrage nach dem Deploy) und `manage-instances.sh onboarding-link <name> --send-to <email>`; `.env.platform` wird dafür per stdin an `onboarding.js --platform-env-stdin` gereicht (nur Tarif-Instanzen, nicht Demo/self-hosted).
+- Einrichtungsassistent: `users.onboarding_completed_at` (je Benutzer, Migration 010), `POST /api/auth/onboarding {completed}`; Frontend `OnboardingWizard.tsx` (Schritte je Rolle/Tarif aus `src/utils/onboarding.ts`), nicht in Demo/Support-Zugang. Demo: `DemoTour.tsx` (driver.js, Anker `data-tour` in `Layout.tsx`), startet nach jedem aktiven Login und über Benutzermenü „Demo-Tour“; mobil öffnet sie das Seitenmenü per Event `DEMO_TOUR_MOBILE_NAV_EVENT`.
+- Spec: `docs/superpowers/specs/2026-11-13-auth.md`.
+
+### Belegkette (Angebot → Auftrag → Rechnung)
+
+- `job_entries.quote_id/invoice_id`, Gesamtrabatt am Auftrag (Migrationen 011/012); `POST /quotes/:id/convert-to-job`.
+- Summen: `src/utils/discountUtils.ts` (Frontend) und `backend/utils/documentTotals.js` (Spiegel) müssen identisch rechnen — `documentTotalsParity.test.ts` prüft das.
+- Sammelabrechnung trennt Aufträge mit unterschiedlichem Gesamtrabatt (`groupJobsByGlobalDiscount`).
+- Spec: `docs/superpowers/specs/2026-11-16-document-chain.md`.
+- Angebot per Mail-Link annehmen/ablehnen: `send-email` legt für Angebote im Status `sent` ein Token in `quote_responses` an (Migration 014); öffentliche Seite `#angebot/<token>` (`QuoteResponsePage.tsx`), API `/api/quote-response/:token` (Whitelist, Logik in `services/quoteResponseService.js`). GET ändert nie etwas (Mail-Scanner), Link verfällt bei Antwort, Ablauf, Statusänderung oder inhaltlicher Änderung. AGB-Checkbox nur bei `company.terms_url`. Spec: `docs/superpowers/specs/2026-11-17-quote-response-link.md`.
 
 ### PDF Generation
 

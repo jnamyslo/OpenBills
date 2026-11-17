@@ -1,0 +1,6 @@
+# Nur für Tarife free/starter/professional (scripts/platform.sh hängt die Datei per -f an).
+# .env.platform enthält den Zugang zum Plattform-Mailrelay und liegt nie im Repo.
+services:
+  backend:
+    env_file:
+      - .env.platform

@@ -27,6 +27,10 @@ print_error() {
     echo -e "${RED}❌ $1${NC}"
 }
 
+# Plattform-Mailversand (Tarife free/starter/professional), siehe scripts/platform.sh
+# shellcheck source=scripts/platform.sh
+source "$(dirname "$0")/scripts/platform.sh"
+
 # Function to prompt for input with default value
 prompt_input() {
     local prompt="$1"
@@ -81,22 +85,119 @@ prompt_plan() {
     echo "  3) Starter       –  25 Rechnungen/Angebote pro Monat,  50 Kunden, E-Mail, Mahnwesen"
     echo "  4) Professional  – 100 Rechnungen/Angebote pro Monat, 250 Kunden, alle Funktionen"
     echo "  5) Enterprise    – unbegrenzt, alle Funktionen"
+    echo "  6) Demo-Instanz  – öffentliche Demo, alle Funktionen, keine Mails, eigene Daten je Sitzung"
+    OPENBILLS_DEMO=""
     while true; do
         local choice
-        choice=$(prompt_input "Tarif wählen (1-5)" "1")
+        choice=$(prompt_input "Tarif wählen (1-6)" "1")
         case "$choice" in
             1) OPENBILLS_PLAN=""; break ;;
             2) OPENBILLS_PLAN="free"; break ;;
             3) OPENBILLS_PLAN="starter"; break ;;
             4) OPENBILLS_PLAN="professional"; break ;;
             5) OPENBILLS_PLAN="enterprise"; break ;;
-            *) print_error "Bitte 1 bis 5 eingeben." ;;
+            6) OPENBILLS_PLAN=""; OPENBILLS_DEMO="true"; break ;;
+            *) print_error "Bitte 1 bis 6 eingeben." ;;
         esac
     done
 
     OPENBILLS_UPGRADE_CONTACT=""
     if [ -n "$OPENBILLS_PLAN" ]; then
         OPENBILLS_UPGRADE_CONTACT=$(prompt_input "Kontakt für Upgrade-Hinweis (E-Mail, Telefon oder URL, optional)" "")
+    fi
+}
+
+# URL normalisieren: muss mit http:// oder https:// beginnen, abschließender Slash wird entfernt.
+# Gibt die normalisierte URL aus; Rückgabewert 1 bei ungültiger Eingabe.
+normalize_public_url() {
+    local url="$1"
+    case "$url" in
+        http://?*|https://?*) ;;
+        *) return 1 ;;
+    esac
+    echo "${url%/}"
+}
+
+# Öffentliche URL interaktiv abfragen; setzt PUBLIC_URL
+prompt_public_url() {
+    echo
+    print_info "=== Öffentliche URL ==="
+    print_info "Adresse, unter der die Instanz erreichbar ist (z.B. https://kunde.openbills.de). Wird für Onboarding-Links und E-Mails genutzt."
+    local input
+    while true; do
+        input=$(prompt_input "Öffentliche URL" "http://localhost:$FRONTEND_PORT")
+        if PUBLIC_URL=$(normalize_public_url "$input"); then
+            break
+        fi
+        print_error "Die URL muss mit http:// oder https:// beginnen."
+    done
+}
+
+# Wartet bis das Backend antwortet (max. 90 s), gibt dann Support-Zugang und Onboarding-Link aus.
+# Argument: Instanzname. Rückgabewert 1 bei Timeout oder Fehler.
+print_access_info() {
+    local name="$1"
+    local email="${2:-}"
+    if is_demo_instance "$name"; then
+        echo
+        print_info "=== Zugang ==="
+        print_info "Demo-Instanz – Login: demo@openbills.de / demo (eigene Daten je Sitzung, kein Onboarding/Support-Zugang)"
+        return 0
+    fi
+    local send_args=""
+    if [ -n "$email" ]; then
+        if ! send_args=$(onboarding_send_args "$name"); then
+            print_warning "Onboarding-Mail wird nicht gesendet; es wird nur der Link ausgegeben."
+            email=""
+        fi
+    fi
+    compose_cmd "$name"
+    local compose=("${COMPOSE[@]}")
+    local waited=0
+    print_info "Warte auf Backend (max. 90 s)..."
+    until "${compose[@]}" exec -T backend wget -qO- http://127.0.0.1:3001/health >/dev/null 2>&1; do
+        if [ "$waited" -ge 90 ]; then
+            print_error "Backend wurde nicht rechtzeitig bereit. Zugangsdaten wurden nicht erzeugt."
+            print_info "Logs prüfen: ./manage-instances.sh logs ${name} backend"
+            return 1
+        fi
+        sleep 3
+        waited=$((waited + 3))
+    done
+
+    local operator_out onboarding_out
+    if ! operator_out=$("${compose[@]}" exec -T -e LOG_LEVEL=WARN backend node scripts/operator.js 2>&1); then
+        print_error "Support-Zugang konnte nicht angelegt werden: $operator_out"
+        return 1
+    fi
+    if [ -n "$email" ]; then
+        if ! onboarding_out=$("${compose[@]}" exec -T -e LOG_LEVEL=WARN backend node scripts/onboarding.js --send-to "$email" $send_args < "$PLATFORM_ENV_FILE" 2>&1); then
+            echo
+            print_info "=== Zugang ==="
+            echo "$operator_out"
+            echo
+            echo "$onboarding_out"
+            echo
+            print_error "Onboarding-Mail wurde NICHT gesendet (siehe Ausgabe oben)."
+            print_info "Erneut versuchen: ./manage-instances.sh onboarding-link ${name} --send-to '${email}'"
+            print_warning "Support-Zugang jetzt im Passwortmanager ablegen."
+            return 1
+        fi
+    elif ! onboarding_out=$("${compose[@]}" exec -T -e LOG_LEVEL=WARN backend node scripts/onboarding.js 2>&1); then
+        print_error "Onboarding-Link konnte nicht erzeugt werden: $onboarding_out"
+        return 1
+    fi
+
+    echo
+    print_info "=== Zugang ==="
+    echo "$operator_out"
+    echo
+    echo "$onboarding_out"
+    echo
+    if [ -n "$email" ]; then
+        print_warning "Support-Zugang jetzt im Passwortmanager ablegen. Onboarding-Mail wurde an ${email} gesendet."
+    else
+        print_warning "Support-Zugang jetzt im Passwortmanager ablegen. Onboarding-Link an den Kunden senden."
     fi
 }
 
@@ -109,15 +210,28 @@ check_port() {
     return 0
 }
 
-# Function to find next available port
+# Ports, die bestehende Instanzen in .env.<name> reservieren (auch wenn sie gerade gestoppt sind)
+reserved_ports() {
+    local f
+    for f in .env.*; do
+        [ -f "$f" ] || continue
+        case "$f" in
+            .env.backend.*|"$PLATFORM_ENV_FILE") continue ;;
+        esac
+        grep -E '^(DB|BACKEND|FRONTEND)_PORT=' "$f" | cut -d'=' -f2 | tr -d '"'"'"'\r '
+    done
+}
+
+# Nächster freier Port ab <start>: nicht belegt, nicht von einer Instanz reserviert, nicht in <exclude...>
 find_available_port() {
-    local start_port=$1
-    local port=$start_port
-    
-    while ! check_port $port; do
+    local port=$1
+    shift
+    local taken
+    taken=" $(reserved_ports | tr '\n' ' ') $* "
+    while ! check_port "$port" || [[ "$taken" == *" $port "* ]]; do
         ((port++))
     done
-    echo $port
+    echo "$port"
 }
 
 # Function to collect instance configuration
@@ -160,12 +274,12 @@ collect_instance_config() {
     
     # Backend port
     DEFAULT_BACKEND_PORT=3001
-    SUGGESTED_BACKEND_PORT=$(find_available_port $DEFAULT_BACKEND_PORT)
+    SUGGESTED_BACKEND_PORT=$(find_available_port $DEFAULT_BACKEND_PORT "$DB_PORT")
     BACKEND_PORT=$(prompt_input "Backend API Port" "$SUGGESTED_BACKEND_PORT")
     
     # Frontend port
     DEFAULT_FRONTEND_PORT=8080
-    SUGGESTED_FRONTEND_PORT=$(find_available_port $DEFAULT_FRONTEND_PORT)
+    SUGGESTED_FRONTEND_PORT=$(find_available_port $DEFAULT_FRONTEND_PORT "$DB_PORT" "$BACKEND_PORT")
     FRONTEND_PORT=$(prompt_input "Frontend Web Port" "$SUGGESTED_FRONTEND_PORT")
     
     # Validate ports are not conflicting
@@ -175,11 +289,20 @@ collect_instance_config() {
     fi
 
     prompt_plan
+    if is_platform_plan "$OPENBILLS_PLAN"; then
+        if ! is_valid_platform_instance_name "$INSTANCE_NAME"; then
+            print_error "Instanzname '$INSTANCE_NAME' wird Teil der Absenderadresse ${INSTANCE_NAME}@openbills.de – nur a-z, 0-9 und '-' (nicht am Anfang/Ende) erlaubt."
+            return 1
+        fi
+        ensure_platform_env || return 1
+    fi
+    prompt_public_url
     
 
     
     # Generate secure random passwords
     DB_PASSWORD="secure_db_${INSTANCE_NAME}_$(openssl rand -hex 16)"
+    AUTH_ENCRYPTION_KEY=$(openssl rand -base64 32)
     
     return 0
 }
@@ -194,14 +317,17 @@ deploy_instance() {
     print_info "Backend Port: $BACKEND_PORT" 
     print_info "Frontend Port: $FRONTEND_PORT"
     print_info "Tarif: ${OPENBILLS_PLAN:-self-hosted}"
+    print_info "Öffentliche URL: $PUBLIC_URL"
     echo
     
-    # Final confirmation
-    read -p "$(echo -e "${YELLOW}Soll das Deployment gestartet werden? (y/N)${NC}: ")" -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        print_warning "Deployment abgebrochen."
-        return 1
+    # Final confirmation (entfällt im --auto-Modus)
+    if [ "${AUTO_CONFIRM:-}" != "1" ]; then
+        read -p "$(echo -e "${YELLOW}Soll das Deployment gestartet werden? (y/N)${NC}: ")" -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            print_warning "Deployment abgebrochen."
+            return 1
+        fi
     fi
     
     # Create Docker Compose environment file
@@ -230,20 +356,30 @@ NODE_ENV=production
 
 # Managed SaaS: free | starter | professional | enterprise (leer = self-hosted, unbegrenzt)
 OPENBILLS_PLAN=${OPENBILLS_PLAN}
+# Öffentliche Demo (true = abgeriegelt, keine Mails, eigene Daten je Sitzung; nur auf leerer DB)
+OPENBILLS_DEMO=${OPENBILLS_DEMO}
 # Kontakt im Upgrade-Hinweis (E-Mail, Telefon oder URL)
 OPENBILLS_UPGRADE_CONTACT=${OPENBILLS_UPGRADE_CONTACT}
+
+# Anmeldung (lokale Authentifizierung)
+PUBLIC_URL=${PUBLIC_URL}
+AUTH_ENCRYPTION_KEY=${AUTH_ENCRYPTION_KEY}
+TRUST_PROXY_HOPS=3
+# Passwort-Mindestlänge (8–128, leer = 12)
+# PASSWORD_MIN_LENGTH=12
 EOF
 
     # Start deployment
     print_info "Starte Docker Container..."
-    if docker compose --env-file .env.${INSTANCE_NAME} -f docker-compose.yml up -d --build; then
+    compose_cmd "$INSTANCE_NAME"
+    if "${COMPOSE[@]}" up -d --build; then
         echo
         print_success "Instance '$INSTANCE_NAME' wurde erfolgreich deployed!"
         echo
         print_info "=== Zugriffsinformationen ==="
         print_success "Frontend:     http://localhost:$FRONTEND_PORT"
-        print_success "Backend API:  http://localhost:$BACKEND_PORT"
-        print_success "Datenbank:    localhost:$DB_PORT"
+        print_success "Backend API:  http://localhost:$BACKEND_PORT (nur lokal)"
+        print_success "Datenbank:    localhost:$DB_PORT (nur lokal)"
         echo
         print_info "=== Konfigurationsdateien ==="
         print_info "Docker Compose: .env.${INSTANCE_NAME}"
@@ -256,6 +392,20 @@ EOF
         echo
         print_warning "Wichtig: Bewahren Sie die Konfigurationsdateien sicher auf!"
         print_warning "Database Password: $DB_PASSWORD"
+        echo
+        print_info "=== Nginx Proxy Manager ==="
+        print_success "Proxy Host:   ${PUBLIC_URL#*://}  →  Forward Port ${FRONTEND_PORT} (http)"
+        local send_mail="" onboarding_email="${AUTO_ONBOARDING_EMAIL:-}"
+        if [ "${AUTO_CONFIRM:-}" != "1" ] && [ "$OPENBILLS_DEMO" != "true" ] && [ -n "$OPENBILLS_PLAN" ]; then
+            echo
+            read -r -p "Onboarding-Mail an Kunden senden? (y/N) " send_mail
+            if [[ "$send_mail" =~ ^[Yy]$ ]]; then
+                while [ -z "$onboarding_email" ]; do
+                    onboarding_email=$(prompt_input "E-Mail-Adresse des Kunden" "")
+                done
+            fi
+        fi
+        print_access_info "$INSTANCE_NAME" "$onboarding_email" || return 1
     else
         print_error "Deployment fehlgeschlagen!"
         return 1
@@ -304,6 +454,10 @@ main() {
                     deploy_instance
                 fi
                 ;;
+            --auto)
+                shift
+                auto_deploy "$@"
+                ;;
             --legacy)
                 # Legacy mode with explicit flag
                 shift # Remove --legacy from arguments
@@ -332,29 +486,136 @@ show_help() {
     echo "Usage:"
     echo "  $0                        # Interaktiver Modus (Standard, empfohlen)"
     echo "  $0 -i, --interactive      # Interaktiver Modus"
+    echo "  $0 --auto <args>          # Ohne Rückfragen, Ports automatisch (für Kundenanfragen)"
     echo "  $0 --legacy <args>        # Legacy-Modus mit explizitem Flag"
     echo "  $0 -h, --help             # Diese Hilfe anzeigen"
     echo
+    echo "Auto-Modus:"
+    echo "  $0 --auto <instance_name> <plan> <public_url> [--send-onboarding <email>]"
+    echo "      plan: free | starter | professional | enterprise | selfhosted | demo"
+    echo "      Ports: nächste freie ab 5432/3001/8080 (auch von gestoppten Instanzen reservierte werden übersprungen)."
+    echo "      Am Ende wird der Frontend-Port für Nginx Proxy Manager ausgegeben."
+    echo "  Beispiel: $0 --auto mueller-bau starter https://mueller-bau.openbills.de --send-onboarding 'kunde@example.com'"
+    echo
     echo "Legacy Modus (für Kompatibilität):"
-    echo "  $0 --legacy <instance_name> [db_port] [backend_port] [frontend_port] [plan]"
-    echo "      plan: free | starter | professional | enterprise (weglassen = self-hosted)"
+    echo "  $0 --legacy <instance_name> [db_port] [backend_port] [frontend_port] [plan] [public_url] [--send-onboarding <email>]"
+    echo "      plan: free | starter | professional | enterprise | demo (weglassen = self-hosted, "" zum Überspringen)"
+    echo "      public_url: z.B. https://kunde.openbills.de (Standard: http://localhost:<frontend_port>)"
+    echo "      --send-onboarding <email>: Onboarding-Mail nach dem Deploy an den Kunden senden (nur mit Tarif, nicht Demo)"
     echo
     echo "Beispiele:"
     echo "  $0                        # Startet interaktiven Modus (Standard)"
     echo "  $0 --interactive          # Startet interaktiven Modus"
     echo "  $0 --legacy client1 5432 3001 8080"
     echo "  $0 --legacy client2 5433 3002 8081"
-    echo "  $0 --legacy client3 5434 3003 8082 starter"
+    echo "  $0 --legacy client3 5434 3003 8082 starter https://client3.example.com"
+    echo "  $0 --legacy client3 5434 3003 8082 starter https://client3.example.com --send-onboarding kunde@example.com"
     echo
     print_info "Der interaktive Modus läuft standardmäßig und ist empfohlen, da er eine"
     print_info "vollständige E-Mail-Konfiguration und Validierung bietet."
     echo
 }
 
+# Nicht-interaktives Deployment mit automatisch gewählten Ports (wie die Vorschläge im interaktiven Modus).
+# Aufruf: --auto <name> <tarif> <public_url> [--send-onboarding <email>]
+auto_deploy() {
+    local send_to="" rest=()
+    while [ $# -gt 0 ]; do
+        if [ "$1" = "--send-onboarding" ]; then
+            if [ -z "${2:-}" ]; then
+                print_error "--send-onboarding benötigt eine E-Mail-Adresse."
+                exit 1
+            fi
+            send_to="$2"
+            shift 2
+        else
+            rest+=("$1")
+            shift
+        fi
+    done
+    set -- ${rest[@]+"${rest[@]}"}
+
+    if [ $# -ne 3 ]; then
+        print_error "Aufruf: $0 --auto <name> <tarif> <public_url> [--send-onboarding <email>]"
+        exit 1
+    fi
+
+    INSTANCE_NAME=$1
+    local plan_arg=$2
+    if [ -f ".env.${INSTANCE_NAME}" ]; then
+        print_error "Instanz '$INSTANCE_NAME' existiert bereits (.env.${INSTANCE_NAME}). Im --auto-Modus wird nichts überschrieben."
+        exit 1
+    fi
+
+    OPENBILLS_DEMO=""
+    OPENBILLS_UPGRADE_CONTACT=""
+    case "$plan_arg" in
+        selfhosted) OPENBILLS_PLAN="" ;;
+        demo) OPENBILLS_PLAN=""; OPENBILLS_DEMO="true" ;;
+        *)
+            if [ -z "$plan_arg" ] || ! is_valid_plan "$plan_arg"; then
+                print_error "Unbekannter Tarif '$plan_arg'. Erlaubt: $VALID_PLANS selfhosted demo."
+                exit 1
+            fi
+            OPENBILLS_PLAN="$plan_arg"
+            ;;
+    esac
+
+    if ! PUBLIC_URL=$(normalize_public_url "$3"); then
+        print_error "Ungültige öffentliche URL '$3'. Sie muss mit http:// oder https:// beginnen."
+        exit 1
+    fi
+
+    if is_platform_plan "$OPENBILLS_PLAN"; then
+        if ! is_valid_platform_instance_name "$INSTANCE_NAME"; then
+            print_error "Instanzname '$INSTANCE_NAME' ist für Tarif '$OPENBILLS_PLAN' ungültig (nur a-z, 0-9 und '-', nicht am Anfang/Ende)."
+            exit 1
+        fi
+    fi
+    if is_platform_plan "$OPENBILLS_PLAN" || [ -n "$send_to" ]; then
+        if [ ! -r "$PLATFORM_ENV_FILE" ]; then
+            print_error "Plattform-Mailzugang fehlt: $PLATFORM_ENV_FILE anlegen (einmal ./deploy-instance.sh interaktiv ausführen)."
+            exit 1
+        fi
+    fi
+    if [ -n "$send_to" ] && { [ -z "$OPENBILLS_PLAN" ] || [ "$OPENBILLS_DEMO" = "true" ]; }; then
+        print_error "--send-onboarding geht nur mit Tarif (free, starter, professional, enterprise), nicht self-hosted/demo."
+        exit 1
+    fi
+
+    DB_PORT=$(find_available_port 5432)
+    BACKEND_PORT=$(find_available_port 3001 "$DB_PORT")
+    FRONTEND_PORT=$(find_available_port 8080 "$DB_PORT" "$BACKEND_PORT")
+
+    DB_PASSWORD="secure_db_${INSTANCE_NAME}_$(openssl rand -hex 16)"
+    AUTH_ENCRYPTION_KEY=$(openssl rand -base64 32)
+
+    AUTO_CONFIRM=1
+    AUTO_ONBOARDING_EMAIL="$send_to"
+    deploy_instance || exit 1
+}
+
 # Legacy deployment function for backwards compatibility
 legacy_deploy() {
     print_warning "Verwende Legacy-Modus (mit --legacy aufgerufen). Für vollständige Konfiguration verwenden Sie den Standard-Modus ohne Argumente."
     
+    # --send-onboarding <email> an beliebiger Position herauslösen
+    local SEND_ONBOARDING_TO="" rest=()
+    while [ $# -gt 0 ]; do
+        if [ "$1" = "--send-onboarding" ]; then
+            if [ -z "${2:-}" ]; then
+                print_error "--send-onboarding benötigt eine E-Mail-Adresse."
+                exit 1
+            fi
+            SEND_ONBOARDING_TO="$2"
+            shift 2
+        else
+            rest+=("$1")
+            shift
+        fi
+    done
+    set -- ${rest[@]+"${rest[@]}"}
+
     # Check if instance name is provided
     if [ -z "$1" ]; then
         show_help
@@ -368,10 +629,31 @@ legacy_deploy() {
     FRONTEND_PORT=${4:-8080}
     OPENBILLS_PLAN=${5:-}
     OPENBILLS_UPGRADE_CONTACT=""
+    OPENBILLS_DEMO=""
+    if [ "$OPENBILLS_PLAN" = "demo" ]; then
+        OPENBILLS_PLAN=""
+        OPENBILLS_DEMO="true"
+    fi
+
+    if ! PUBLIC_URL=$(normalize_public_url "${6:-http://localhost:$FRONTEND_PORT}"); then
+        print_error "Ungültige öffentliche URL '$6'. Sie muss mit http:// oder https:// beginnen."
+        exit 1
+    fi
 
     if ! is_valid_plan "$OPENBILLS_PLAN"; then
         print_error "Unbekannter Tarif '$OPENBILLS_PLAN'. Erlaubt: $VALID_PLANS (oder weglassen für self-hosted)."
         exit 1
+    fi
+
+    if is_platform_plan "$OPENBILLS_PLAN"; then
+        if ! is_valid_platform_instance_name "$INSTANCE_NAME"; then
+            print_error "Instanzname '$INSTANCE_NAME' ist für Tarif '$OPENBILLS_PLAN' ungültig (nur a-z, 0-9 und '-', nicht am Anfang/Ende)."
+            exit 1
+        fi
+        if [ ! -f "$PLATFORM_ENV_FILE" ]; then
+            print_error "Plattform-Mailzugang fehlt: $PLATFORM_ENV_FILE anlegen (einmal ./deploy-instance.sh interaktiv ausführen)."
+            exit 1
+        fi
     fi
 
     # Check if ports are already in use
@@ -392,6 +674,7 @@ legacy_deploy() {
 
     # Generate secure password
     DB_PASSWORD="secure_password_${INSTANCE_NAME}_$(date +%s)"
+    AUTH_ENCRYPTION_KEY=$(openssl rand -base64 32)
     
     # Create minimal configuration (no SMTP)
     cat > .env.${INSTANCE_NAME} << EOF
@@ -417,22 +700,31 @@ NODE_ENV=production
 
 # Managed SaaS: free | starter | professional | enterprise (leer = self-hosted, unbegrenzt)
 OPENBILLS_PLAN=${OPENBILLS_PLAN}
+# Öffentliche Demo (true = abgeriegelt, keine Mails, eigene Daten je Sitzung; nur auf leerer DB)
+OPENBILLS_DEMO=${OPENBILLS_DEMO}
 # Kontakt im Upgrade-Hinweis (E-Mail, Telefon oder URL)
 OPENBILLS_UPGRADE_CONTACT=${OPENBILLS_UPGRADE_CONTACT}
+
+# Anmeldung (lokale Authentifizierung)
+PUBLIC_URL=${PUBLIC_URL}
+AUTH_ENCRYPTION_KEY=${AUTH_ENCRYPTION_KEY}
+TRUST_PROXY_HOPS=3
 EOF
 
     # Deploy with specific env file
-    if docker compose --env-file .env.${INSTANCE_NAME} -f docker-compose.yml up -d --build; then
+    compose_cmd "$INSTANCE_NAME"
+    if "${COMPOSE[@]}" up -d --build; then
         print_success "Instance '$INSTANCE_NAME' deployed successfully!"
         print_info "Frontend available at: http://localhost:$FRONTEND_PORT"
-        print_info "Backend API available at: http://localhost:$BACKEND_PORT"
-        print_info "Database available at: localhost:$DB_PORT"
+        print_info "Backend API available at: http://localhost:$BACKEND_PORT (nur lokal)"
+        print_info "Database available at: localhost:$DB_PORT (nur lokal)"
         print_info "Tarif: ${OPENBILLS_PLAN:-self-hosted}"
         if [ -n "$OPENBILLS_PLAN" ]; then
             print_info "Upgrade-Kontakt bei Bedarf in .env.backend.${INSTANCE_NAME} setzen (OPENBILLS_UPGRADE_CONTACT)."
         fi
         print_warning "E-Mail-Funktionen sind im Legacy-Modus nicht konfiguriert."
         print_info "Verwenden Sie das Script ohne --legacy Flag für vollständige Konfiguration."
+        print_access_info "$INSTANCE_NAME" "$SEND_ONBOARDING_TO" || exit 1
     else
         print_error "Deployment fehlgeschlagen!"
         exit 1

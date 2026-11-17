@@ -18,6 +18,7 @@ import { useJobs } from '../context/JobContext';
 import { useCompany } from '../context/CompanyContext';
 import { JobEntry } from '../types';
 import { JobEntryForm } from './JobEntryForm';
+import { QuickJobModal, QuickJobValues } from './QuickJobModal';
 import { ConfirmationModal } from './ConfirmationModal';
 import { calculateTotalHours } from '../utils/jobUtils';
 
@@ -41,7 +42,7 @@ function parseLocalDate(value: Date | string): Date {
 }
 
 export function Calendar({ onNavigate }: CalendarProps = {}) {
-  const { customers, addCustomer, refreshCustomers } = useCustomers();
+  const { customers } = useCustomers();
   const { jobEntries, addJobEntry, updateJobEntry, refreshJobEntries } = useJobs();
   const { company } = useCompany();
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -50,6 +51,8 @@ export function Calendar({ onNavigate }: CalendarProps = {}) {
   const [editingJob, setEditingJob] = useState<JobEntry | null>(null);
   const [dragOverDate, setDragOverDate] = useState<Date | null>(null);
   const [selectedDateForNewJob, setSelectedDateForNewJob] = useState<Date | null>(null);
+  const [showQuickJob, setShowQuickJob] = useState(false);
+  const [jobDraft, setJobDraft] = useState<QuickJobValues | null>(null);
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
   const [jobPositions, setJobPositions] = useState<Map<string, number>>(new Map());
   const [searchQuery, setSearchQuery] = useState('');
@@ -80,17 +83,6 @@ export function Calendar({ onNavigate }: CalendarProps = {}) {
   });
 
   // Customer creation states
-  const [showCustomerForm, setShowCustomerForm] = useState(false);
-  const [newCustomerData, setNewCustomerData] = useState({
-    name: '',
-    email: '',
-    address: '',
-    postalCode: '',
-    city: '',
-    country: 'Deutschland',
-    taxId: '',
-    phone: ''
-  });
 
   // Get locale from company settings
   const locale = company?.locale || 'de-DE';
@@ -512,7 +504,26 @@ export function Calendar({ onNavigate }: CalendarProps = {}) {
     const correctedDate = new Date(dateString + 'T12:00:00.000Z');
     
     setSelectedDateForNewJob(correctedDate);
-    setShowJobForm(true);
+    setShowQuickJob(true);
+  };
+
+  const closeJobForm = () => {
+    setShowJobForm(false);
+    setEditingJob(null);
+    setSelectedDateForNewJob(null);
+    setJobDraft(null);
+  };
+
+  const handleQuickSubmit = async (jobData: Omit<JobEntry, 'id' | 'createdAt' | 'updatedAt'>) => {
+    try {
+      await addJobEntry(jobData);
+      await refreshJobEntries();
+      setShowQuickJob(false);
+      setSelectedDateForNewJob(null);
+    } catch (error) {
+      logger.error('Error saving job:', error);
+      alert('Fehler beim Speichern des Auftrags. Bitte versuchen Sie es erneut.');
+    }
   };
 
   // Form submit handler
@@ -525,8 +536,7 @@ export function Calendar({ onNavigate }: CalendarProps = {}) {
         // Refresh job entries in other components  
         await refreshJobEntries();
       }
-      setShowJobForm(false);
-      setEditingJob(null);
+      closeJobForm();
     } catch (error) {
       logger.error('Error saving job:', error);
       alert('Fehler beim Speichern des Auftrags. Bitte versuchen Sie es erneut.');
@@ -535,13 +545,28 @@ export function Calendar({ onNavigate }: CalendarProps = {}) {
 
   const weekDays = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 
+  if (showJobForm) {
+    return (
+      <JobEntryForm
+        job={editingJob}
+        customers={customers}
+        defaultDate={selectedDateForNewJob}
+        initialValues={jobDraft ?? undefined}
+        onSubmit={handleFormSubmit}
+        onCancel={closeJobForm}
+        onNavigateToCustomers={() => onNavigate && onNavigate('customers')}
+        onNavigateToSettings={() => onNavigate && onNavigate('settings')}
+      />
+    );
+  }
+
   return (
     <div className="space-y-4 lg:space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center">
           <CalendarIcon className="h-6 w-6 lg:h-8 lg:w-8 text-primary-custom mr-2 lg:mr-3" />
-          <h1 className="text-xl lg:text-3xl font-bold text-gray-900">Kalender</h1>
+          <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">Kalender</h1>
         </div>
         
         {/* Search Bar */}
@@ -1057,28 +1082,22 @@ export function Calendar({ onNavigate }: CalendarProps = {}) {
         </div>
       </div>
 
-      {/* Job Form Modal */}
-      {showJobForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="w-full max-w-6xl max-h-[90vh] overflow-hidden">
-            <JobEntryForm
-              job={editingJob}
-              customers={customers}
-              defaultDate={selectedDateForNewJob}
-              onSubmit={handleFormSubmit}
-              onCancel={() => {
-                setShowJobForm(false);
-                setEditingJob(null);
-                setSelectedDateForNewJob(null);
-              }}
-              onCreateCustomer={() => {
-                setShowCustomerForm(true);
-              }}
-              onNavigateToCustomers={() => onNavigate && onNavigate('customers')}
-              onNavigateToSettings={() => onNavigate && onNavigate('settings')}
-            />
-          </div>
-        </div>
+      {showQuickJob && selectedDateForNewJob && (
+        <QuickJobModal
+          date={selectedDateForNewJob}
+          customers={customers}
+          onSubmit={handleQuickSubmit}
+          onOpenDetails={(values, date) => {
+            setJobDraft(values);
+            setSelectedDateForNewJob(date);
+            setShowQuickJob(false);
+            setShowJobForm(true);
+          }}
+          onClose={() => {
+            setShowQuickJob(false);
+            setSelectedDateForNewJob(null);
+          }}
+        />
       )}
 
       {/* Confirmation Modal */}
@@ -1092,161 +1111,6 @@ export function Calendar({ onNavigate }: CalendarProps = {}) {
         isGoBDWarning={confirmModal.isGoBDWarning}
       />
 
-      {/* Customer Creation Modal */}
-      {showCustomerForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4">
-          <div className="bg-white rounded-lg p-4 lg:p-6 w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              Neuer Kunde
-            </h3>
-            <form onSubmit={async (e) => {
-              e.preventDefault();
-              try {
-                await addCustomer(newCustomerData);
-                setNewCustomerData({
-                  name: '',
-                  email: '',
-                  address: '',
-                  postalCode: '',
-                  city: '',
-                  country: 'Deutschland',
-                  taxId: '',
-                  phone: ''
-                });
-                setShowCustomerForm(false);
-                
-                // Refresh customers in other components
-                await refreshCustomers();
-              } catch (error) {
-                logger.error('Error creating customer:', error);
-                alert('Fehler beim Erstellen des Kunden. Bitte versuchen Sie es erneut.');
-              }
-            }} className="space-y-4">
-              <div>
-                <label htmlFor="customerName" className="block text-sm font-medium text-gray-700 mb-2">
-                  Name *
-                </label>
-                <input
-                  type="text"
-                  id="customerName"
-                  required
-                  value={newCustomerData.name}
-                  onChange={(e) => setNewCustomerData({ ...newCustomerData, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="customerEmail" className="block text-sm font-medium text-gray-700 mb-2">
-                  E-Mail
-                </label>
-                <input
-                  type="email"
-                  id="customerEmail"
-                  value={newCustomerData.email}
-                  onChange={(e) => setNewCustomerData({ ...newCustomerData, email: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="customerAddress" className="block text-sm font-medium text-gray-700 mb-2">
-                  Adresse
-                </label>
-                <input
-                  type="text"
-                  id="customerAddress"
-                  value={newCustomerData.address}
-                  onChange={(e) => setNewCustomerData({ ...newCustomerData, address: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="customerPostalCode" className="block text-sm font-medium text-gray-700 mb-2">
-                    PLZ
-                  </label>
-                  <input
-                    type="text"
-                    id="customerPostalCode"
-                    value={newCustomerData.postalCode}
-                    onChange={(e) => setNewCustomerData({ ...newCustomerData, postalCode: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="customerCity" className="block text-sm font-medium text-gray-700 mb-2">
-                    Stadt
-                  </label>
-                  <input
-                    type="text"
-                    id="customerCity"
-                    value={newCustomerData.city}
-                    onChange={(e) => setNewCustomerData({ ...newCustomerData, city: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label htmlFor="customerCountry" className="block text-sm font-medium text-gray-700 mb-2">
-                  Land
-                </label>
-                <input
-                  type="text"
-                  id="customerCountry"
-                  value={newCustomerData.country}
-                  onChange={(e) => setNewCustomerData({ ...newCustomerData, country: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="customerTaxId" className="block text-sm font-medium text-gray-700 mb-2">
-                  Steuernummer
-                </label>
-                <input
-                  type="text"
-                  id="customerTaxId"
-                  value={newCustomerData.taxId}
-                  onChange={(e) => setNewCustomerData({ ...newCustomerData, taxId: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="customerPhone" className="block text-sm font-medium text-gray-700 mb-2">
-                  Telefon
-                </label>
-                <input
-                  type="tel"
-                  id="customerPhone"
-                  value={newCustomerData.phone}
-                  onChange={(e) => setNewCustomerData({ ...newCustomerData, phone: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div className="flex justify-end space-x-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowCustomerForm(false)}
-                  className="px-4 py-2 text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
-                >
-                  Abbrechen
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-                >
-                  Kunde erstellen
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

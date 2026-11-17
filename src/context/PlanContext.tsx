@@ -37,6 +37,8 @@ export const FEATURE_LABELS: Record<PlanFeature, string> = {
   jobs: 'Aufträge & Zeiterfassung',
   customerPricing: 'Kundenspezifische Preise & Materialvorlagen',
   reportingFull: 'Erweitertes Reporting',
+  ownSmtp: 'Eigener Mailserver für Rechnungsversand',
+  ownSystemSmtp: 'Eigener Absender für Systemmails',
 };
 
 export function featureUpgradeReason(feature: PlanFeature): UpgradeReason {

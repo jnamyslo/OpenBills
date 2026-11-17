@@ -1,15 +1,17 @@
+import { Modal } from './Modal';
 import React, { useState } from 'react';
 import logger from '../utils/logger';
 import { withJobContent } from '../utils/attachmentContent';
-import { X, FileText, Calendar, Users, Check, AlertTriangle } from 'lucide-react';
+import { FileText, Calendar, Users, Check, AlertTriangle } from 'lucide-react';
 import { JobEntry, Customer } from '../types';
 import { useCustomers } from '../context/CustomerContext';
 import { useInvoices } from '../context/InvoiceContext';
 import { useJobs } from '../context/JobContext';
+import { useQuotes } from '../context/QuoteContext';
 import { useCompany } from '../context/CompanyContext';
 import { generateJobPDF } from '../utils/pdfGenerator';
 import { generateUUID } from '../utils/uuid';
-import { buildInvoiceFromJobs } from '../utils/jobInvoiceItems';
+import { buildInvoiceFromJobs, groupJobsByGlobalDiscount } from '../utils/jobInvoiceItems';
 
 interface JobInvoiceGeneratorProps {
   selectedJobIds: string[];
@@ -25,6 +27,7 @@ export function JobInvoiceGenerator({
   const { customers } = useCustomers();
   const { addInvoice, refreshInvoices } = useInvoices();
   const { jobEntries: jobs, updateJobEntry } = useJobs();
+  const { refreshQuotes } = useQuotes();
   const { company } = useCompany();
   const [generationType, setGenerationType] = useState<'single' | 'daily' | 'weekly' | 'monthly'>('single');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -74,7 +77,10 @@ export function JobInvoiceGenerator({
     const failures: string[] = [];
     const createInvoiceSafely = async (jobs: JobEntry[]) => {
       try {
-        await createInvoiceForJobs(jobs);
+        // Aufträge mit unterschiedlichem Gesamtrabatt werden getrennt abgerechnet, damit die Summen exakt bleiben.
+        for (const group of groupJobsByGlobalDiscount(jobs)) {
+          await createInvoiceForJobs(group);
+        }
       } catch (error) {
         logger.error('Error creating invoice for jobs', { error });
         failures.push(jobs.map(j => j.jobNumber || j.title).join(', '));
@@ -164,7 +170,7 @@ export function JobInvoiceGenerator({
     const customer = customers.find((c: Customer) => c.id === jobsToInvoice[0].customerId);
     if (!customer) return;
 
-    const { items: pricedItems, subtotal, taxAmount, total } = buildInvoiceFromJobs(
+    const { items: pricedItems, subtotal, taxAmount, total, globalDiscountType, globalDiscountValue, globalDiscountAmount } = buildInvoiceFromJobs(
       jobsToInvoice,
       company?.isSmallBusiness
     );
@@ -264,12 +270,15 @@ export function JobInvoiceGenerator({
       subtotal,
       taxAmount,
       total,
+      globalDiscountType,
+      globalDiscountValue,
+      globalDiscountAmount,
       status: 'draft' as const,
       notes: `Automatisch erstellt aus ${jobsToInvoice.length} Auftrag${jobsToInvoice.length > 1 ? 'en' : ''}:\n\n${jobsToInvoice.map(j => `• ${j.jobNumber}${j.externalJobNumber ? ` (Ext: ${j.externalJobNumber})` : ''}: ${j.title}`).join('\n')}`,
       attachments
     };
 
-    await addInvoice(invoice);
+    const createdInvoice = await addInvoice(invoice);
     
     // Refresh invoices in other components
     await refreshInvoices();
@@ -281,12 +290,14 @@ export function JobInvoiceGenerator({
     const unmarked: string[] = [];
     for (const job of jobsToInvoice) {
       try {
-        await updateJobEntry(job.id, { status: 'invoiced' });
+        await updateJobEntry(job.id, { status: 'invoiced', invoiceId: createdInvoice.id });
       } catch (error) {
         logger.error('Error marking job as invoiced', { error, jobId: job.id });
         unmarked.push(job.jobNumber || job.title);
       }
     }
+    // Angebote verknüpfter Aufträge gelten damit als abgerechnet.
+    await refreshQuotes();
     if (unmarked.length > 0) {
       alert(`Die Rechnung wurde erstellt, aber folgende Aufträge konnten nicht als "abgerechnet" markiert werden: ${unmarked.join(', ')}`);
     }
@@ -367,22 +378,38 @@ export function JobInvoiceGenerator({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-4 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900 flex items-center">
-            <FileText className="h-5 w-5 mr-2" />
-            Rechnung erstellen
-          </h3>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 p-1"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        <div className="p-4 space-y-6">
+    <Modal
+      title="Rechnung erstellen"
+      icon={<FileText className="h-5 w-5 text-gray-700" />}
+      onClose={onClose}
+      size="xl"
+      zClass="z-50"
+      footer={
+        <>
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+            >
+              Abbrechen
+            </button>
+            <button
+              onClick={handleGenerate}
+              disabled={isGenerating || completedJobs.length === 0}
+              className="btn-primary text-white px-4 py-2 rounded-lg flex items-center space-x-2 text-sm disabled:opacity-50"
+            >
+              <FileText className="h-4 w-4" />
+              <span>
+                {isGenerating 
+                  ? 'Erstelle Rechnungen...' 
+                  : `${getPreviewInfo().split(' ')[0]} Rechnung(en) erstellen`
+                }
+              </span>
+            </button>
+        </>
+      }
+    >
+        <div className="space-y-6">
           {/* Warning for non-completed jobs */}
           {nonCompletedJobs.length > 0 && (
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
@@ -542,32 +569,7 @@ export function JobInvoiceGenerator({
               <li>• Die Mehrwertsteuer wird automatisch je nach Steuersatz berechnet</li>
             </ul>
           </div>
-
-          {/* Action Buttons */}
-          <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
-            >
-              Abbrechen
-            </button>
-            <button
-              onClick={handleGenerate}
-              disabled={isGenerating || completedJobs.length === 0}
-              className="btn-primary text-white px-4 py-2 rounded-lg flex items-center space-x-2 text-sm disabled:opacity-50"
-            >
-              <FileText className="h-4 w-4" />
-              <span>
-                {isGenerating 
-                  ? 'Erstelle Rechnungen...' 
-                  : `${getPreviewInfo().split(' ')[0]} Rechnung(en) erstellen`
-                }
-              </span>
-            </button>
-          </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

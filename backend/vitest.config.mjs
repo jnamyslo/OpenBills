@@ -5,5 +5,6 @@ export default defineConfig({
     environment: 'node',
     include: ['tests/**/*.test.js'],
     reporters: 'default',
+    fileParallelism: false,
   },
 });

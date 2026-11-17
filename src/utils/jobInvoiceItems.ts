@@ -79,16 +79,59 @@ export function buildInvoiceItemsFromJobs(
   return items.map(updateItemWithDiscount);
 }
 
+type JobDiscount = { type: 'percentage' | 'fixed'; value: number };
+
+function discountOf(job: JobEntry): JobDiscount | undefined {
+  if (!job.globalDiscountType || !job.globalDiscountValue || job.globalDiscountValue <= 0) return undefined;
+  return { type: job.globalDiscountType, value: job.globalDiscountValue };
+}
+
+/** Aufträge, deren Gesamtrabatt sich auf einer gemeinsamen Rechnung exakt abbilden lässt, haben denselben Schlüssel. */
+function discountKey(job: JobEntry): string {
+  const d = discountOf(job);
+  if (!d) return 'none';
+  // Prozentrabatte gleicher Höhe wirken auf jeden Auftrag identisch; Festbeträge nicht zusammenfassbar.
+  return d.type === 'percentage' ? `percentage:${d.value}` : `fixed:${job.id}`;
+}
+
+/**
+ * Teilt Aufträge in Gruppen, die auf einer Rechnung zusammen abgerechnet werden können.
+ * Eine Rechnung kennt nur einen Gesamtrabatt; er wirkt auf alle Positionen. Aufträge mit
+ * unterschiedlichem Gesamtrabatt würden sich dabei gegenseitig verschieben (Steuer je Satz),
+ * deshalb werden sie getrennt abgerechnet.
+ */
+export function groupJobsByGlobalDiscount(jobs: JobEntry[]): JobEntry[][] {
+  const groups = new Map<string, JobEntry[]>();
+  for (const job of jobs) {
+    const key = discountKey(job);
+    groups.set(key, [...(groups.get(key) ?? []), job]);
+  }
+  return [...groups.values()];
+}
+
 /**
  * Positionen plus Summen für eine Auftragsrechnung.
  * Die Summen laufen über dasselbe Modul wie Editoren, PDF und eRechnung.
+ * Alle Aufträge müssen zu derselben Gruppe gehören (siehe groupJobsByGlobalDiscount).
  */
 export function buildInvoiceFromJobs(jobs: JobEntry[], isSmallBusiness = false) {
+  if (new Set(jobs.map(discountKey)).size > 1) {
+    throw new Error('Aufträge mit unterschiedlichem Gesamtrabatt können nicht auf einer Rechnung zusammengefasst werden.');
+  }
+  const discount = jobs.length > 0 ? discountOf(jobs[0]) : undefined;
   const items = buildInvoiceItemsFromJobs(jobs, isSmallBusiness);
-  const { subtotal, taxAmount, total } = calculateInvoiceWithDiscounts(
+  const { subtotal, taxAmount, total, globalDiscountAmount } = calculateInvoiceWithDiscounts(
     items,
-    {},
+    discount ?? {},
     isSmallBusiness
   );
-  return { items, subtotal, taxAmount, total };
+  return {
+    items,
+    subtotal,
+    taxAmount,
+    total,
+    globalDiscountType: discount?.type,
+    globalDiscountValue: discount?.value,
+    globalDiscountAmount: discount ? globalDiscountAmount : undefined,
+  };
 }

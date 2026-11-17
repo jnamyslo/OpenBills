@@ -1,3 +1,4 @@
+import { Modal } from './Modal';
 import React, { useState } from 'react';
 import { X, Mail, FileText, Send, Plus, Trash2, Upload, CheckCircle } from 'lucide-react';
 import { Invoice, Quote } from '../types';
@@ -143,27 +144,50 @@ export function EmailSendModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-4 lg:p-6 border-b border-gray-200">
-          <div className="flex items-center space-x-2 lg:space-x-3">
-            <div className="p-2 rounded-full bg-purple-100">
-              <Mail className="h-5 w-5 lg:h-6 lg:w-6 text-purple-600" />
-            </div>
-            <h3 className="text-base lg:text-lg font-semibold text-gray-900">
-              {isBulkMode ? `${bulkCount} ${documentLabel}${bulkCount > 1 ? 'en' : ''} per E-Mail versenden` : `${documentLabel} per E-Mail versenden`}
-            </h3>
-          </div>
+    <Modal
+      title={isBulkMode ? `${bulkCount} ${documentLabel}${bulkCount > 1 ? 'en' : ''} per E-Mail versenden` : `${documentLabel} per E-Mail versenden`}
+      icon={<div className="p-2 rounded-full bg-purple-100"><Mail className="h-5 w-5 lg:h-6 lg:w-6 text-purple-600" /></div>}
+      onClose={onClose}
+      closeDisabled={isLoading}
+      size="xl"
+      zClass="z-50"
+      footer={
+        <>
           <button
             onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 p-1"
             disabled={isLoading}
+            className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
           >
-            <X className="h-5 w-5" />
+            Abbrechen
           </button>
-        </div>
-        
-        <div className="p-4 lg:p-6 space-y-4 lg:space-y-6">
+          <button
+            onClick={handleSend}
+            disabled={isLoading || (selectedEmails.length === 0 && manualEmails.filter(e => e.trim()).length === 0)}
+            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center justify-center space-x-2 disabled:opacity-50"
+          >
+            {isLoading ? (
+              <>
+                <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+                <span className="hidden sm:inline">Wird versendet...</span>
+                <span className="sm:hidden">Sende...</span>
+              </>
+            ) : (
+              <>
+                <Send className="h-4 w-4" />
+                <span className="hidden sm:inline">
+                  E-Mail versenden 
+                  ({selectedFormats.length} Format{selectedFormats.length > 1 ? 'e' : ''}
+                  {!isBulkMode && `, ${selectedEmails.length + manualEmails.filter(e => e.trim()).length} Empfänger`}
+                  {attachments.length > 0 && `, +${attachments.length} Anhang${attachments.length > 1 ? 'e' : ''}`})
+                </span>
+                <span className="sm:hidden">Versenden</span>
+              </>
+            )}
+          </button>
+        </>
+      }
+    >
+        <div className="space-y-4 lg:space-y-6">
           {/* E-Mail Details */}
           <div className="bg-primary-custom/10 border border-primary-custom/30 rounded-lg p-3 lg:p-4">
             <h4 className="text-sm font-semibold text-primary-custom mb-2">
@@ -559,41 +583,6 @@ export function EmailSendModal({
             </p>
           </div>
         </div>
-        
-        <div className="flex flex-col sm:flex-row justify-end gap-3 p-4 lg:p-6 border-t border-gray-200">
-          <button
-            onClick={onClose}
-            disabled={isLoading}
-            className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 order-2 sm:order-1"
-          >
-            Abbrechen
-          </button>
-          <button
-            onClick={handleSend}
-            disabled={isLoading || (selectedEmails.length === 0 && manualEmails.filter(e => e.trim()).length === 0)}
-            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center justify-center space-x-2 disabled:opacity-50 order-1 sm:order-2"
-          >
-            {isLoading ? (
-              <>
-                <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
-                <span className="hidden sm:inline">Wird versendet...</span>
-                <span className="sm:hidden">Sende...</span>
-              </>
-            ) : (
-              <>
-                <Send className="h-4 w-4" />
-                <span className="hidden sm:inline">
-                  E-Mail versenden 
-                  ({selectedFormats.length} Format{selectedFormats.length > 1 ? 'e' : ''}
-                  {!isBulkMode && `, ${selectedEmails.length + manualEmails.filter(e => e.trim()).length} Empfänger`}
-                  {attachments.length > 0 && `, +${attachments.length} Anhang${attachments.length > 1 ? 'e' : ''}`})
-                </span>
-                <span className="sm:hidden">Versenden</span>
-              </>
-            )}
-          </button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

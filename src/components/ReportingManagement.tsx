@@ -201,14 +201,14 @@ export function ReportingManagement() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50 p-3 sm:p-4 lg:p-6">
+    <div>
       {/* Header */}
       <div className="mb-4 lg:mb-6">
-        <h1 className="text-xl lg:text-2xl font-bold text-gray-900 flex items-center">
-          <BarChart3 className="h-6 w-6 lg:h-7 lg:w-7 text-primary-custom mr-2" />
+        <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 flex items-center">
+          <BarChart3 className="h-6 w-6 lg:h-8 lg:w-8 text-primary-custom mr-2 lg:mr-3" />
           Reporting & Auswertungen
         </h1>
-        <p className="text-sm lg:text-base text-gray-600 mt-1">
+        <p className="text-gray-600 mt-1">
           Rechnungsjournale, Statistiken und Auswertungen
         </p>
       </div>

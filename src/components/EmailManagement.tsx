@@ -1,6 +1,11 @@
+import { Modal } from './Modal';
 import React, { useState, useEffect } from 'react';
+import { useDemo } from '../context/DemoContext';
+import { DemoDisabledNotice } from './DemoDisabledNotice';
 import logger from '../utils/logger';
+import { usePlan } from '../context/PlanContext';
 import { Mail, Send, Settings, TestTube, RefreshCw, Search, Calendar, User, FileText, CheckCircle, XCircle, Clock, AlertTriangle, Eye, X, TrendingUp, Database, Lock } from 'lucide-react';
+import { PasswordInput } from './PasswordInput';
 
 interface EmailHistoryItem {
   id: string;
@@ -55,14 +60,39 @@ interface SmtpSettings {
 
 interface EmailManagementProps {
   onClose?: () => void;
+  /** Im Einstellungsbereich statt als Vollbild-Overlay darstellen. */
+  embedded?: boolean;
 }
 
-export function EmailManagement({ onClose }: EmailManagementProps) {
+/** Hinweis zum Versand über den OpenBills-Relay (Hosted-Tarife). */
+function PlatformMailNotice({ title, text, upgradeContact }: { title: string; text: string; upgradeContact?: string | null }) {
+  return (
+    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+      <div className="flex items-start">
+        <Mail className="h-5 w-5 text-amber-600 mr-3 mt-0.5" />
+        <div>
+          <h3 className="font-medium text-amber-900">{title}</h3>
+          <p className="text-sm text-amber-800 mt-1">{text}</p>
+          {upgradeContact && <p className="text-sm text-amber-800 mt-1">Kontakt für ein Upgrade: {upgradeContact}</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function EmailManagement({ onClose, embedded = false }: EmailManagementProps) {
+  const { demo } = useDemo();
+  const { plan, hasFeature } = usePlan();
+  // Free/Starter: kein eigener Mailserver, Versand über OpenBills. Professional: eigener Mailserver nur für Kundenmails.
+  const ownSmtpAllowed = hasFeature('ownSmtp');
+  const ownSystemSmtpAllowed = hasFeature('ownSystemSmtp');
+
   useEffect(() => {
+    if (embedded) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = prev; };
-  }, []);
+  }, [embedded]);
 
   const [activeTab, setActiveTab] = useState<'history' | 'settings' | 'test' | 'statistics'>('history');
   
@@ -306,8 +336,8 @@ export function EmailManagement({ onClose }: EmailManagementProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-white rounded-lg shadow-xl max-w-7xl w-full max-h-[95vh] overflow-hidden flex flex-col">
+    <div className={embedded ? '' : 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto'}>
+      <div className={embedded ? 'bg-white rounded-xl shadow-sm border border-gray-100 h-[calc(100vh-8rem)] overflow-hidden flex flex-col' : 'bg-white rounded-lg shadow-xl max-w-7xl w-full max-h-[95dvh] overflow-hidden flex flex-col'}>
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200 flex-shrink-0">
           <div className="flex items-center">
@@ -347,10 +377,10 @@ export function EmailManagement({ onClose }: EmailManagementProps) {
         )}
 
         {/* Tabs */}
-        <div className="flex border-b border-gray-200 px-6 flex-shrink-0">
+        <div className="flex border-b border-gray-200 px-2 sm:px-6 flex-shrink-0 overflow-x-auto">
           <button
             onClick={() => setActiveTab('history')}
-            className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
+            className={`py-4 px-3 sm:px-6 text-sm font-medium border-b-2 transition-colors flex-shrink-0 whitespace-nowrap ${
               activeTab === 'history'
                 ? 'border-primary-custom text-primary-custom'
                 : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -363,7 +393,7 @@ export function EmailManagement({ onClose }: EmailManagementProps) {
           </button>
           <button
             onClick={() => setActiveTab('statistics')}
-            className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
+            className={`py-4 px-3 sm:px-6 text-sm font-medium border-b-2 transition-colors flex-shrink-0 whitespace-nowrap ${
               activeTab === 'statistics'
                 ? 'border-primary-custom text-primary-custom'
                 : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -376,7 +406,7 @@ export function EmailManagement({ onClose }: EmailManagementProps) {
           </button>
           <button
             onClick={() => setActiveTab('settings')}
-            className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
+            className={`py-4 px-3 sm:px-6 text-sm font-medium border-b-2 transition-colors flex-shrink-0 whitespace-nowrap ${
               activeTab === 'settings'
                 ? 'border-primary-custom text-primary-custom'
                 : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -384,12 +414,13 @@ export function EmailManagement({ onClose }: EmailManagementProps) {
           >
             <div className="flex items-center space-x-2">
               <Settings className="h-4 w-4" />
-              <span>SMTP-Konfiguration</span>
+              <span>{ownSmtpAllowed ? 'SMTP-Konfiguration' : 'E-Mail-Versand'}</span>
             </div>
           </button>
+          {ownSmtpAllowed && (
           <button
             onClick={() => setActiveTab('test')}
-            className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
+            className={`py-4 px-3 sm:px-6 text-sm font-medium border-b-2 transition-colors flex-shrink-0 whitespace-nowrap ${
               activeTab === 'test'
                 ? 'border-primary-custom text-primary-custom'
                 : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -400,6 +431,7 @@ export function EmailManagement({ onClose }: EmailManagementProps) {
               <span>Test-E-Mail</span>
             </div>
           </button>
+          )}
         </div>
 
         {/* Content */}
@@ -630,9 +662,33 @@ export function EmailManagement({ onClose }: EmailManagementProps) {
           )}
 
           {/* SMTP Settings Tab */}
-          {activeTab === 'settings' && (
+          {activeTab === 'settings' && !ownSmtpAllowed && (
             <div className="p-6">
               <div className="max-w-2xl mx-auto space-y-6">
+                <PlatformMailNotice
+                  title="Versand über OpenBills"
+                  text="E-Mails werden über OpenBills versendet · eigener Mailserver ab Professional"
+                  upgradeContact={plan?.upgradeContact}
+                />
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'settings' && ownSmtpAllowed && (
+            <fieldset disabled={demo} className="p-6 min-w-0">
+              <DemoDisabledNotice />
+              <div className="max-w-2xl mx-auto space-y-6">
+                {!ownSystemSmtpAllowed && (
+                  <PlatformMailNotice
+                    title="Systemmails über OpenBills"
+                    text={`Systemmails (Einladung, Passwort) laufen über OpenBills · eigener Absender ab Enterprise${
+                      plan?.mailRoutes.customer === 'platform'
+                        ? '. Rechnungen werden derzeit über OpenBills versendet, bis ein eigener Mailserver aktiviert ist.'
+                        : ''
+                    }`}
+                    upgradeContact={plan?.upgradeContact}
+                  />
+                )}
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                   <div className="flex items-start">
                     <Lock className="h-5 w-5 text-blue-500 mr-3 mt-0.5" />
@@ -722,8 +778,7 @@ export function EmailManagement({ onClose }: EmailManagementProps) {
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Passwort *
                       </label>
-                      <input
-                        type="password"
+                      <PasswordInput
                         required
                         value={smtpSettings.smtp_pass}
                         onChange={(e) => setSmtpSettings(prev => ({ ...prev, smtp_pass: e.target.value }))}
@@ -805,12 +860,13 @@ export function EmailManagement({ onClose }: EmailManagementProps) {
                   </div>
                 </div>
               </div>
-            </div>
+            </fieldset>
           )}
 
           {/* Test Email Tab */}
-          {activeTab === 'test' && (
-            <div className="p-6">
+          {activeTab === 'test' && ownSmtpAllowed && (
+            <fieldset disabled={demo} className="p-6 min-w-0">
+              <DemoDisabledNotice />
               <div className="max-w-2xl mx-auto space-y-6">
                 <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                   <div className="flex items-start">
@@ -891,25 +947,14 @@ export function EmailManagement({ onClose }: EmailManagementProps) {
                   </div>
                 </div>
               </div>
-            </div>
+            </fieldset>
           )}
         </div>
 
         {/* Email Detail Modal */}
         {selectedEmail && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-60 p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
-              <div className="flex items-center justify-between p-6 border-b border-gray-200">
-                <h3 className="text-lg font-semibold text-gray-900">E-Mail-Details</h3>
-                <button
-                  onClick={() => setSelectedEmail(null)}
-                  className="text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  <X className="h-6 w-6" />
-                </button>
-              </div>
-              
-              <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+          <Modal title="E-Mail-Details" onClose={() => setSelectedEmail(null)} size="xl" zClass="z-[60]">
+              <div>
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -992,8 +1037,7 @@ export function EmailManagement({ onClose }: EmailManagementProps) {
                   )}
                 </div>
               </div>
-            </div>
-          </div>
+          </Modal>
         )}
       </div>
     </div>

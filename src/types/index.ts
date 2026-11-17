@@ -107,6 +107,9 @@ export type QuoteStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired'
 
 export interface QuoteItem extends Discount {
   id: UUID;
+  /** 'labor' = Arbeitszeit (aus Stundensatz-Vorlage), sonst Material; steuert die Übernahme in den Auftrag */
+  kind?: 'labor' | 'material';
+  hourlyRateId?: UUID;
   description: string;
   quantity: number;
   unitPrice: number;
@@ -139,6 +142,43 @@ export interface Quote extends Timestamps, GlobalDiscount {
   notes?: string;
   attachments?: QuoteAttachment[];
   convertedToInvoiceId?: UUID;
+  /** Letzte Antwort des Kunden über den Link in der Angebotsmail (nur lesend, vom Backend). */
+  customerResponse?: QuoteCustomerResponse;
+}
+
+export type QuoteDecision = 'accepted' | 'rejected';
+
+export interface QuoteCustomerResponse {
+  decision: QuoteDecision;
+  name: string;
+  comment: string | null;
+  respondedAt: string;
+  /** Bei Annahme bestätigter AGB-Link (null: keine AGB hinterlegt bzw. Ablehnung) */
+  termsUrl: string | null;
+  /** Empfänger der Angebotsmail mit diesem Link */
+  recipients: string | null;
+  /** Versandzeitpunkt der Mail mit diesem Link */
+  sentAt: string;
+}
+
+export type QuoteResponseStatus = 'valid' | 'invalid' | 'answered' | 'closed' | 'expired' | 'changed';
+
+/** Öffentliche Ansicht eines Angebots-Links (ohne Login). */
+export interface QuoteResponseView {
+  status: QuoteResponseStatus;
+  company?: { name: string; primaryColor: string | null; termsUrl: string | null };
+  quote?: {
+    quoteNumber: string;
+    customerName?: string;
+    issueDate?: string;
+    validUntil?: string;
+    subtotal?: number;
+    taxAmount?: number;
+    total?: number;
+    items?: { description: string; quantity: number; unitPrice: number; total: number }[];
+  };
+  decision?: QuoteDecision;
+  respondedAt?: string;
 }
 
 // ============================================================================
@@ -206,6 +246,13 @@ export interface JobEntry extends Timestamps {
   timeEntries?: JobTimeEntry[];
   materials?: JobMaterial[];
   status: JobStatus;
+  /** Angebot, aus dem der Auftrag entstand */
+  quoteId?: UUID | null;
+  /** Gesamtrabatt, wird bei der Abrechnung auf die Rechnung angewendet */
+  globalDiscountType?: DiscountType;
+  globalDiscountValue?: number;
+  /** Rechnung, auf der der Auftrag abgerechnet wurde */
+  invoiceId?: UUID | null;
   notes?: string;
   attachments?: JobAttachment[];
   signature?: JobSignature;
@@ -265,6 +312,8 @@ export interface Company extends ReminderSettings, CompanyHeader {
   phone: string;
   email: string;
   website?: string;
+  /** Link zu den AGB; Kunden bestätigen sie beim Annehmen eines Angebots per Mail-Link. */
+  termsUrl?: string;
   taxId: string; // USt-IdNr.
   taxIdentificationNumber?: string; // Steuernummer
   logo?: string | null;
@@ -478,8 +527,15 @@ export type UpdateInput<T> = Partial<Omit<T, 'id'>> & { id: UUID };
 // ============================================================================
 
 export type PlanName = 'selfhosted' | 'free' | 'starter' | 'professional' | 'enterprise';
-export type PlanFeature = 'email' | 'reminders' | 'jobs' | 'customerPricing' | 'reportingFull';
+export type PlanFeature = 'email' | 'reminders' | 'jobs' | 'customerPricing' | 'reportingFull' | 'ownSmtp' | 'ownSystemSmtp';
 export type PlanLimitKind = 'invoices' | 'quotes' | 'customers';
+
+/** GET /api/demo – öffentliche Demo-Instanz (OPENBILLS_DEMO). */
+export interface DemoInfo {
+  demo: boolean;
+  email?: string;
+  password?: string;
+}
 
 export interface PlanInfo {
   plan: PlanName;
@@ -488,15 +544,70 @@ export interface PlanInfo {
   limits: { invoicesPerMonth: number | null; quotesPerMonth: number | null; customers: number | null };
   usage: { period: string; invoices: number; quotes: number; customers: number };
   upgradeContact: string | null;
+  /** Versandweg je Mailart: Plattform-Relay oder eigenes SMTP. */
+  mailRoutes: { system: MailRoute; customer: MailRoute };
 }
 
-/** Antwort-Body des Backends bei 402 (Limit) bzw. 403 (Feature nicht im Plan). */
+export type MailRoute = 'platform' | 'own';
+
+/** Antwort-Body des Backends bei 402 (Limit), 403 (Feature nicht im Plan) bzw. 429 (Tageslimit Plattform-Mails). */
 export interface PlanErrorBody {
   error: string;
-  code: 'PLAN_LIMIT_REACHED' | 'FEATURE_NOT_IN_PLAN';
+  code: 'PLAN_LIMIT_REACHED' | 'FEATURE_NOT_IN_PLAN' | 'PLATFORM_MAIL_LIMIT';
   plan: PlanName;
   upgradeContact: string | null;
   kind?: PlanLimitKind;
   limit?: number;
   feature?: PlanFeature;
+}
+
+// ============================================================================
+// Auth Types
+// ============================================================================
+
+export type AuthRole = 'admin' | 'user';
+
+export interface AuthUser {
+  id: number;
+  email: string;
+  name: string;
+  role: AuthRole;
+  isOperator: boolean;
+  isActive: boolean;
+  totpEnabled: boolean;
+  /** Einrichtungsassistent abgeschlossen oder übersprungen. */
+  onboardingCompleted: boolean;
+  lastLoginAt: string | null;
+  createdAt: string;
+  /** ISO-Zeitpunkt, nur gesetzt solange die Sperre noch läuft. */
+  lockedUntil: string | null;
+}
+
+export type TokenStatus = 'valid' | 'expired' | 'used' | 'invalid' | 'done';
+
+export interface AuditEntry {
+  id: number;
+  at: string;
+  actorLabel: string | null;
+  isOperator: boolean;
+  action: string;
+  entityType: string | null;
+  entityId: string | null;
+  details: Record<string, unknown> | null;
+  ip: string | null;
+}
+
+export interface AuditLogFilters {
+  from?: string;
+  to?: string;
+  userId?: string;
+  action?: string;
+  page?: number;
+}
+
+export interface AuditLogPage {
+  entries: AuditEntry[];
+  total: number;
+  page: number;
+  pageSize: number;
 }
