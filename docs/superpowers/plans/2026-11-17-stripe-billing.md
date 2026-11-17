@@ -40,20 +40,22 @@ GitHub: Neue Anfrage (Issue als Protokoll) ──auto──► Instanz deployen 
         Tarif synchronisieren (plan-sync) ─► manage.sh set-plan (idempotent)
 ```
 
-Gewünschter Tarif aus einem Abo: Status `active`, `trialing` oder `past_due` → `price.product.metadata.plan`; sonst (`unpaid`, `canceled`, `incomplete_expired`) → `free`. Der Handler lädt die Subscription immer neu über die API und verlässt sich nicht auf die Reihenfolge der Events. Doppelte Events sind harmlos, weil `set-plan` bei unverändertem Tarif nichts tut.
+Gewünschter Tarif aus einem Abo: Status `active`, `trialing` oder `past_due` → Tarif aus `price.lookup_key` (`openbills_<tarif>_monthly`); sonst (`unpaid`, `canceled`, `incomplete_expired`) → `free`. Der Handler lädt die Subscription immer neu über die API und verlässt sich nicht auf die Reihenfolge der Events. Doppelte Events sind harmlos, weil `set-plan` bei unverändertem Tarif nichts tut.
 
-## Phase 0 – Stripe-Konto einrichten (manuell, zuerst in der Sandbox)
+## Phase 0 – Stripe-Konto einrichten (manuell, zuerst in der Sandbox) ✅ Sandbox (2026-11-17)
 
-- [ ] Konto auf stripe.com anlegen: Land Deutschland, Rechtsform Einzelunternehmen, Firmendaten wie im Impressum, IBAN für Auszahlungen, Identitätsprüfung, 2FA
-- [ ] Öffentliche Angaben: Name „OpenBills“, Support-Mail, Abrechnungsbezeichnung auf Kontoauszügen (`OPENBILLS`), Branding (Logo, Farbe)
-- [ ] Zahlungsmethoden: Karte, SEPA-Lastschrift (optional PayPal)
-- [ ] Produkte mit Monatspreis in EUR, je `metadata.plan` und `lookup_key`:
+Per API geprüft (lesender Restricted Key): `lookup_key`s an allen vier Monatspreisen, Portal mit vier Produkten, Downgrade zum Periodenende (`decreasing_item_amount`), Upgrade sofort (`always_invoice`), Kündigung aus, Login-Link aktiv. Nicht per API prüfbar, laut Betreiber eingerichtet: Konto, Rechnungs-Footer, Mahnlauf, Webhook-Endpunkt, Datenschutz-/AGB-/Rückleitungs-URL (am Portal-Objekt leer, vermutlich in den öffentlichen Kontodaten hinterlegt). Bei Starter liegt ein alter Einmalpreis (29 €, ohne `lookup_key`), der sich nicht archivieren lässt; stört nicht, weil Preise nur über `lookup_key` gesucht werden. Hinweis für den Code: `features.subscription_update.products` der Portal-Konfiguration kommt nur mit `expand` zurück. Live-Modus folgt in Phase 8.
+
+- [x] Konto auf stripe.com anlegen: Land Deutschland, Rechtsform Einzelunternehmen, Firmendaten wie im Impressum, IBAN für Auszahlungen, Identitätsprüfung, 2FA
+- [x] Öffentliche Angaben: Name „OpenBills“, Support-Mail, Abrechnungsbezeichnung auf Kontoauszügen (`OPENBILLS`), Branding (Logo, Farbe)
+- [x] Zahlungsmethoden: Karte, SEPA-Lastschrift (optional PayPal)
+- [x] Produkte mit Monatspreis in EUR, je `lookup_key` (einzige Zuordnung Preis → Tarif; `metadata.plan` nicht nötig):
   - Free 0 € (`openbills_free_monthly`), Starter 29 €, Professional 79 €, Enterprise 149 €
-- [ ] Billing → Rechnungen: Footer „Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.“, Rechnungsnummern-Präfix, Mails für fertige Rechnungen und Belege an
-- [ ] Billing → Abo-Verwaltung: Smart Retries, nach dem letzten Versuch Abo **als unbezahlt markieren**, Mails bei Zahlungsausfall an
-- [ ] Customer Portal: Tarifwechsel zwischen allen vier Preisen, Upgrade sofort mit anteiliger Berechnung, Downgrade zum Ende des Zeitraums, Zahlungsmethode ändern, Rechnungsverlauf; Kündigung **aus**; Links zu AGB und Datenschutz; Login-Link aktivieren
-- [ ] Webhook-Endpunkt `https://openbills.de/api/stripe/webhook` mit den Events `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_failed`, `invoice.paid`
-- [ ] Eingeschränkter API-Schlüssel (Restricted Key): Customers *write*, Checkout Sessions *write*, Subscriptions *read*, Products/Prices *read*
+- [x] Billing → Rechnungen: Footer „Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.“, Rechnungsnummern-Präfix, Mails für fertige Rechnungen und Belege an
+- [x] Billing → Abo-Verwaltung: Smart Retries, nach dem letzten Versuch Abo **als unbezahlt markieren**, Mails bei Zahlungsausfall an
+- [x] Customer Portal: Tarifwechsel zwischen allen vier Preisen, Upgrade sofort mit anteiliger Berechnung, Downgrade zum Ende des Zeitraums, Zahlungsmethode ändern, Rechnungsverlauf; Kündigung **aus**; Links zu AGB und Datenschutz; Login-Link aktivieren
+- [x] Webhook-Endpunkt `https://openbills.de/api/stripe/webhook` mit den Events `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_failed`, `invoice.paid`
+- [x] Eingeschränkter API-Schlüssel (Restricted Key): Customers *write*, Checkout Sessions *write*, Subscriptions *read*, Products/Prices *read*
 
 ## Phase 1 – request-api: Checkout (Landing)
 
@@ -138,6 +140,5 @@ Gewünschter Tarif aus einem Abo: Status `active`, `trialing` oder `past_due` �
 
 ## Offene Punkte
 
-- Ist `metadata` am Produkt in den Portal-Events vorhanden, oder muss `price.product` per `expand` geladen werden? (In Phase 2 klären, im Zweifel immer expandieren.)
 - Verlangt das Portal beim Upgrade von Free (ohne gespeicherte Zahlungsmethode) automatisch eine Zahlungsmethode? In der Sandbox prüfen. Falls nicht: Upgrade von Free per eigenem Checkout-Link („Tarif buchen“ im Upgrade-Dialog).
 - SEPA: Das Abo ist aktiv, bevor die Lastschrift durch ist (einige Tage). Deploy trotzdem sofort; ein späterer Ausfall läuft über den normalen Mahnlauf.
