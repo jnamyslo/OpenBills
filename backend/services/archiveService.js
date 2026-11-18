@@ -2,18 +2,32 @@
 // Spec: docs/superpowers/specs/2026-11-17-document-archive-storno.md
 
 import crypto from 'crypto';
-import { query } from '../database.js';
+import { pool, query } from '../database.js';
 import logger from '../utils/logger.js';
 
 const DOCUMENT_TYPES = ['invoice', 'quote', 'reminder'];
 const FORMATS = ['pdf', 'zugferd', 'xrechnung'];
 const SOURCES = ['output', 'regenerated'];
 
+// FOR SHARE: ein paralleler Rückweg auf Entwurf (updateInvoice sperrt FOR UPDATE) wartet bis nach dem Insert
+// bzw. das Archivieren sieht den neuen Status.
 const SNAPSHOT_SQL = {
-  invoice: 'SELECT invoice_number AS number, customer_name, issue_date, total, status FROM invoices WHERE id = $1',
-  reminder: 'SELECT invoice_number AS number, customer_name, issue_date, total, status FROM invoices WHERE id = $1',
-  quote: 'SELECT quote_number AS number, customer_name, issue_date, total, status FROM quotes WHERE id = $1',
+  invoice: 'SELECT invoice_number AS number, customer_name, issue_date, total, status FROM invoices WHERE id = $1 FOR SHARE',
+  reminder: 'SELECT invoice_number AS number, customer_name, issue_date, total, status FROM invoices WHERE id = $1 FOR SHARE',
+  quote: 'SELECT quote_number AS number, customer_name, issue_date, total, status FROM quotes WHERE id = $1 FOR SHARE',
 };
+
+// Dateityp nie aus der Nutzereingabe (sonst z. B. text/html beim Download).
+const CONTENT_TYPES = { pdf: 'application/pdf', zugferd: 'application/pdf', xrechnung: 'application/xml' };
+
+function assertContentMatchesFormat(buffer, format) {
+  if (format === 'xrechnung') {
+    const text = buffer.subarray(0, 64).toString('utf8').replace(/^\uFEFF/, '').trimStart();
+    if (!text.startsWith('<')) throw httpError(400, 'Datei ist kein XML');
+  } else if (buffer.subarray(0, 4).toString('latin1') !== '%PDF') {
+    throw httpError(400, 'Datei ist kein PDF');
+  }
+}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -45,13 +59,12 @@ function toApi(row) {
   };
 }
 
-function validate({ documentType, documentId, format, filename, contentType, contentBase64, source, reminderStage }) {
+function validate({ documentType, documentId, format, filename, contentBase64, source, reminderStage }) {
   if (!DOCUMENT_TYPES.includes(documentType)) throw httpError(400, 'Ungültiger Belegtyp');
   if (typeof documentId !== 'string' || !UUID_RE.test(documentId)) throw httpError(400, 'Ungültige Beleg-ID');
   if (!FORMATS.includes(format)) throw httpError(400, 'Ungültiges Format');
   if (!SOURCES.includes(source)) throw httpError(400, 'Ungültige Quelle');
   if (typeof filename !== 'string' || !filename.trim() || filename.length > 255) throw httpError(400, 'Ungültiger Dateiname');
-  if (typeof contentType !== 'string' || !contentType.trim() || contentType.length > 100) throw httpError(400, 'Ungültiger Dateityp');
   if (typeof contentBase64 !== 'string' || !contentBase64) throw httpError(400, 'Datei fehlt');
   if (documentType === 'reminder') {
     if (![1, 2, 3].includes(reminderStage)) throw httpError(400, 'Ungültige Mahnstufe');
@@ -62,33 +75,49 @@ function validate({ documentType, documentId, format, filename, contentType, con
 
 /**
  * Legt eine Fassung ab. Nummer, Kunde, Datum und Summe werden als Schnappschuss aus der DB gelesen.
- * Wirft 400 (ungültig), 404 (unbekannter Beleg), 409 (Entwurf).
+ * Wirft 400 (ungültig), 404 (unbekannter Beleg), 409 (Entwurf). `contentType` wird ignoriert (aus `format` abgeleitet).
+ * Mit `client` läuft alles in dessen Transaktion, sonst in einer eigenen.
  */
 export async function archiveDocument(client, params) {
   validate(params);
-  const { documentType, documentId, format, filename, contentType, contentBase64, source, reminderStage = null, userId = null } = params;
-  const run = client ? (sql, values) => client.query(sql, values) : query;
+  const buffer = Buffer.from(params.contentBase64, 'base64');
+  if (buffer.length === 0) throw httpError(400, 'Datei fehlt');
+  assertContentMatchesFormat(buffer, params.format);
+  if (client) return insertArchiveEntry(client, params, buffer);
 
-  const { rows: [doc] } = await run(SNAPSHOT_SQL[documentType], [documentId]);
+  const own = await pool.connect();
+  try {
+    await own.query('BEGIN');
+    const result = await insertArchiveEntry(own, params, buffer);
+    await own.query('COMMIT');
+    return result;
+  } catch (error) {
+    await own.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    own.release();
+  }
+}
+
+async function insertArchiveEntry(client, params, buffer) {
+  const { documentType, documentId, format, filename, source, reminderStage = null, userId = null } = params;
+  const { rows: [doc] } = await client.query(SNAPSHOT_SQL[documentType], [documentId]);
   if (!doc) throw httpError(404, 'Beleg nicht gefunden');
   if (doc.status === 'draft') throw httpError(409, 'Entwürfe werden nicht archiviert');
 
-  const buffer = Buffer.from(contentBase64, 'base64');
-  if (buffer.length === 0) throw httpError(400, 'Datei fehlt');
   const sha256 = crypto.createHash('sha256').update(buffer).digest('hex');
-
-  const inserted = await run(
+  const inserted = await client.query(
     `INSERT INTO document_archive (document_type, document_id, document_number, customer_name, issue_date, total,
        reminder_stage, format, filename, content_type, size, content, sha256, source, created_by)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
      ON CONFLICT (document_type, document_id, format, sha256) DO NOTHING
      RETURNING id`,
     [documentType, documentId, doc.number, doc.customer_name, doc.issue_date, doc.total,
-      reminderStage, format, filename.trim(), contentType.trim(), buffer.length, buffer.toString('base64'), sha256, source, userId]
+      reminderStage, format, filename.trim(), CONTENT_TYPES[format], buffer.length, buffer.toString('base64'), sha256, source, userId]
   );
   if (inserted.rows.length > 0) return { id: inserted.rows[0].id, created: true };
 
-  const { rows: [existing] } = await run(
+  const { rows: [existing] } = await client.query(
     'SELECT id FROM document_archive WHERE document_type = $1 AND document_id = $2 AND format = $3 AND sha256 = $4',
     [documentType, documentId, format, sha256]
   );

@@ -52,6 +52,7 @@ router.get('/:id/download', async (req, res) => {
       details: { documentNumber: file.documentNumber, format: file.format },
     });
     res.setHeader('Content-Type', file.contentType);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(file.filename)}`);
     res.send(file.content);
   } catch (error) {

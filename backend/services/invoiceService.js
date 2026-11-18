@@ -39,7 +39,15 @@ export async function generateInvoiceNumber(issueDate, prefix = 'RE') {
   }
 }
 
+// 'cancelled' setzt ausschließlich der Storno-Service.
+const CREATABLE_STATUSES = ['draft', 'sent', 'paid', 'overdue', 'reminded_1x', 'reminded_2x', 'reminded_3x'];
+
 export async function createInvoice(data) {
+  if (data.status !== undefined && !CREATABLE_STATUSES.includes(data.status)) {
+    const err = new Error('Ungültiger Status für eine neue Rechnung.');
+    err.statusCode = 400;
+    throw err;
+  }
   const discountValidation = validateDiscountFields(data);
   if (!discountValidation.valid) {
     const err = new Error(discountValidation.message);
@@ -290,6 +298,15 @@ export async function deleteInvoice(id) {
       return false;
     }
     assertDeleteAllowed(current);
+    // Verknüpfte Quellen wieder abrechenbar machen (FK nur SET NULL, Status bliebe sonst invoiced/billed).
+    await client.query(
+      "UPDATE job_entries SET invoice_id = NULL, status = 'completed', updated_at = NOW() WHERE invoice_id = $1",
+      [id]
+    );
+    await client.query(
+      "UPDATE quotes SET converted_to_invoice_id = NULL, status = 'accepted' WHERE converted_to_invoice_id = $1",
+      [id]
+    );
     await client.query('DELETE FROM invoices WHERE id = $1', [id]);
     await client.query('COMMIT');
     return true;

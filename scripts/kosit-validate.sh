@@ -4,6 +4,7 @@
 #
 #   scripts/kosit-validate.sh            # lädt Validator + Konfiguration nach .kosit/ (einmalig)
 #   KOSIT_DIR=/pfad scripts/kosit-validate.sh   # vorhandenen Download nutzen
+#   scripts/kosit-validate.sh --check-only      # nur vorhandene Berichte in $KOSIT_DIR auswerten
 #
 # Exit-Code 0 nur, wenn alle Beispiele "ACCEPT" sind. Berichte: $KOSIT_DIR/reports/*.html
 set -euo pipefail
@@ -15,6 +16,31 @@ CONFIG_ZIP=xrechnung-3.0.2-validator-configuration-2026-08-31.zip
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 WORK=${KOSIT_DIR:-$ROOT/.kosit}
 JAR=validator-$VALIDATOR_VERSION-standalone.jar
+
+# Erfolg nur, wenn es zu jedem Beispiel einen Bericht gibt und jeder Bericht "accept" enthält.
+check_reports() {
+  local samples reports file failed=0
+  samples=$(find "$WORK/samples" -maxdepth 1 -name '*.xml' 2>/dev/null | wc -l | tr -d ' ')
+  reports=$(find "$WORK/reports" -maxdepth 1 -name '*-report.xml' 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$samples" -eq 0 ] || [ "$reports" -ne "$samples" ]; then
+    echo "Fehler: $reports Berichte für $samples Beispiele – Validator abgestürzt?" >&2
+    return 1
+  fi
+  for file in "$WORK"/reports/*-report.xml; do
+    if ! grep -q '<rep:accept' "$file"; then
+      [ "$failed" -eq 0 ] && echo "Abgelehnt:"
+      echo "$file"; failed=1
+    fi
+  done
+  [ "$failed" -eq 0 ] || return 1
+  echo "Alle Beispiele akzeptiert."
+}
+
+if [ "${1:-}" = "--check-only" ]; then
+  check_reports
+  exit $?
+fi
+
 mkdir -p "$WORK"
 rm -rf "$WORK/samples" "$WORK/reports"
 mkdir -p "$WORK/samples" "$WORK/reports"
@@ -38,8 +64,4 @@ docker run --rm -v "$WORK":/kosit eclipse-temurin:21-jre sh -c \
   | sed -n '/^Results:/,$p' || true
 
 # Ergebnis aus den Berichten, unabhängig vom Exit-Code des Validators
-if grep -q '<rep:reject' "$WORK"/reports/*-report.xml; then
-  echo "Abgelehnt:"; grep -l '<rep:reject' "$WORK"/reports/*-report.xml
-  exit 1
-fi
-echo "Alle Beispiele akzeptiert."
+check_reports

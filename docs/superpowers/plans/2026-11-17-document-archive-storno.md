@@ -161,6 +161,7 @@ Anlass: KoSIT-Lauf in Task 6. Summen wurden mit ungerundeter Steuer gebildet (BR
 - Create: `src/components/CancelInvoiceModal.tsx` (Grund Pflicht, Checkbox „Aufträge und Angebot wieder zur Abrechnung freigeben“, Hinweis bei bezahlter Rechnung)
 - Create: `src/components/ArchiveVersions.tsx` (Liste in der Rechnungs-/Angebotsdetailansicht)
 - Test: `src/utils/__tests__/archiveOutput.test.ts`
+- Review (2026-11-18, N3): Mailrouten liefern `archived: false`, wenn die Archivierung nach erfolgreichem Versand scheitert (`backend/routes/email.js`, `backend/routes/quotes.js`); das Frontend zeigt dann eine Warnung („Versendet, aber nicht archiviert – bitte erneut herunterladen“).
 
 - [ ] **Step 1:** Failing test: Helper archiviert vor dem Download; Entwurf wird nicht archiviert; Archivfehler bricht den Download ab (sonst kein Nachweis) und `releaseForOutput` setzt zurück.
 - [ ] **Step 2:** Helper + API + Umbau aller Download-Stellen (Grep auf `downloadBlob(` als Checkliste; Vorschau in `DocumentPreview.tsx` bleibt ohne Archiv).
@@ -175,6 +176,7 @@ Anlass: KoSIT-Lauf in Task 6. Summen wurden mit ungerundeter Steuer gebildet (BR
 - Modify: `backend/routes/archive.js` (`GET /export`, Admin, Audit `archive.exported`)
 - Create: `src/components/settings/ArchivExportSection.tsx` (oder in die bestehende Daten-/Backup-Sektion integrieren; dort nachsehen, wo `BackupManagement.tsx` eingebunden ist)
 - Test: `backend/tests/archiveExport.test.js`
+- Review (2026-11-18, N5): Nachträglich erzeugte Fassungen (`source: 'regenerated'`) nutzen die aktuellen Kunden- und Firmendaten. `LIESMICH.txt` und die Spalte „Quelle“ in `index.csv` weisen darauf hin („nachträglich erzeugt, Stammdaten Stand Export“). Dateinamen beim ZIP-Bau sanitisieren (`/`, `..`), nicht beim Archivieren.
 
 **Interfaces:**
 - ZIP laut Spec § 4: `LIESMICH.txt`, `index.csv`, `rechnungen/`, `angebote/`, `mahnungen/`, `anhaenge/`, `kunden.csv`, `rechnungsjournal.csv`. CSV: UTF-8 mit BOM, `;`, Dezimalkomma, Datum `TT.MM.JJJJ`. Dateinamen sanitisiert (keine `/`, `..`). Mehrere Fassungen gleicher Datei: Suffix `_2`, `_3` nach `created_at`.
@@ -231,6 +233,7 @@ Hintergrund: Seit der Sperre (Task 3) antwortet `DELETE /api/customers/:id` mit 
 - Modify: `src/components/CustomerManagement.tsx` (Filter „Archivierte anzeigen“, Aktionen „Archivieren“/„Wiederherstellen“; bei 409 `CUSTOMER_HAS_INVOICES` Archivieren anbieten)
 - Modify: Kundenauswahl in Editoren (Grep `customers.map`/`customers.filter` in `InvoiceEditor`, `QuoteEditor`, `JobEntryForm`, `JobInvoiceGenerator` u. a.): archivierte Kunden ausblenden, außer der Beleg gehört bereits zu ihnen
 - Test: `backend/tests/customerArchive.test.js`
+- Review (2026-11-18, N5): Archivierte Kunden behalten ihre Stammdaten unverändert (kein Bearbeiten im archivierten Zustand), damit nachträglich erzeugte Fassungen dem Original entsprechen.
 
 - [ ] **Step 1:** Failing tests: Archivieren/Wiederherstellen mit Audit; archivierter Kunde in der Liste mit `archivedAt`; neue Rechnung/Angebot/Auftrag für archivierten Kunden 409; bestehende Rechnungen bleiben lesbar, Statuswechsel und Storno gehen; `DELETE` weiter 409 bei freigegebenen Rechnungen; Restore eines Backups ohne `archived_at` (alte Backups) funktioniert.
 - [ ] **Step 2:** Implementieren, BTEST grün.

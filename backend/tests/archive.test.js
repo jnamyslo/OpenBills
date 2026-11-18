@@ -3,6 +3,7 @@ import request from 'supertest';
 import { PDFDocument } from 'pdf-lib';
 import { pool } from '../database.js';
 import { hasDb, migrateTestDb, resetAuthTables } from './helpers/db.js';
+import { archiveDocument } from '../services/archiveService.js';
 import { loginAs, ORIGIN, waitForAudit } from './helpers/auth.js';
 
 const mail = vi.hoisted(() => ({
@@ -136,6 +137,7 @@ describe.skipIf(!hasDb)('Belegarchiv', () => {
       .parse((res, cb) => { const chunks = []; res.on('data', (c) => chunks.push(c)); res.on('end', () => cb(null, Buffer.concat(chunks))); });
     expect(file.status).toBe(200);
     expect(file.headers['content-type']).toMatch(/application\/pdf/);
+    expect(file.headers['x-content-type-options']).toBe('nosniff');
     expect(file.headers['content-disposition']).toContain('RE-2026-001.pdf');
     expect(file.body.equals(Buffer.from(PDF, 'base64'))).toBe(true);
     const audits = await waitForAudit('archive.downloaded');
@@ -143,6 +145,51 @@ describe.skipIf(!hasDb)('Belegarchiv', () => {
 
     expect((await request(app).get('/api/archive/00000000-0000-0000-0000-000000000000/download').set('Cookie', cookie)).status).toBe(404);
     expect((await request(app).get('/api/archive/kein-uuid/download').set('Cookie', cookie)).status).toBe(404);
+  });
+
+  it('leitet den Dateityp aus dem Format ab und ignoriert den Client-Wert', async () => {
+    const { body: { id } } = await upload({ contentType: 'text/html' });
+    const pdfRow = await pool.query('SELECT content_type FROM document_archive WHERE id = $1', [id]);
+    expect(pdfRow.rows[0].content_type).toBe('application/pdf');
+    const file = await request(app).get(`/api/archive/${id}/download`).set('Cookie', cookie);
+    expect(file.headers['content-type']).toMatch(/^application\/pdf/);
+
+    const xml = await upload({ format: 'xrechnung', filename: 'RE.xml', contentType: 'text/html\r\nX: y', content: XML });
+    expect(xml.status).toBe(201);
+    const xmlRow = await pool.query('SELECT content_type FROM document_archive WHERE id = $1', [xml.body.id]);
+    expect(xmlRow.rows[0].content_type).toBe('application/xml');
+  });
+
+  it('lehnt Inhalte ab, die nicht zum Format passen (400)', async () => {
+    const html = Buffer.from('<html>x</html>').toString('base64');
+    expect((await upload({ format: 'pdf', content: html })).status).toBe(400);
+    expect((await upload({ format: 'zugferd', content: Buffer.from('abc').toString('base64') })).status).toBe(400);
+    expect((await upload({ format: 'xrechnung', content: PDF })).status).toBe(400);
+    const bomXml = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('\n <?xml version="1.0"?><Invoice/>')]).toString('base64');
+    expect((await upload({ format: 'xrechnung', content: bomXml })).status).toBe(201);
+    expect((await pool.query('SELECT 1 FROM document_archive')).rows).toHaveLength(1);
+  });
+
+  it('archiviert nicht, wenn die Rechnung parallel auf Entwurf zurückgesetzt wird', async () => {
+    const locker = await pool.connect();
+    try {
+      await locker.query('BEGIN');
+      await locker.query('SELECT id FROM invoices WHERE id = $1 FOR UPDATE', [invoiceId]);
+      const pending = archiveDocument(null, {
+        documentType: 'invoice', documentId: invoiceId, format: 'pdf', filename: 'RE.pdf', contentType: 'application/pdf',
+        contentBase64: PDF, source: 'output',
+      }).then(() => 'archiviert', (error) => error);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect((await pool.query('SELECT 1 FROM document_archive')).rows).toHaveLength(0);
+      await locker.query("UPDATE invoices SET status = 'draft' WHERE id = $1", [invoiceId]);
+      await locker.query('COMMIT');
+      const outcome = await pending;
+      expect(outcome).toBeInstanceOf(Error);
+      expect(outcome.statusCode).toBe(409);
+      expect((await pool.query('SELECT 1 FROM document_archive')).rows).toHaveLength(0);
+    } finally {
+      locker.release();
+    }
   });
 
   it('meldet freigegebene Belege ohne PDF-Fassung', async () => {
@@ -199,6 +246,24 @@ describe.skipIf(!hasDb)('Belegarchiv', () => {
       });
       expect(res.status).toBe(200);
       expect((await archived()).rows).toMatchObject([{ format: 'xrechnung', filename: 'XRechnung_RE-2026-001.xml' }]);
+    });
+
+    it('send-invoice archiviert nicht bei Transportfehler', async () => {
+      mail.sendInvoiceEmail.mockRejectedValueOnce(new Error('SMTP down'));
+      const res = await request(app).post('/api/email/send-invoice').set('Cookie', cookie).set(ORIGIN).send({
+        customerEmail: 'k@test.example', invoicePDF: PDF, invoiceData: invoiceData(), format: 'zugferd',
+      });
+      expect(res.status).toBe(500);
+      expect((await archived()).rows).toEqual([]);
+    });
+
+    it('send-reminder archiviert keine Mahnung zu einem Entwurf', async () => {
+      const res = await request(app).post('/api/email/send-reminder').set('Cookie', cookie).set(ORIGIN).send({
+        customerEmails: ['k@test.example'], reminderPDF: PDF, invoiceData: { ...invoiceData(), id: draftId }, stage: 1,
+      });
+      expect(res.status).toBe(200);
+      expect(mail.sendReminderEmail).toHaveBeenCalled();
+      expect((await archived()).rows).toEqual([]);
     });
 
     it('send-reminder archiviert die Mahnung mit Stufe', async () => {

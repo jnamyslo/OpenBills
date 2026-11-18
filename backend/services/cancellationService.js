@@ -13,10 +13,9 @@ function httpError(statusCode, message, code) {
   return Object.assign(new Error(message), { statusCode, code });
 }
 
-function todayLocal() {
-  const d = new Date();
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+// Datum (YYYY-MM-DD) in deutscher Zeit; der Container läuft in UTC.
+export function berlinDate(date = new Date()) {
+  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(date);
 }
 
 function validate(id, { reason, releaseSources, replacementInvoiceId }) {
@@ -95,7 +94,7 @@ async function handleSources(client, originalId, { releaseSources, replacementIn
 export async function cancelInvoice(id, { reason, releaseSources = true, replacementInvoiceId = null } = {}) {
   validate(id, { reason, releaseSources, replacementInvoiceId });
   const trimmedReason = reason.trim();
-  const issueDate = todayLocal();
+  const issueDate = berlinDate();
 
   for (let attempt = 0; ; attempt++) {
     // Nummer vor der Transaktion (eigene Verbindung, wie createInvoice); bei Kollision neu.

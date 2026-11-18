@@ -5,9 +5,18 @@ import { hasDb, migrateTestDb, resetAuthTables } from './helpers/db.js';
 import { loginAs, ORIGIN, waitForAudit } from './helpers/auth.js';
 import { createApp } from '../app.js';
 import { currentPeriod } from '../utils/plan.js';
+import { berlinDate } from '../services/cancellationService.js';
 
 const app = createApp();
 const YEAR = new Date().getFullYear();
+
+describe('berlinDate', () => {
+  it('bildet das Datum in deutscher Zeit (MEZ/MESZ), nicht in UTC', () => {
+    expect(berlinDate(new Date('2026-12-31T23:30:00Z'))).toBe('2027-01-01');
+    expect(berlinDate(new Date('2026-06-30T22:30:00Z'))).toBe('2026-07-01');
+    expect(berlinDate(new Date('2026-06-30T21:30:00Z'))).toBe('2026-06-30');
+  });
+});
 
 describe.skipIf(!hasDb)('Storno', () => {
   let cookie;
@@ -164,6 +173,31 @@ describe.skipIf(!hasDb)('Storno', () => {
       });
     });
 
+    it('Löschen eines Entwurfs gibt verknüpfte Aufträge und Angebot wieder frei', async () => {
+      const draft = await createInvoice({ status: 'draft' });
+      const ids = await linkSources(draft.id);
+      const res = await request(app).delete(`/api/invoices/${draft.id}`).set('Cookie', cookie).set(ORIGIN);
+      expect(res.status).toBeLessThan(300);
+      expect(await row(draft.id)).toBeUndefined();
+      expect(await sources(ids)).toEqual({
+        quote: { status: 'accepted', converted_to_invoice_id: null },
+        job: { status: 'completed', invoice_id: null },
+      });
+    });
+
+    it('Stornieren und neu erstellen, dann Entwurf verwerfen: Quellen wieder abrechenbar', async () => {
+      const original = await createInvoice();
+      const ids = await linkSources(original.id);
+      const replacement = await createInvoice({ status: 'draft' });
+      expect((await cancel(original.id, { reason: 'x', replacementInvoiceId: replacement.id })).status).toBe(201);
+      const res = await request(app).delete(`/api/invoices/${replacement.id}`).set('Cookie', cookie).set(ORIGIN);
+      expect(res.status).toBeLessThan(300);
+      expect(await sources(ids)).toEqual({
+        quote: { status: 'accepted', converted_to_invoice_id: null },
+        job: { status: 'completed', invoice_id: null },
+      });
+    });
+
     it('replacementInvoiceId muss ein Entwurf desselben Kunden sein', async () => {
       const original = await createInvoice();
       const released = await createInvoice();
@@ -177,6 +211,19 @@ describe.skipIf(!hasDb)('Storno', () => {
       }
       expect((await row(original.id)).status).toBe('sent');
     });
+  });
+
+  it('POST /api/invoices lehnt Status cancelled und Unbekanntes ab (400), sent bleibt 201', async () => {
+    const base = { customerId, issueDate: `${YEAR}-03-10`, dueDate: `${YEAR}-03-24`, items: [{ description: 'X', quantity: 1, unitPrice: 10, taxRate: 19 }] };
+    for (const status of ['cancelled', 'foo']) {
+      const res = await post('/api/invoices', { ...base, status });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/Status/);
+    }
+    expect((await pool.query('SELECT COUNT(*)::int AS n FROM invoices')).rows[0].n).toBe(0);
+    const ok = await post('/api/invoices', { ...base, status: 'sent' });
+    expect(ok.status).toBe(201);
+    expect(ok.body.status).toBe('sent');
   });
 
   it('zählt nicht gegen das Kontingent (Free-Limit ausgeschöpft)', async () => {
@@ -223,6 +270,9 @@ describe.skipIf(!hasDb)('Storno', () => {
     expect(byNumber[cancellation.invoiceNumber]).toMatchObject({
       status: 'cancelled', invoiceType: 'cancellation', cancelsInvoiceNumber: original.invoiceNumber,
     });
+    for (const number of [original.invoiceNumber, cancellation.invoiceNumber]) {
+      expect(byNumber[number]).toMatchObject({ paidAmount: 0, overdueAmount: 0, outstandingAmount: 0 });
+    }
     const { summary } = journal.body;
     expect(summary.totalInvoices).toBe(2);
     for (const key of ['totalAmount', 'subtotalSum', 'taxSum', 'paidAmount', 'overdueAmount', 'outstandingAmount']) {
