@@ -134,8 +134,22 @@
 
 - [x] **Step 1:** Failing tests: XML beider Formate enthält 384, Referenz mit Nummer + Datum, `BilledQuantity`/`InvoicedQuantity` negativ, `ChargeAmount`/`PriceAmount` positiv, Gesamtsumme negativ und gleich der negierten Originalsumme; normale Rechnung unverändert 380 ohne Referenz.
 - [x] **Step 2:** Implementieren, FTEST grün.
-- [ ] **Step 3:** KoSIT-Validator in Docker (aktuelle Release von `itplr-kosit/validator` + `validator-configuration-xrechnung`) gegen Beispiel-Storno beider Formate (ZUGFeRD-XML aus der PDF extrahiert). Ergebnis und Versionen im PR vermerken. Bei Fehlern: Generator anpassen, nicht die Regel umgehen.
-- [ ] **Step 4:** Commit.
+- [x] **Step 3:** KoSIT-Validator in Docker (aktuelle Release von `itplr-kosit/validator` + `validator-configuration-xrechnung`) gegen Beispiel-Storno beider Formate (ZUGFeRD-XML aus der PDF extrahiert). Ergebnis und Versionen im PR vermerken. Bei Fehlern: Generator anpassen, nicht die Regel umgehen.
+  - Ergebnis (2026-11-18): Validator 1.6.3, `xrechnung-3.0.2-validator-configuration-2026-08-31`, `scripts/kosit-validate.sh` → 10/10 ACCEPT (Rechnung + Storno gemischt, 19 %, Kleinunternehmer, Reverse Charge; je UBL + CII). Das CII-XML wird direkt aus `generateZUGFeRDXML` geprüft – `embedZUGFeRDXMLIntoPDF` bettet genau diesen String ein.
+  - Erster Lauf: Original und Storno abgelehnt mit BR-CO-15 und BR-S-08 (CII) – bestehender Rundungsfehler aller E-Rechnungen, nicht Storno-spezifisch. Behoben in Task 6a.
+- [x] **Step 4:** Commit.
+
+### Task 6a: Cent-genaue Summen und E-Rechnung (eingeschoben)
+
+Anlass: KoSIT-Lauf in Task 6. Summen wurden mit ungerundeter Steuer gebildet (BR-CO-15), Steuergruppen aus ungerundeten Positionsbeträgen (BR-S-08); Reverse Charge ohne Käufer-USt-ID (BR-AE-02).
+
+**Files:** `src/utils/discountUtils.ts`, `backend/utils/documentTotals.js`, `backend/services/documentTotalsService.js` (neu), `backend/services/invoiceService.js`, `backend/services/quoteService.js`, `src/utils/pdf/xrechnungGenerator.ts`, `src/utils/pdf/zugferdGenerator.ts`, `src/utils/pdf/xmlUtils.ts`, `scripts/kosit-validate.sh` (neu), Tests: `centTotals.test.ts`, `documentTotalsParity.test.ts`, `kositSamples.test.ts`, `backend/tests/documentTotals.test.js`
+
+- [x] **Step 1:** Summen Cent-genau: Position netto = gerundeter Betrag − gerundeter Rabatt, Gesamtrabatt je Steuersatz verteilt (Rest-Cent auf den größten Satz), Steuer je Satz gerundet, Gesamtbetrag = Netto + Steuer. Frontend und Backend identisch (Paritätstest inkl. Steuergruppen und Positionen).
+- [x] **Step 2:** Backend speichert Rechnungen/Angebote mit diesen Summen (Rabattbeträge aus Typ/Wert, Kleinunternehmer der Firma), nicht mit Client-Werten. Altdaten: Rabattbetrag ohne Typ = Festrabatt.
+- [x] **Step 3:** XML-Generatoren leiten alle Beträge aus der Berechnung ab (auch Altrechnungen gültig; dort ggf. 1 Cent Abweichung zum gespeicherten Betrag/PDF). Käufer-USt-ID (BT-48) bei Präfix-Format.
+- [x] **Step 4:** `scripts/kosit-validate.sh` + Beispiele, 10/10 ACCEPT.
+- [x] **Step 5:** Commit.
 
 ### Task 7: Frontend – Archivierung beim Download, Sperre, Storno
 
@@ -200,6 +214,7 @@
 - Modify: `CLAUDE.md` (Abschnitt „Belegarchiv und Storno“: Tabelle, Sperre, `ST-`-Kreis, 384, Export, Skript; Verweis auf Spec)
 - Modify: `docs/superpowers/specs/2026-11-13-plan-tiers.md` (Zeile „Archiv-Export ✓“ in allen Spalten)
 - Modify: Hilfe-/FAQ-Texte im Frontend, falls dort Bearbeiten freigegebener Rechnungen beschrieben ist (Grep „GoBD“)
+- Modify: `CLAUDE.md` (Abschnitt eRechnung/Belegkette: Summen Cent-genau, `documentTotalsService.js`, `scripts/kosit-validate.sh`)
 
 - [ ] **Step 1:** Doku anpassen.
 - [ ] **Step 2:** Commit.

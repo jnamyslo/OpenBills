@@ -20,3 +20,4 @@ docker-compose*.yml
 scripts/platform.sh
 scripts/seed-demo.mjs
 .DS_Store
+.kosit

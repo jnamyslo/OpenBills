@@ -2,3 +2,5 @@
 .env.*
 # Brainstorming-Companion
 .superpowers/
+# KoSIT-Validator (scripts/kosit-validate.sh)
+.kosit/
