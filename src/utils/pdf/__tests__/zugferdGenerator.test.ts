@@ -78,6 +78,13 @@ describe('generateZUGFeRDXML', () => {
       expect(tag(header[0], 'ram:ExemptionReason')).toContain('§ 13b UStG');
       expect(tag(xml, 'ram:Content')).toContain('13b');
     });
+
+    it('gibt die USt-ID des Käufers aus (BT-48, BR-AE-02), Steuernummern nicht', () => {
+      const inv = testInvoice([testItem({ unitPrice: 500, taxRate: 0, total: 500 })], { taxAmount: 0, total: 500 });
+      const buyer = (taxId: string) => tag(generateZUGFeRDXML(inv, testOptions({ isSmallBusiness: false }, { taxId })), 'ram:BuyerTradeParty') ?? '';
+      expect(tag(tag(buyer('ATU 1234 5678'), 'ram:SpecifiedTaxRegistration') ?? '', 'ram:ID')).toBe('ATU12345678');
+      expect(buyer('12/345/67890')).not.toContain('SpecifiedTaxRegistration');
+    });
   });
 
   describe('Fall 3 — mehrere Steuersätze mit Gesamtrabatt', () => {

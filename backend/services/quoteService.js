@@ -6,6 +6,7 @@ import { generateInvoiceNumber } from './invoiceService.js';
 import { validateDiscountFields } from '../utils/validation.js';
 import { countReleaseIfNeeded } from './quotaService.js';
 import { calculateTotals } from '../utils/documentTotals.js';
+import { computeDocumentTotals } from './documentTotalsService.js';
 
 export async function createQuote(data) {
   const discountValidation = validateDiscountFields(data);
@@ -25,7 +26,6 @@ export async function createQuote(data) {
     status = 'draft',
     globalDiscountType = null,
     globalDiscountValue = null,
-    globalDiscountAmount = null,
   } = data;
 
   const maxAttempts = 5;
@@ -68,86 +68,9 @@ export async function createQuote(data) {
       }
     }
 
-    // Calculate totals with discount support
-    let subtotal = 0;
-    let totalItemDiscounts = 0;
-
-    // Group items by tax rate for proper tax calculation
-    const taxBreakdown = {};
-
-    const processedItems = items.map(item => {
-      const itemTotal = item.quantity * item.unitPrice;
-      const itemDiscount = item.discountAmount || 0;
-      const discountedItemTotal = itemTotal - itemDiscount;
-      const taxRate = item.taxRate || 0;
-
-      subtotal += itemTotal;
-      totalItemDiscounts += itemDiscount;
-
-      // Group by tax rate for later tax calculation
-      if (!taxBreakdown[taxRate]) {
-        taxBreakdown[taxRate] = { taxableAmount: 0, taxAmount: 0 };
-      }
-      taxBreakdown[taxRate].taxableAmount += discountedItemTotal;
-
-      return {
-        ...item,
-        total: discountedItemTotal // Store without tax for now
-      };
-    });
-
-    // Calculate subtotal after item discounts
-    const subtotalAfterItemDiscounts = subtotal - totalItemDiscounts;
-
-    // Apply global discount
-    let globalDiscountApplied = 0;
-
-    if (globalDiscountType && globalDiscountValue) {
-      if (globalDiscountType === 'percentage') {
-        globalDiscountApplied = (subtotalAfterItemDiscounts * globalDiscountValue) / 100;
-      } else if (globalDiscountType === 'fixed') {
-        globalDiscountApplied = Math.min(globalDiscountValue, subtotalAfterItemDiscounts);
-      }
-    }
-
-    // Use provided globalDiscountAmount if available, otherwise use calculated
-    const finalGlobalDiscountAmount = globalDiscountAmount !== null ? globalDiscountAmount : globalDiscountApplied;
-
-    // Calculate final subtotal after all discounts
-    const discountedSubtotal = subtotalAfterItemDiscounts - finalGlobalDiscountAmount;
-
-    // Recalculate taxes based on global discount
-    // The global discount is proportionally distributed across all tax rates
-    let taxAmount = 0;
-
-    if (finalGlobalDiscountAmount > 0 && subtotalAfterItemDiscounts > 0) {
-      // Proportional distribution of global discount
-      const discountRatio = finalGlobalDiscountAmount / subtotalAfterItemDiscounts;
-
-      Object.keys(taxBreakdown).forEach(taxRateStr => {
-        const taxRate = Number(taxRateStr);
-        const breakdown = taxBreakdown[taxRate];
-
-        // Reduce taxable amount proportionally
-        const reducedTaxableAmount = breakdown.taxableAmount * (1 - discountRatio);
-        const reducedTaxAmount = (reducedTaxableAmount * taxRate) / 100;
-
-        breakdown.taxableAmount = reducedTaxableAmount;
-        breakdown.taxAmount = reducedTaxAmount;
-        taxAmount += reducedTaxAmount;
-      });
-    } else {
-      // No global discount, calculate tax normally
-      Object.keys(taxBreakdown).forEach(taxRateStr => {
-        const taxRate = Number(taxRateStr);
-        const breakdown = taxBreakdown[taxRate];
-        const itemTaxAmount = (breakdown.taxableAmount * taxRate) / 100;
-        breakdown.taxAmount = itemTaxAmount;
-        taxAmount += itemTaxAmount;
-      });
-    }
-
-    const total = discountedSubtotal + taxAmount;
+    // Summen Cent-genau (gleiche Logik wie Rechnungen und Frontend)
+    const totals = await computeDocumentTotals(client, items, globalDiscountType, globalDiscountValue);
+    const { subtotal, taxAmount, total } = totals;
 
     // Insert quote - store the GROSS subtotal (before any discounts), matching
     // invoiceService and what the PDF/editor expect: the "Zwischensumme" line is
@@ -158,18 +81,19 @@ export async function createQuote(data) {
       INSERT INTO quotes (quote_number, customer_id, customer_name, issue_date, valid_until, subtotal, tax_amount, total, status, notes, global_discount_type, global_discount_value, global_discount_amount)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       RETURNING *
-    `, [quoteNumber, customerId, customerName, issueDate, validUntil, subtotal, taxAmount, total, status, notes, globalDiscountType, globalDiscountValue, finalGlobalDiscountAmount]);
+    `, [quoteNumber, customerId, customerName, issueDate, validUntil, subtotal, taxAmount, total, status, notes, globalDiscountType, globalDiscountValue, totals.globalDiscountAmount]);
 
     const quoteId = quoteResult.rows[0].id;
 
     // Insert quote items
-    for (let i = 0; i < processedItems.length; i++) {
-      const item = processedItems[i];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
       const itemOrder = item.order !== undefined ? item.order : (i + 1);
+      const line = totals.lines[i];
       await client.query(`
         INSERT INTO quote_items (quote_id, description, quantity, unit_price, tax_rate, total, item_order, discount_type, discount_value, discount_amount, kind, hourly_rate_id)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-      `, [quoteId, item.description, item.quantity, item.unitPrice, item.taxRate, item.total, itemOrder, item.discountType || null, item.discountValue || null, item.discountAmount || null, itemKind(item), item.hourlyRateId || null]);
+      `, [quoteId, item.description, item.quantity, item.unitPrice, item.taxRate, line.net, itemOrder, item.discountType || null, item.discountValue || null, line.discount || null, itemKind(item), item.hourlyRateId || null]);
     }
 
     // Insert attachments if provided
@@ -225,6 +149,13 @@ export async function updateQuote(id, data) {
 
     const current = currentQuote.rows[0];
 
+    // Summen nur neu berechnen, wenn Positionen mitkommen (sonst wie bisher übernehmen)
+    const globalDiscountType = updateData.globalDiscountType ?? current.global_discount_type;
+    const globalDiscountValue = updateData.globalDiscountValue ?? current.global_discount_value;
+    const totals = Array.isArray(updateData.items)
+      ? await computeDocumentTotals(client, updateData.items, globalDiscountType, globalDiscountValue)
+      : null;
+
     // Merge current values with updates (but preserve quote number)
     const mergedData = {
       quoteNumber: current.quote_number,
@@ -232,14 +163,14 @@ export async function updateQuote(id, data) {
       customerName: updateData.customerName ?? current.customer_name,
       issueDate: updateData.issueDate ?? current.issue_date,
       validUntil: updateData.validUntil ?? current.valid_until,
-      subtotal: updateData.subtotal ?? current.subtotal,
-      taxAmount: updateData.taxAmount ?? current.tax_amount,
-      total: updateData.total ?? current.total,
+      subtotal: totals ? totals.subtotal : (updateData.subtotal ?? current.subtotal),
+      taxAmount: totals ? totals.taxAmount : (updateData.taxAmount ?? current.tax_amount),
+      total: totals ? totals.total : (updateData.total ?? current.total),
       status: updateData.status ?? current.status,
       notes: updateData.notes ?? current.notes,
-      globalDiscountType: updateData.globalDiscountType ?? current.global_discount_type,
-      globalDiscountValue: updateData.globalDiscountValue ?? current.global_discount_value,
-      globalDiscountAmount: updateData.globalDiscountAmount ?? current.global_discount_amount,
+      globalDiscountType,
+      globalDiscountValue,
+      globalDiscountAmount: totals ? totals.globalDiscountAmount : (updateData.globalDiscountAmount ?? current.global_discount_amount),
       items: updateData.items
     };
 
@@ -269,7 +200,7 @@ export async function updateQuote(id, data) {
     ]);
 
     // Only update items if they are provided
-    if (updateData.items) {
+    if (totals) {
       // Delete existing items
       await client.query('DELETE FROM quote_items WHERE quote_id = $1', [id]);
 
@@ -280,7 +211,7 @@ export async function updateQuote(id, data) {
         await client.query(`
           INSERT INTO quote_items (quote_id, description, quantity, unit_price, tax_rate, total, item_order, discount_type, discount_value, discount_amount, kind, hourly_rate_id)
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-        `, [id, item.description, item.quantity, item.unitPrice, item.taxRate, item.total, itemOrder, item.discountType || null, item.discountValue || null, item.discountAmount || null, itemKind(item), item.hourlyRateId || null]);
+        `, [id, item.description, item.quantity, item.unitPrice, item.taxRate, totals.lines[i].net, itemOrder, item.discountType || null, item.discountValue || null, totals.lines[i].discount || null, itemKind(item), item.hourlyRateId || null]);
       }
     }
 
@@ -415,6 +346,7 @@ export async function convertQuoteToInvoice(id) {
       taxRate: parseFloat(item.taxRate),
       discountType: item.discountType || undefined,
       discountValue: item.discountValue != null ? parseFloat(item.discountValue) : undefined,
+      discountAmount: item.discountAmount != null ? parseFloat(item.discountAmount) : undefined,
     }));
     const hasGlobalDiscount = Boolean(quote.global_discount_type);
     const totals = calculateTotals(
@@ -450,7 +382,7 @@ export async function convertQuoteToInvoice(id) {
 
     // Copy items
     const items = quote.items || [];
-    for (const item of items) {
+    for (const [i, item] of items.entries()) {
       await client.query(`
         INSERT INTO invoice_items (invoice_id, description, quantity, unit_price, tax_rate, total, item_order, discount_type, discount_value, discount_amount)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -460,11 +392,11 @@ export async function convertQuoteToInvoice(id) {
         item.quantity,
         item.unitPrice,
         isSmallBusiness ? 0 : item.taxRate,
-        item.total,
+        totals.lines[i].net,
         item.order,
         item.discountType || null,
         item.discountValue || null,
-        item.discountAmount || null
+        totals.lines[i].discount || null
       ]);
     }
 

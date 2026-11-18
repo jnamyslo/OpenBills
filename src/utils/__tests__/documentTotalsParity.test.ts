@@ -3,6 +3,9 @@ import { calculateInvoiceWithDiscounts, InvoiceLineItemInput } from '../discount
 
 type Totals = {
   subtotal: number; itemDiscountAmount: number; globalDiscountAmount: number; taxAmount: number; total: number;
+  subtotalAfterItemDiscounts: number; discountedSubtotal: number;
+  taxBreakdown: Record<string, { taxableAmount: number; taxAmount: number; globalDiscountShare?: number }>;
+  lines: { gross: number; discount: number; net: number }[];
 };
 type CalculateTotals = (items: InvoiceLineItemInput[], discount: object, small: boolean) => Totals;
 
@@ -35,6 +38,13 @@ const ITEM_SETS: Record<string, InvoiceLineItemInput[]> = {
     { quantity: 1, unitPrice: 10, taxRate: 7, discountType: 'percentage', discountValue: 150 },
   ],
   'Menge 0': [{ quantity: 0, unitPrice: 99, taxRate: 19 }],
+  // 2,5 × 19,99 = 49,975 (Gleitkomma 49,97499…) → kaufmännisch 49,98
+  'halbe Cents': [
+    { quantity: 3, unitPrice: 33.33, taxRate: 19, discountType: 'fixed', discountValue: 10 },
+    { quantity: 2.5, unitPrice: 19.99, taxRate: 7, discountType: 'percentage', discountValue: 10 },
+    { quantity: 1, unitPrice: 25, taxRate: 19 },
+  ],
+  'Altdaten: Rabattbetrag ohne Typ': [{ quantity: 2, unitPrice: 40, taxRate: 19, discountAmount: 7.5 }],
 };
 
 const DISCOUNTS = [
@@ -58,6 +68,10 @@ describe.each(Object.entries(ITEM_SETS))('%s', (_name, items) => {
       expect(back.globalDiscountAmount).toBeCloseTo(front.globalDiscountAmount, 9);
       expect(back.taxAmount).toBeCloseTo(front.taxAmount, 9);
       expect(back.total).toBeCloseTo(front.total, 9);
+      expect(back.subtotalAfterItemDiscounts).toBe(front.subtotalAfterItemDiscounts);
+      expect(back.discountedSubtotal).toBe(front.discountedSubtotal);
+      expect(back.taxBreakdown).toEqual(front.taxBreakdown);
+      expect(back.lines).toEqual(front.lines);
     }
   );
 });

@@ -80,3 +80,12 @@ export function escapeXML(text: string): string {
 }
 
 
+
+/**
+ * USt-IdNr. für BT-31/BT-48: ohne Leerzeichen, nur mit ISO-Länderpräfix (BR-CO-09).
+ * Steuernummern ohne Präfix liefern null und werden nicht als USt-ID ausgegeben.
+ */
+export function vatIdentifier(taxId?: string): string | null {
+  const id = (taxId || '').replace(/\s+/g, '').toUpperCase();
+  return /^[A-Z]{2}[0-9A-Z+*.]{2,12}$/.test(id) ? id : null;
+}

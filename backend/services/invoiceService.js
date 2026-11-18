@@ -4,6 +4,7 @@ import logger from '../utils/logger.js';
 import { validateDiscountFields } from '../utils/validation.js';
 import { countReleaseIfNeeded } from './quotaService.js';
 import { assertUpdateAllowed, assertDeleteAllowed } from '../utils/invoiceLock.js';
+import { computeDocumentTotals } from './documentTotalsService.js';
 
 /**
  * Nächste Nummer im Kreis `<prefix>-YYYY-NNN` (Jahr aus dem Rechnungsdatum).
@@ -56,7 +57,6 @@ export async function createInvoice(data) {
     status = 'draft',
     globalDiscountType = null,
     globalDiscountValue = null,
-    globalDiscountAmount = null,
   } = data;
 
   const maxAttempts = 5;
@@ -79,83 +79,28 @@ export async function createInvoice(data) {
     }
     const customerName = customerResult.rows[0].name;
 
-    // Calculate totals with discounts
-    let subtotalBeforeDiscounts = 0;
-    let totalItemDiscounts = 0;
-
-    // Gruppiere Items nach Steuersatz für die Steuerberechnung
-    const taxBreakdown = {};
-
-    const processedItems = items.map(item => {
-      // Berechne Item-Total vor Rabatt
-      const itemTotalBeforeDiscount = item.quantity * item.unitPrice;
-      subtotalBeforeDiscounts += itemTotalBeforeDiscount;
-
-      // Berechne Item-Rabatt
-      const itemDiscountAmount = item.discountAmount || 0;
-      totalItemDiscounts += itemDiscountAmount;
-
-      // Item-Total nach Item-Rabatt
-      const itemTotalAfterDiscount = itemTotalBeforeDiscount - itemDiscountAmount;
-
-      // Gruppiere nach Steuersatz für spätere Steuerberechnung
-      const taxRate = item.taxRate || 0;
-      if (!taxBreakdown[taxRate]) {
-        taxBreakdown[taxRate] = 0;
-      }
-      taxBreakdown[taxRate] += itemTotalAfterDiscount;
-
-      return {
-        ...item,
-        total: itemTotalAfterDiscount // Item-Total nach Rabatt (ohne Steuer)
-      };
-    });
-
-    // Subtotal nach Item-Rabatten
-    const subtotalAfterItemDiscounts = subtotalBeforeDiscounts - totalItemDiscounts;
-
-    // Global-Rabatt wird auf die bereits rabattierte Subtotal angewendet
-    const globalDiscAmount = globalDiscountAmount || 0;
-    const subtotalAfterAllDiscounts = subtotalAfterItemDiscounts - globalDiscAmount;
-
-    // Berechne Steuer proportional auf die rabattierte Subtotal
-    let taxAmount = 0;
-    if (globalDiscAmount > 0 && subtotalAfterItemDiscounts > 0) {
-      // Verteile Global-Rabatt proportional auf alle Steuersätze
-      const discountRatio = subtotalAfterAllDiscounts / subtotalAfterItemDiscounts;
-      Object.keys(taxBreakdown).forEach(rate => {
-        const taxableAmount = taxBreakdown[rate] * discountRatio;
-        taxAmount += taxableAmount * (parseFloat(rate) / 100);
-      });
-    } else {
-      // Keine Global-Rabatte: normale Steuerberechnung
-      Object.keys(taxBreakdown).forEach(rate => {
-        taxAmount += taxBreakdown[rate] * (parseFloat(rate) / 100);
-      });
-    }
-
-    const total = subtotalAfterAllDiscounts + taxAmount;
-
-    // Speichere die ursprüngliche Subtotal (vor Rabatten) in der DB für Reporting-Zwecke
-    const subtotal = subtotalBeforeDiscounts;
+    // Summen Cent-genau (Positionen, Gesamtrabatt je Steuersatz, Steuer je Satz gerundet)
+    const totals = await computeDocumentTotals(client, items, globalDiscountType, globalDiscountValue);
+    const { subtotal, taxAmount, total } = totals;
 
     // Insert invoice
     const invoiceResult = await client.query(`
       INSERT INTO invoices (invoice_number, customer_id, customer_name, issue_date, due_date, subtotal, tax_amount, total, status, notes, global_discount_type, global_discount_value, global_discount_amount)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       RETURNING *
-    `, [invoiceNumber, customerId, customerName, issueDate, dueDate, subtotal, taxAmount, total, status, notes, globalDiscountType, globalDiscountValue, globalDiscountAmount]);
+    `, [invoiceNumber, customerId, customerName, issueDate, dueDate, subtotal, taxAmount, total, status, notes, globalDiscountType, globalDiscountValue, totals.globalDiscountAmount]);
 
     const invoiceId = invoiceResult.rows[0].id;
 
     // Insert invoice items
-    for (let i = 0; i < processedItems.length; i++) {
-      const item = processedItems[i];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
       const itemOrder = item.order !== undefined ? item.order : (i + 1);
+      const line = totals.lines[i];
       await client.query(`
         INSERT INTO invoice_items (invoice_id, description, quantity, unit_price, tax_rate, total, item_order, discount_type, discount_value, discount_amount)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-      `, [invoiceId, item.description, item.quantity, item.unitPrice, item.taxRate, item.total, itemOrder, item.discountType || null, item.discountValue || null, item.discountAmount || null]);
+      `, [invoiceId, item.description, item.quantity, item.unitPrice, item.taxRate, line.net, itemOrder, item.discountType || null, item.discountValue || null, line.discount || null]);
     }
 
     // Insert attachments if provided
@@ -230,66 +175,15 @@ export async function updateInvoice(id, data) {
       return await findInvoiceById(id);
     }
 
-    // Recalculate totals if items are provided
-    let calculatedSubtotal = updateData.subtotal ?? current.subtotal;
-    let calculatedTaxAmount = updateData.taxAmount ?? current.tax_amount;
-    let calculatedTotal = updateData.total ?? current.total;
-
-    if (updateData.items && Array.isArray(updateData.items)) {
-      // Recalculate totals with discounts
-      let subtotalBeforeDiscounts = 0;
-      let totalItemDiscounts = 0;
-
-      // Gruppiere Items nach Steuersatz für die Steuerberechnung
-      const taxBreakdown = {};
-
-      updateData.items.forEach(item => {
-        // Berechne Item-Total vor Rabatt
-        const itemTotalBeforeDiscount = item.quantity * item.unitPrice;
-        subtotalBeforeDiscounts += itemTotalBeforeDiscount;
-
-        // Berechne Item-Rabatt
-        const itemDiscountAmount = item.discountAmount || 0;
-        totalItemDiscounts += itemDiscountAmount;
-
-        // Item-Total nach Item-Rabatt
-        const itemTotalAfterDiscount = itemTotalBeforeDiscount - itemDiscountAmount;
-
-        // Gruppiere nach Steuersatz für spätere Steuerberechnung
-        const taxRate = item.taxRate || 0;
-        if (!taxBreakdown[taxRate]) {
-          taxBreakdown[taxRate] = 0;
-        }
-        taxBreakdown[taxRate] += itemTotalAfterDiscount;
-      });
-
-      // Subtotal nach Item-Rabatten
-      const subtotalAfterItemDiscounts = subtotalBeforeDiscounts - totalItemDiscounts;
-
-      // Global-Rabatt wird auf die bereits rabattierte Subtotal angewendet
-      const globalDiscAmount = updateData.globalDiscountAmount ?? current.global_discount_amount ?? 0;
-      const subtotalAfterAllDiscounts = subtotalAfterItemDiscounts - globalDiscAmount;
-
-      // Berechne Steuer proportional auf die rabattierte Subtotal
-      let taxAmount = 0;
-      if (globalDiscAmount > 0 && subtotalAfterItemDiscounts > 0) {
-        // Verteile Global-Rabatt proportional auf alle Steuersätze
-        const discountRatio = subtotalAfterAllDiscounts / subtotalAfterItemDiscounts;
-        Object.keys(taxBreakdown).forEach(rate => {
-          const taxableAmount = taxBreakdown[rate] * discountRatio;
-          taxAmount += taxableAmount * (parseFloat(rate) / 100);
-        });
-      } else {
-        // Keine Global-Rabatte: normale Steuerberechnung
-        Object.keys(taxBreakdown).forEach(rate => {
-          taxAmount += taxBreakdown[rate] * (parseFloat(rate) / 100);
-        });
-      }
-
-      calculatedTotal = subtotalAfterAllDiscounts + taxAmount;
-      calculatedSubtotal = subtotalBeforeDiscounts;
-      calculatedTaxAmount = taxAmount;
-    }
+    // Summen nur neu berechnen, wenn Positionen mitkommen (sonst wie bisher übernehmen)
+    const globalDiscountType = updateData.globalDiscountType ?? current.global_discount_type;
+    const globalDiscountValue = updateData.globalDiscountValue ?? current.global_discount_value;
+    const totals = Array.isArray(updateData.items)
+      ? await computeDocumentTotals(client, updateData.items, globalDiscountType, globalDiscountValue)
+      : null;
+    const calculatedSubtotal = totals ? totals.subtotal : (updateData.subtotal ?? current.subtotal);
+    const calculatedTaxAmount = totals ? totals.taxAmount : (updateData.taxAmount ?? current.tax_amount);
+    const calculatedTotal = totals ? totals.total : (updateData.total ?? current.total);
 
     // Merge current values with updates (but preserve invoice number)
     const mergedData = {
@@ -303,9 +197,9 @@ export async function updateInvoice(id, data) {
       total: calculatedTotal,
       status: updateData.status ?? current.status,
       notes: updateData.notes ?? current.notes,
-      globalDiscountType: updateData.globalDiscountType ?? current.global_discount_type,
-      globalDiscountValue: updateData.globalDiscountValue ?? current.global_discount_value,
-      globalDiscountAmount: updateData.globalDiscountAmount ?? current.global_discount_amount,
+      globalDiscountType,
+      globalDiscountValue,
+      globalDiscountAmount: totals ? totals.globalDiscountAmount : (updateData.globalDiscountAmount ?? current.global_discount_amount),
       items: updateData.items // items are handled separately
     };
 
@@ -335,7 +229,7 @@ export async function updateInvoice(id, data) {
     ]);
 
     // Only update items if they are provided
-    if (updateData.items) {
+    if (totals) {
       // Delete existing items
       await client.query('DELETE FROM invoice_items WHERE invoice_id = $1', [id]);
 
@@ -344,15 +238,12 @@ export async function updateInvoice(id, data) {
         const item = updateData.items[i];
         const itemOrder = item.order !== undefined ? item.order : (i + 1);
 
-        // Berechne Item-Total nach Rabatt (ohne Steuer)
-        const itemTotalBeforeDiscount = item.quantity * item.unitPrice;
-        const itemDiscountAmount = item.discountAmount || 0;
-        const itemTotal = itemTotalBeforeDiscount - itemDiscountAmount;
+        const line = totals.lines[i];
 
         await client.query(`
           INSERT INTO invoice_items (invoice_id, description, quantity, unit_price, tax_rate, total, item_order, discount_type, discount_value, discount_amount)
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-        `, [id, item.description, item.quantity, item.unitPrice, item.taxRate, itemTotal, itemOrder, item.discountType || null, item.discountValue || null, item.discountAmount || null]);
+        `, [id, item.description, item.quantity, item.unitPrice, item.taxRate, line.net, itemOrder, item.discountType || null, item.discountValue || null, line.discount || null]);
       }
     }
 

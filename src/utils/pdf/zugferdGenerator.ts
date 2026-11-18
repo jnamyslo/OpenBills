@@ -7,7 +7,7 @@ import { PDFDocument, AFRelationship } from 'pdf-lib';
 import { Invoice } from '../../types';
 import { PDFOptions } from '../pdfGenerator';
 import logger from '../logger';
-import { escapeXML, formatAmountForXML, roundToCents, getCountryCode } from './xmlUtils';
+import { escapeXML, formatAmountForXML, roundToCents, getCountryCode, vatIdentifier } from './xmlUtils';
 import { hasOnlyZeroTaxRate, getTaxCategoryCode, getTaxExemptionReason } from './taxCalculations';
 import { calculateInvoiceWithDiscounts } from '../discountUtils';
 import { isCancellation, amountSign, toPositiveBase, cancelledInvoiceRef, cancellationNote } from './cancellation';
@@ -31,38 +31,30 @@ export function generateZUGFeRDXML(source: Invoice, options: PDFOptions): string
   // Use new payment information or fall back to legacy fields
   const paymentInfo = options.company.paymentInformation;
 
-  // Tax breakdown (sorted by rate), shared between header total and per-rate tax groups.
-  const taxBreakdownEntries = Object.entries(
-    calculateInvoiceWithDiscounts(
-      invoice.items,
-      { type: invoice.globalDiscountType, value: invoice.globalDiscountValue },
-      options.company.isSmallBusiness
-    ).taxBreakdown
-  ).sort(([rateA], [rateB]) => Number(rateA) - Number(rateB));
-  // BR-CO-14: header tax = sum of the already-rounded per-category amounts.
-  const headerTaxAmount = taxBreakdownEntries.reduce((sum, [, breakdown]) => sum + roundToCents(breakdown.taxAmount), 0);
-
-  const itemDiscountTotal = invoice.items?.reduce((sum, item) => sum + (item.discountAmount || 0), 0) || 0;
-  const globalDiscountAmount = invoice.globalDiscountAmount || 0;
-
-  // BR-CO-10: header line total = sum of line net amounts (item discounts already subtracted per line).
-  const headerLineExtensionAmount = roundToCents(invoice.subtotal - itemDiscountTotal);
-
-  // Global (document-level) discount modelled as one allowance per tax rate, split
-  // proportionally (see xrechnungGenerator for the derivation), so BR-CO-11/13 hold.
-  const subtotalAfterItemDiscounts = invoice.subtotal - itemDiscountTotal;
-  const globalRatio = globalDiscountAmount > 0 && subtotalAfterItemDiscounts > 0
-    ? globalDiscountAmount / subtotalAfterItemDiscounts
-    : 0;
-  const documentAllowances = globalDiscountAmount > 0
-    ? taxBreakdownEntries.map(([rate, breakdown]) => ({
-        rate,
-        categoryCode: getTaxCategoryCode(Number(rate), options.company.isSmallBusiness),
-        amount: roundToCents(globalRatio > 0 ? breakdown.taxableAmount * (globalRatio / (1 - globalRatio)) : 0),
-      }))
-    : [];
-  const allowanceTotalAmount = roundToCents(documentAllowances.reduce((sum, a) => sum + a.amount, 0));
-  const taxExclusiveAmount = roundToCents(headerLineExtensionAmount - allowanceTotalAmount);
+  // Alle Beträge aus der Cent-genauen Berechnung (BR-CO-10/13/14/15, BR-S-08), nicht aus den
+  // gespeicherten Summen: die können bei Rechnungen vor der Umstellung um einen Cent abweichen.
+  const calc = calculateInvoiceWithDiscounts(
+    invoice.items,
+    { type: invoice.globalDiscountType, value: invoice.globalDiscountValue },
+    options.company.isSmallBusiness
+  );
+  const taxBreakdownEntries = Object.entries(calc.taxBreakdown)
+    .sort(([rateA], [rateB]) => Number(rateA) - Number(rateB));
+  const headerTaxAmount = calc.taxAmount;
+  const headerLineExtensionAmount = calc.subtotalAfterItemDiscounts;
+  // Gesamtrabatt als ein Rabatt je Steuersatz (BR-CO-11/BR-S-08), Anteile ergeben in Summe den Gesamtrabatt
+  const documentAllowances = taxBreakdownEntries
+    .map(([rate, breakdown]) => ({
+      rate,
+      categoryCode: getTaxCategoryCode(Number(rate), options.company.isSmallBusiness),
+      amount: breakdown.globalDiscountShare ?? 0,
+    }))
+    .filter(allowance => allowance.amount > 0);
+  const allowanceTotalAmount = calc.globalDiscountAmount;
+  const taxExclusiveAmount = calc.discountedSubtotal;
+  const grandTotalAmount = calc.total;
+  // BT-48: USt-ID des Käufers (Pflicht bei Reverse Charge, BR-AE-02)
+  const buyerVatId = vatIdentifier(options.customer.taxId);
 
   // Generate proper ZUGFeRD 2.1 XML (EN 16931 compliant)
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -129,16 +121,16 @@ export function generateZUGFeRDXML(source: Invoice, options: PDFOptions): string
 					<ram:TypeCode>VAT</ram:TypeCode>
 					<ram:CategoryCode>${getTaxCategoryCode(effectiveTaxRate, options.company.isSmallBusiness)}</ram:CategoryCode>
 					<ram:RateApplicablePercent>${effectiveTaxRate}</ram:RateApplicablePercent>
-				</ram:ApplicableTradeTax>${(item.discountAmount || 0) > 0 ? `
+				</ram:ApplicableTradeTax>${calc.lines[index].discount > 0 ? `
 				<ram:SpecifiedTradeAllowanceCharge>
 					<ram:ChargeIndicator>
 						<udt:Indicator>false</udt:Indicator>
 					</ram:ChargeIndicator>
-					<ram:ActualAmount>${amount(item.discountAmount || 0)}</ram:ActualAmount>
+					<ram:ActualAmount>${amount(calc.lines[index].discount)}</ram:ActualAmount>
 					<ram:Reason>Rabatt</ram:Reason>
 				</ram:SpecifiedTradeAllowanceCharge>` : ''}
 				<ram:SpecifiedTradeSettlementLineMonetarySummation>
-					<ram:LineTotalAmount>${amount((item.quantity * item.unitPrice) - (item.discountAmount || 0))}</ram:LineTotalAmount>
+					<ram:LineTotalAmount>${amount(calc.lines[index].net)}</ram:LineTotalAmount>
 				</ram:SpecifiedTradeSettlementLineMonetarySummation>
 			</ram:SpecifiedLineTradeSettlement>
 		</ram:IncludedSupplyChainTradeLineItem>`;
@@ -182,7 +174,10 @@ export function generateZUGFeRDXML(source: Invoice, options: PDFOptions): string
 				</ram:PostalTradeAddress>
 				<ram:URIUniversalCommunication>
 					<ram:URIID schemeID="EM">${options.customer.email || 'kunde@example.de'}</ram:URIID>
-				</ram:URIUniversalCommunication>
+				</ram:URIUniversalCommunication>${buyerVatId ? `
+				<ram:SpecifiedTaxRegistration>
+					<ram:ID schemeID="VA">${escapeXML(buyerVatId)}</ram:ID>
+				</ram:SpecifiedTaxRegistration>` : ''}
 			</ram:BuyerTradeParty>
 		</ram:ApplicableHeaderTradeAgreement>
 		<ram:ApplicableHeaderTradeDelivery>
@@ -210,7 +205,7 @@ export function generateZUGFeRDXML(source: Invoice, options: PDFOptions): string
 					const categoryCode = getTaxCategoryCode(Number(rate), options.company.isSmallBusiness);
 					const exemptionReason = getTaxExemptionReason(categoryCode);
 					return `<ram:ApplicableTradeTax>
-				<ram:CalculatedAmount>${amount(roundToCents(breakdown.taxAmount))}</ram:CalculatedAmount>
+				<ram:CalculatedAmount>${amount(breakdown.taxAmount)}</ram:CalculatedAmount>
 				<ram:TypeCode>VAT</ram:TypeCode>${exemptionReason ? `
 				<ram:ExemptionReason>${escapeXML(exemptionReason)}</ram:ExemptionReason>` : ''}
 				<ram:BasisAmount>${amount(breakdown.taxableAmount)}</ram:BasisAmount>
@@ -241,8 +236,8 @@ export function generateZUGFeRDXML(source: Invoice, options: PDFOptions): string
 				${allowanceTotalAmount > 0 ? `<ram:AllowanceTotalAmount>${amount(allowanceTotalAmount)}</ram:AllowanceTotalAmount>` : ''}
 				<ram:TaxBasisTotalAmount>${amount(taxExclusiveAmount)}</ram:TaxBasisTotalAmount>
 				<ram:TaxTotalAmount currencyID="EUR">${amount(headerTaxAmount)}</ram:TaxTotalAmount>
-				<ram:GrandTotalAmount>${amount(invoice.total)}</ram:GrandTotalAmount>
-				<ram:DuePayableAmount>${amount(invoice.total)}</ram:DuePayableAmount>
+				<ram:GrandTotalAmount>${amount(grandTotalAmount)}</ram:GrandTotalAmount>
+				<ram:DuePayableAmount>${amount(grandTotalAmount)}</ram:DuePayableAmount>
 			</ram:SpecifiedTradeSettlementHeaderMonetarySummation>${ref ? `
 			<ram:InvoiceReferencedDocument>
 				<ram:IssuerAssignedID>${escapeXML(ref.invoiceNumber)}</ram:IssuerAssignedID>

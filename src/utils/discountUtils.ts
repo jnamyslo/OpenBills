@@ -2,8 +2,12 @@ import { InvoiceItem, JobMaterial, JobTimeEntry, DiscountType } from '../types';
 
 export interface TaxBreakdown {
   [taxRate: number]: {
+    /** Bemessungsgrundlage nach allen Rabatten (Cent-genau) */
     taxableAmount: number;
+    /** Steuer je Satz, auf Cent gerundet */
     taxAmount: number;
+    /** Anteil des Gesamtrabatts an diesem Satz (Summe = globalDiscountAmount) */
+    globalDiscountShare?: number;
   };
 }
 
@@ -13,6 +17,8 @@ export interface InvoiceLineItemInput {
   taxRate: number;
   discountType?: DiscountType;
   discountValue?: number;
+  /** Nur Altdaten ohne discountType: gespeicherter Rabattbetrag wird als Festbetrag übernommen. */
+  discountAmount?: number;
 }
 
 export interface GlobalDiscountInput {
@@ -20,14 +26,24 @@ export interface GlobalDiscountInput {
   value?: number;
 }
 
+/** Cent-genaue Positionsbeträge in der Reihenfolge der Eingabe. */
+export interface LineAmounts {
+  gross: number;
+  discount: number;
+  net: number;
+}
+
 export interface DiscountCalculation {
   subtotal: number;
   itemDiscountAmount: number;
   globalDiscountAmount: number;
   totalDiscountAmount: number;
+  /** Summe der Positionsnettobeträge (vor Gesamtrabatt) */
+  subtotalAfterItemDiscounts: number;
   discountedSubtotal: number;
   taxAmount: number;
   taxBreakdown: TaxBreakdown;
+  lines: LineAmounts[];
   hasOnlyZeroTax: boolean;
   total: number;
 }
@@ -84,9 +100,21 @@ export function calculateGlobalDiscount(
 }
 
 /**
- * Berechnet alle Rabatte und Gesamtsummen für eine Rechnung/ein Angebot.
- * Bei Kleinunternehmerregelung wird der Steuersatz aller Positionen intern auf 0
- * normalisiert, unabhängig vom gespeicherten taxRate-Wert der Position.
+ * Kaufmännisch auf Cent runden. Fängt Gleitkommafehler ab (2,5 × 19,99 = 49,974999… → 49,98).
+ */
+export function roundCents(value: number): number {
+  const cents = Number((Math.abs(value) * 100).toPrecision(12));
+  return (Math.sign(value) * Math.round(cents)) / 100 || 0;
+}
+
+/**
+ * Berechnet alle Rabatte und Gesamtsummen für eine Rechnung/ein Angebot – Cent-genau, so dass
+ * die EN-16931-Summenregeln gelten (BR-CO-10/13/14/15, BR-S-08):
+ * Position netto = gerundeter Betrag − gerundeter Rabatt; Gesamtrabatt anteilig je Steuersatz
+ * verteilt (Rest-Cent auf den größten Satz), Steuer je Satz gerundet, Gesamtbetrag = Netto + Steuer.
+ * Bei Kleinunternehmerregelung wird der Steuersatz aller Positionen intern auf 0 normalisiert.
+ *
+ * Spiegel im Backend: backend/utils/documentTotals.js (documentTotalsParity.test.ts).
  */
 export function calculateInvoiceWithDiscounts(
   items: InvoiceLineItemInput[],
@@ -97,81 +125,56 @@ export function calculateInvoiceWithDiscounts(
     ? items.map(item => ({ ...item, taxRate: 0 }))
     : items;
 
-  // Berechne Zwischensumme und Artikelrabatte
-  let subtotal = 0;
-  let itemDiscountAmount = 0;
-
-  // Gruppiere Items nach Steuersatz für die Steuerberechnung
-  const taxBreakdown: TaxBreakdown = {};
-
-  normalizedItems.forEach(item => {
-    const itemTotal = item.quantity * item.unitPrice;
-    const discount = calculateItemDiscount(
-      item.quantity,
-      item.unitPrice,
-      item.discountType,
-      item.discountValue
-    );
-
-    subtotal += itemTotal;
-    itemDiscountAmount += discount;
-
-    // Berechne steuerpflichtigen Betrag nach Artikelrabatt
-    const taxableItemAmount = itemTotal - discount;
-    const taxRate = item.taxRate || 0;
-    const itemTaxAmount = (taxableItemAmount * taxRate) / 100;
-
-    if (taxBreakdown[taxRate]) {
-      taxBreakdown[taxRate].taxableAmount += taxableItemAmount;
-      taxBreakdown[taxRate].taxAmount += itemTaxAmount;
-    } else {
-      taxBreakdown[taxRate] = {
-        taxableAmount: taxableItemAmount,
-        taxAmount: itemTaxAmount
-      };
-    }
+  const lines: LineAmounts[] = normalizedItems.map(item => {
+    const gross = roundCents(item.quantity * item.unitPrice);
+    const rawDiscount = item.discountType
+      ? calculateItemDiscount(item.quantity, item.unitPrice, item.discountType, item.discountValue)
+      : Math.min(Math.max(item.discountAmount || 0, 0), Math.max(gross, 0));
+    const discount = roundCents(rawDiscount);
+    return { gross, discount, net: roundCents(gross - discount) };
   });
 
-  // Berechne Zwischensumme nach Artikelrabatten
-  const subtotalAfterItemDiscounts = subtotal - itemDiscountAmount;
+  const subtotal = roundCents(lines.reduce((sum, l) => sum + l.gross, 0));
+  const itemDiscountAmount = roundCents(lines.reduce((sum, l) => sum + l.discount, 0));
+  const subtotalAfterItemDiscounts = roundCents(subtotal - itemDiscountAmount);
 
-  // Berechne Gesamtrabatt (wird auf die bereits rabattierte Zwischensumme angewendet)
-  const globalDiscountAmount = calculateGlobalDiscount(
-    subtotalAfterItemDiscounts,
-    globalDiscount.type,
-    globalDiscount.value
+  // Gesamtrabatt wird auf die bereits rabattierte Zwischensumme angewendet
+  const globalDiscountAmount = roundCents(
+    calculateGlobalDiscount(subtotalAfterItemDiscounts, globalDiscount.type, globalDiscount.value)
   );
+  const discountedSubtotal = roundCents(subtotalAfterItemDiscounts - globalDiscountAmount);
 
-  // Endgültige Zwischensumme nach allen Rabatten
-  const discountedSubtotal = subtotalAfterItemDiscounts - globalDiscountAmount;
+  // Netto je Steuersatz, aufsteigend sortiert
+  const netByRate = new Map<number, number>();
+  normalizedItems.forEach((item, i) => {
+    const rate = item.taxRate || 0;
+    netByRate.set(rate, roundCents((netByRate.get(rate) ?? 0) + lines[i].net));
+  });
+  const rates = [...netByRate.keys()].sort((a, b) => a - b);
 
-  // Neuberechnung der Steuern basierend auf dem Gesamtrabatt
-  // Der Gesamtrabatt wird proportional auf alle Steuersätze verteilt
-  let totalTaxAmount = 0;
-
+  // Gesamtrabatt anteilig verteilen; Rundungsrest auf den Satz mit dem größten Nettobetrag
+  const shares = new Map<number, number>(rates.map(rate => [rate, 0]));
   if (globalDiscountAmount > 0 && subtotalAfterItemDiscounts > 0) {
-    // Proportionale Verteilung des Gesamtrabatts
-    const discountRatio = globalDiscountAmount / subtotalAfterItemDiscounts;
-
-    Object.keys(taxBreakdown).forEach(taxRateStr => {
-      const taxRate = Number(taxRateStr);
-      const breakdown = taxBreakdown[taxRate];
-
-      // Reduziere den steuerpflichtigen Betrag proportional
-      const reducedTaxableAmount = breakdown.taxableAmount * (1 - discountRatio);
-      const reducedTaxAmount = (reducedTaxableAmount * taxRate) / 100;
-
-      breakdown.taxableAmount = reducedTaxableAmount;
-      breakdown.taxAmount = reducedTaxAmount;
-      totalTaxAmount += reducedTaxAmount;
-    });
-  } else {
-    // Keine Gesamtrabatte, verwende ursprüngliche Steuerberechnung
-    totalTaxAmount = Object.values(taxBreakdown).reduce((sum, breakdown) => sum + breakdown.taxAmount, 0);
+    for (const rate of rates) {
+      shares.set(rate, roundCents((globalDiscountAmount * (netByRate.get(rate) ?? 0)) / subtotalAfterItemDiscounts));
+    }
+    const rest = roundCents(globalDiscountAmount - [...shares.values()].reduce((a, b) => a + b, 0));
+    if (rest !== 0) {
+      const largest = rates.reduce((best, rate) => ((netByRate.get(rate) ?? 0) >= (netByRate.get(best) ?? 0) ? rate : best), rates[0]);
+      shares.set(largest, roundCents((shares.get(largest) ?? 0) + rest));
+    }
   }
 
-  const total = discountedSubtotal + totalTaxAmount;
-  const totalDiscountAmount = itemDiscountAmount + globalDiscountAmount;
+  const taxBreakdown: TaxBreakdown = {};
+  for (const rate of rates) {
+    const globalDiscountShare = shares.get(rate) ?? 0;
+    const taxableAmount = roundCents((netByRate.get(rate) ?? 0) - globalDiscountShare);
+    taxBreakdown[rate] = { taxableAmount, taxAmount: roundCents((taxableAmount * rate) / 100), globalDiscountShare };
+  }
+
+  const taxAmount = roundCents(Object.values(taxBreakdown).reduce((sum, b) => sum + b.taxAmount, 0));
+  const total = roundCents(discountedSubtotal + taxAmount);
+  const totalDiscountAmount = roundCents(itemDiscountAmount + globalDiscountAmount);
   const hasOnlyZeroTax = normalizedItems.length > 0 && normalizedItems.every(item => item.taxRate === 0);
 
   return {
@@ -179,9 +182,11 @@ export function calculateInvoiceWithDiscounts(
     itemDiscountAmount,
     globalDiscountAmount,
     totalDiscountAmount,
+    subtotalAfterItemDiscounts,
     discountedSubtotal,
-    taxAmount: totalTaxAmount,
+    taxAmount,
     taxBreakdown,
+    lines,
     hasOnlyZeroTax,
     total
   };
@@ -191,19 +196,20 @@ export function calculateInvoiceWithDiscounts(
  * Aktualisiert ein InvoiceItem mit berechneten Rabattbeträgen
  */
 export function updateItemWithDiscount(item: InvoiceItem): InvoiceItem {
-  const discountAmount = calculateItemDiscount(
+  // Cent-genau wie calculateInvoiceWithDiscounts (Position netto = gerundeter Betrag − gerundeter Rabatt)
+  const discountAmount = roundCents(calculateItemDiscount(
     item.quantity,
     item.unitPrice,
     item.discountType,
     item.discountValue
-  );
+  ));
 
-  const itemTotal = item.quantity * item.unitPrice;
-  
+  const itemTotal = roundCents(item.quantity * item.unitPrice);
+
   return {
     ...item,
     discountAmount,
-    total: itemTotal - discountAmount
+    total: roundCents(itemTotal - discountAmount)
   };
 }
 

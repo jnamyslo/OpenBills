@@ -160,6 +160,20 @@ describe('generateXRechnungXML', () => {
       const out = await xml(reverseChargeInvoice(), testOptions({ isSmallBusiness: false }));
       expect(tag(out, 'cbc:Note')).toContain('13b');
     });
+
+    it('gibt die USt-ID des Käufers aus (BT-48, BR-AE-02)', async () => {
+      const out = await xml(reverseChargeInvoice(), testOptions({ isSmallBusiness: false }, { taxId: 'ATU 1234 5678' }));
+      const buyer = tag(out, 'cac:AccountingCustomerParty') ?? '';
+      expect(tag(tag(buyer, 'cac:PartyTaxScheme') ?? '', 'cbc:CompanyID')).toBe('ATU12345678');
+      // Schema-Reihenfolge: PostalAddress → PartyTaxScheme → PartyLegalEntity
+      expect(buyer.indexOf('<cac:PartyTaxScheme>')).toBeGreaterThan(buyer.indexOf('</cac:PostalAddress>'));
+      expect(buyer.indexOf('<cac:PartyTaxScheme>')).toBeLessThan(buyer.indexOf('<cac:PartyLegalEntity>'));
+    });
+
+    it('lässt eine Steuernummer ohne Länderpräfix weg (BR-CO-09)', async () => {
+      const out = await xml(reverseChargeInvoice(), testOptions({ isSmallBusiness: false }, { taxId: '12/345/67890' }));
+      expect(tag(out, 'cac:AccountingCustomerParty')).not.toContain('PartyTaxScheme');
+    });
   });
 
   describe('Fall 3 — mehrere Steuersätze mit Gesamtrabatt', () => {

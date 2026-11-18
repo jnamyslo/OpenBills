@@ -5,7 +5,7 @@
 
 import { Invoice } from '../../types';
 import { PDFOptions } from '../pdfGenerator';
-import { escapeXML, formatAmountForXML, roundToCents, getCountryCode } from './xmlUtils';
+import { escapeXML, formatAmountForXML, roundToCents, getCountryCode, vatIdentifier } from './xmlUtils';
 import { hasOnlyZeroTaxRate, getTaxCategoryCode, getTaxExemptionReason } from './taxCalculations';
 import { calculateInvoiceWithDiscounts } from '../discountUtils';
 import { isCancellation, amountSign, toPositiveBase, cancelledInvoiceRef, cancellationNote } from './cancellation';
@@ -28,41 +28,30 @@ export async function generateXRechnungXML(source: Invoice, options: PDFOptions)
   // Use new payment information or fall back to legacy fields
   const paymentInfo = options.company.paymentInformation;
 
-  // Tax breakdown (sorted by rate) shared between the header total and the subtotals.
-  const taxBreakdownEntries = Object.entries(
-    calculateInvoiceWithDiscounts(
-      invoice.items,
-      { type: invoice.globalDiscountType, value: invoice.globalDiscountValue },
-      options.company.isSmallBusiness
-    ).taxBreakdown
-  ).sort(([rateA], [rateB]) => Number(rateA) - Number(rateB));
-  // BR-CO-14: derive the header tax amount from the sum of the already-rounded per-category amounts.
-  const headerTaxAmount = taxBreakdownEntries.reduce((sum, [, breakdown]) => sum + roundToCents(breakdown.taxAmount), 0);
-
-  const itemDiscountTotal = invoice.items?.reduce((sum, item) => sum + (item.discountAmount || 0), 0) || 0;
-  const globalDiscountAmount = invoice.globalDiscountAmount || 0;
-
-  // BR-CO-10: header line total must equal the sum of the line net amounts
-  // (each line net already has its item discount subtracted).
-  const headerLineExtensionAmount = roundToCents(invoice.subtotal - itemDiscountTotal);
-
-  // Model the global (document-level) discount as one AllowanceCharge per tax
-  // rate, split proportionally so BR-CO-11/BR-CO-13 hold on multi-rate invoices.
-  // The breakdown's taxableAmount is already post-global; reconstruct each rate's
-  // share as taxable * ratio/(1-ratio) so the shares sum back to the global discount.
-  const subtotalAfterItemDiscounts = invoice.subtotal - itemDiscountTotal;
-  const globalRatio = globalDiscountAmount > 0 && subtotalAfterItemDiscounts > 0
-    ? globalDiscountAmount / subtotalAfterItemDiscounts
-    : 0;
-  const documentAllowances = globalDiscountAmount > 0
-    ? taxBreakdownEntries.map(([rate, breakdown]) => ({
-        rate,
-        categoryCode: getTaxCategoryCode(Number(rate), options.company.isSmallBusiness),
-        amount: roundToCents(globalRatio > 0 ? breakdown.taxableAmount * (globalRatio / (1 - globalRatio)) : 0),
-      }))
-    : [];
-  const allowanceTotalAmount = roundToCents(documentAllowances.reduce((sum, a) => sum + a.amount, 0));
-  const taxExclusiveAmount = roundToCents(headerLineExtensionAmount - allowanceTotalAmount);
+  // Alle Beträge aus der Cent-genauen Berechnung (BR-CO-10/13/14/15, BR-S-08), nicht aus den
+  // gespeicherten Summen: die können bei Rechnungen vor der Umstellung um einen Cent abweichen.
+  const calc = calculateInvoiceWithDiscounts(
+    invoice.items,
+    { type: invoice.globalDiscountType, value: invoice.globalDiscountValue },
+    options.company.isSmallBusiness
+  );
+  const taxBreakdownEntries = Object.entries(calc.taxBreakdown)
+    .sort(([rateA], [rateB]) => Number(rateA) - Number(rateB));
+  const headerTaxAmount = calc.taxAmount;
+  const headerLineExtensionAmount = calc.subtotalAfterItemDiscounts;
+  // Gesamtrabatt als ein Rabatt je Steuersatz (BR-CO-11/BR-S-08), Anteile ergeben in Summe den Gesamtrabatt
+  const documentAllowances = taxBreakdownEntries
+    .map(([rate, breakdown]) => ({
+      rate,
+      categoryCode: getTaxCategoryCode(Number(rate), options.company.isSmallBusiness),
+      amount: breakdown.globalDiscountShare ?? 0,
+    }))
+    .filter(allowance => allowance.amount > 0);
+  const allowanceTotalAmount = calc.globalDiscountAmount;
+  const taxExclusiveAmount = calc.discountedSubtotal;
+  const grandTotalAmount = calc.total;
+  // BT-48: USt-ID des Käufers (Pflicht bei Reverse Charge, BR-AE-02)
+  const buyerVatId = vatIdentifier(options.customer.taxId);
 
   // Create a properly formatted XRechnung document following XRechnung 3.0 standard
   const xmlContent = `<?xml version="1.0" encoding="utf-8"?>
@@ -141,7 +130,13 @@ export async function generateXRechnungXML(source: Invoice, options: PDFOptions)
         <cac:Country>
           <cbc:IdentificationCode>${getCountryCode(options.customer.country)}</cbc:IdentificationCode>
         </cac:Country>
-      </cac:PostalAddress>
+      </cac:PostalAddress>${buyerVatId ? `
+      <cac:PartyTaxScheme>
+        <cbc:CompanyID>${escapeXML(buyerVatId)}</cbc:CompanyID>
+        <cac:TaxScheme>
+          <cbc:ID>VAT</cbc:ID>
+        </cac:TaxScheme>
+      </cac:PartyTaxScheme>` : ''}
       <cac:PartyLegalEntity>
         <cbc:RegistrationName>${options.customer.name}</cbc:RegistrationName>
       </cac:PartyLegalEntity>
@@ -187,7 +182,7 @@ export async function generateXRechnungXML(source: Invoice, options: PDFOptions)
         return `
     <cac:TaxSubtotal>
       <cbc:TaxableAmount currencyID="EUR">${amount(breakdown.taxableAmount)}</cbc:TaxableAmount>
-      <cbc:TaxAmount currencyID="EUR">${amount(roundToCents(breakdown.taxAmount))}</cbc:TaxAmount>
+      <cbc:TaxAmount currencyID="EUR">${amount(breakdown.taxAmount)}</cbc:TaxAmount>
       <cac:TaxCategory>
         <cbc:ID>${categoryCode}</cbc:ID>
         <cbc:Percent>${rate}</cbc:Percent>${exemptionReason ? `
@@ -203,12 +198,12 @@ export async function generateXRechnungXML(source: Invoice, options: PDFOptions)
   <cac:LegalMonetaryTotal>
     <cbc:LineExtensionAmount currencyID="EUR">${amount(headerLineExtensionAmount)}</cbc:LineExtensionAmount>
     <cbc:TaxExclusiveAmount currencyID="EUR">${amount(taxExclusiveAmount)}</cbc:TaxExclusiveAmount>
-    <cbc:TaxInclusiveAmount currencyID="EUR">${amount(invoice.total)}</cbc:TaxInclusiveAmount>
+    <cbc:TaxInclusiveAmount currencyID="EUR">${amount(grandTotalAmount)}</cbc:TaxInclusiveAmount>
     <cbc:AllowanceTotalAmount currencyID="EUR">${amount(allowanceTotalAmount)}</cbc:AllowanceTotalAmount>
     <cbc:ChargeTotalAmount currencyID="EUR">0.00</cbc:ChargeTotalAmount>
     <cbc:PrepaidAmount currencyID="EUR">0.00</cbc:PrepaidAmount>
     <cbc:PayableRoundingAmount currencyID="EUR">0.00</cbc:PayableRoundingAmount>
-    <cbc:PayableAmount currencyID="EUR">${amount(invoice.total)}</cbc:PayableAmount>
+    <cbc:PayableAmount currencyID="EUR">${amount(grandTotalAmount)}</cbc:PayableAmount>
   </cac:LegalMonetaryTotal>
   
   ${invoice.items.map((item, index) => {
@@ -221,11 +216,11 @@ export async function generateXRechnungXML(source: Invoice, options: PDFOptions)
   <cac:InvoiceLine>
     <cbc:ID>${index + 1}</cbc:ID>
     <cbc:InvoicedQuantity unitCode="C62">${amount(item.quantity)}</cbc:InvoicedQuantity>
-    <cbc:LineExtensionAmount currencyID="EUR">${amount((item.quantity * item.unitPrice) - (item.discountAmount || 0))}</cbc:LineExtensionAmount>${(item.discountAmount || 0) > 0 ? `
+    <cbc:LineExtensionAmount currencyID="EUR">${amount(calc.lines[index].net)}</cbc:LineExtensionAmount>${calc.lines[index].discount > 0 ? `
     <cac:AllowanceCharge>
       <cbc:ChargeIndicator>false</cbc:ChargeIndicator>
       <cbc:AllowanceChargeReason>Rabatt</cbc:AllowanceChargeReason>
-      <cbc:Amount currencyID="EUR">${amount(item.discountAmount || 0)}</cbc:Amount>
+      <cbc:Amount currencyID="EUR">${amount(calc.lines[index].discount)}</cbc:Amount>
     </cac:AllowanceCharge>` : ''}
     <cac:Item>
       <cbc:Description>${item.description}</cbc:Description>

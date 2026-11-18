@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { generateXRechnungXML } from '../xrechnungGenerator';
 import { generateZUGFeRDXML } from '../zugferdGenerator';
 import { Invoice } from '../../../types';
+import { calculateInvoiceWithDiscounts } from '../../discountUtils';
 import { testInvoice, testItem, testOptions, tag, tags } from './fixtures';
 
 /**
@@ -119,7 +120,9 @@ describe('Stornorechnung ZUGFeRD (CII)', () => {
     expect(tags(out, 'ram:BilledQuantity')).toEqual(['-3', '-2.5', '-1']);
     expect(tags(out, 'ram:ChargeAmount')).toEqual(tags(orig, 'ram:ChargeAmount'));
     expect(values(out, AMOUNTS)).toEqual(negated(values(orig, AMOUNTS)));
-    expect(Number(tag(out, 'ram:GrandTotalAmount'))).toBeCloseTo(-181.24, 2);
+    // Gesamtbetrag aus der Cent-genauen Berechnung (nicht aus dem gespeicherten total), negiert
+    const { total } = calculateInvoiceWithDiscounts(original().items, { type: 'percentage', value: 5 });
+    expect(Number(tag(out, 'ram:GrandTotalAmount'))).toBe(-total);
   });
 
   it('normale Rechnung bleibt 380 ohne Bezug', () => {
