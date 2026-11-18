@@ -565,7 +565,7 @@ export function JobInvoiceGenerator({
             <ul className="text-sm text-yellow-800 space-y-1">
               <li>• Die Rechnungen werden im Entwurfsstatus erstellt</li>
               <li>• Alle abgeschlossenen Aufträge werden als "Abgerechnet" markiert</li>
-              <li>• Sie können die erstellten Rechnungen nachträglich bearbeiten</li>
+              <li>• Sie können die erstellten Rechnungen bearbeiten, solange sie Entwürfe sind</li>
               <li>• Die Mehrwertsteuer wird automatisch je nach Steuersatz berechnet</li>
             </ul>
           </div>

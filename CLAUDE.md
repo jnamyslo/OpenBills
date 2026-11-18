@@ -98,10 +98,19 @@ Three Docker services per instance: `database` (PostgreSQL 15), `backend`, `fron
 ### Belegkette (Angebot → Auftrag → Rechnung)
 
 - `job_entries.quote_id/invoice_id`, Gesamtrabatt am Auftrag (Migrationen 011/012); `POST /quotes/:id/convert-to-job`.
-- Summen: `src/utils/discountUtils.ts` (Frontend) und `backend/utils/documentTotals.js` (Spiegel) müssen identisch rechnen — `documentTotalsParity.test.ts` prüft das.
+- Summen: `src/utils/discountUtils.ts` (Frontend) und `backend/utils/documentTotals.js` (Spiegel) müssen identisch rechnen — `documentTotalsParity.test.ts` prüft das. Cent-genau (EN 16931 BR-CO-15/BR-S-08): Position netto = gerundeter Betrag − gerundeter Rabatt, Gesamtrabatt je Steuersatz verteilt (Rest-Cent auf den größten Satz), Steuer je Satz gerundet. Das Backend speichert Rechnungen/Angebote mit selbst berechneten Summen (`services/documentTotalsService.js`), nie mit Client-Werten.
 - Sammelabrechnung trennt Aufträge mit unterschiedlichem Gesamtrabatt (`groupJobsByGlobalDiscount`).
 - Spec: `docs/superpowers/specs/2026-11-16-document-chain.md`.
 - Angebot per Mail-Link annehmen/ablehnen: `send-email` legt für Angebote im Status `sent` ein Token in `quote_responses` an (Migration 014); öffentliche Seite `#angebot/<token>` (`QuoteResponsePage.tsx`), API `/api/quote-response/:token` (Whitelist, Logik in `services/quoteResponseService.js`). GET ändert nie etwas (Mail-Scanner), Link verfällt bei Antwort, Ablauf, Statusänderung oder inhaltlicher Änderung. AGB-Checkbox nur bei `company.terms_url`. Spec: `docs/superpowers/specs/2026-11-17-quote-response-link.md`.
+
+### Belegarchiv, Sperre und Storno
+
+- Gesperrt = Rechnung mit `status <> 'draft'` (alle Tarife). `utils/invoiceLock.js` in `invoiceService.updateInvoice/deleteInvoice`: nur Statuswechsel, sonst 409 `INVOICE_LOCKED`; übrige Felder dürfen mitgeschickt werden, wenn sie normalisiert gleich sind. Zurück auf `draft` nur ohne Archiveintrag (Rückweg in `releaseForOutput`). Löschen nur Entwürfe.
+- `document_archive` (Migration 015): append-only per Trigger, kein FK, dedupliziert über `(document_type, document_id, format, sha256)`, nie für Entwürfe. `services/archiveService.js`, Route `/api/archive`. Frontend archiviert vor jedem Download (`src/utils/archiveOutput.ts`, Archivfehler bricht den Download ab), Backend nach erfolgreichem Mailversand (`archived: false` bei Fehler). PDFs sind reproduzierbar (`src/utils/pdf/pdfIdentity.ts`), sonst entstünde bei jedem Download eine neue Fassung.
+- Storno: `POST /api/invoices/:id/cancel` (`services/cancellationService.js`), eigener Kreis `ST-YYYY-NNN` (`generateInvoiceNumber(date, 'ST')`, keine Startnummern), Positionen negiert, beide Belege `cancelled`, Quellen (Aufträge/Angebot) optional wieder frei, zählt nicht gegen das Kontingent. E-Rechnung: TypeCode 384 mit Bezug auf das Original (BT-25/BT-26).
+- Archiv-Export (alle Tarife, Admin): `GET /api/archive/export` (`services/archiveExportService.js`), lesbares ZIP mit `LIESMICH.txt`, `index.csv`, Belegordnern, Kunden und Rechnungsjournal (CSV mit BOM, `;`). Fehlende Fassungen von Altbelegen erzeugt nur das Frontend (`source: 'regenerated'`). Betreiber: `manage-instances.sh archive-export <name>` (`backend/scripts/archiveExport.js`); `remove` exportiert vorher (bei `--yes` immer, bricht bei Fehler ab).
+- Backup: `document_archive` steht in `OPTIONAL_TABLES` (Default aus, Checkbox „Belegarchiv einschließen“, Größe über `GET /api/backup/size-estimate`, gesperrt über 500 MB). Restore ersetzt das Archiv nur, wenn das Backup es enthält (TRUNCATE in der Restore-Transaktion).
+- Spec: `docs/superpowers/specs/2026-11-17-document-archive-storno.md`.
 
 ### PDF Generation
 
@@ -113,7 +122,9 @@ Three libraries in use — pick by context:
 ### eRechnung
 
 - ZUGFeRD 2.1 (PDF/A-3 + embedded XML) and XRechnung 3.0 (XML) generated in frontend.
-- XML conforms to UN/CEFACT CII / EN 16931.
+- XML conforms to UN/CEFACT CII / EN 16931. Alle Beträge im XML werden aus der Cent-genauen Berechnung abgeleitet (auch bei Altrechnungen).
+- Alle Beleg-PDFs außer Entwürfen sind PDF/A-3b (`src/utils/pdf/pdfA.ts`, Schrift Liberation Sans eingebettet, sRGB-OutputIntent); ZUGFeRD hängt `factur-x.xml` an. Einbettungsfehler werfen, statt ein PDF ohne XML auszugeben.
+- Validierung (Docker): `scripts/kosit-validate.sh` (KoSIT, UBL + CII inkl. Storno), `scripts/pdfa-validate.sh` (veraPDF + Mustang).
 
 ## Code Conventions
 

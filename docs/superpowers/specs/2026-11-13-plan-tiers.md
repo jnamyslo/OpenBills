@@ -27,6 +27,7 @@ Managed-SaaS-Instanzen bekommen einen Plan (Free, Starter, Professional, Enterpr
 | Kundenspez. Stundensätze, Materialvorlagen | ✗ | ✗ | ✓ | ✓ |
 | Reporting | Basis | Basis | voll | voll |
 | Backup-Export | ✓ | ✓ | ✓ | ✓ |
+| Archiv-Export | ✓ | ✓ | ✓ | ✓ |
 
 eRechnung und Backup werden bewusst nie eingeschränkt (E-Rechnungspflicht, GoBD/DSGVO).
 

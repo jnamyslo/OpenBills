@@ -239,8 +239,8 @@ Anlass: ZUGFeRD verlangt PDF/A-3; die PDFs waren es nicht (nicht eingebettete He
 - Modify: Hilfe-/FAQ-Texte im Frontend, falls dort Bearbeiten freigegebener Rechnungen beschrieben ist (Grep „GoBD“)
 - Modify: `CLAUDE.md` (Abschnitt eRechnung/Belegkette: Summen Cent-genau, `documentTotalsService.js`, `scripts/kosit-validate.sh`)
 
-- [ ] **Step 1:** Doku anpassen.
-- [ ] **Step 2:** Commit.
+- [x] **Step 1:** Doku anpassen. Hilfetexte: nur `JobInvoiceGenerator` („bearbeiten, solange sie Entwürfe sind“); die GoBD-Hinweise in Angebots-/Auftragsverwaltung betreffen nicht die Rechnungssperre und bleiben.
+- [x] **Step 2:** Commit.
 
 ### Task 12: Kunden archivieren statt löschen
 
