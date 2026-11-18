@@ -5,40 +5,34 @@ import { validateDiscountFields } from '../utils/validation.js';
 import { countReleaseIfNeeded } from './quotaService.js';
 import { assertUpdateAllowed, assertDeleteAllowed } from '../utils/invoiceLock.js';
 
-export async function generateInvoiceNumber(issueDate) {
+/**
+ * Nächste Nummer im Kreis `<prefix>-YYYY-NNN` (Jahr aus dem Rechnungsdatum).
+ * RE nutzt die Startnummern aus yearly_invoice_start_numbers, ST (Storno) beginnt immer bei 1.
+ */
+export async function generateInvoiceNumber(issueDate, prefix = 'RE') {
   const client = await pool.connect();
   try {
     // Use the year from the issue date instead of current system year
     const invoiceYear = new Date(issueDate).getFullYear();
-    const yearPattern = `RE-${invoiceYear}-%`;
-    const lastInvoiceResult = await client.query('SELECT invoice_number FROM invoices WHERE invoice_number LIKE $1 ORDER BY created_at DESC LIMIT 1', [yearPattern]);
+    const yearPrefix = `${prefix}-${invoiceYear}-`;
+    const lastInvoiceResult = await client.query('SELECT invoice_number FROM invoices WHERE invoice_number LIKE $1 ORDER BY created_at DESC LIMIT 1', [`${yearPrefix}%`]);
 
     // Get year-specific invoice start number, fallback to 1 if not defined
-    const yearlyStartResult = await client.query('SELECT start_number FROM yearly_invoice_start_numbers WHERE year = $1', [invoiceYear]);
-    const yearStartNumber = yearlyStartResult.rows.length > 0 ? yearlyStartResult.rows[0].start_number : 1;
-
-    let invoiceNumber;
-    if (lastInvoiceResult.rows.length === 0) {
-      // No invoices for this year found - start with year-specific start number
-      invoiceNumber = `RE-${invoiceYear}-${String(yearStartNumber).padStart(3, '0')}`;
-    } else {
-      const lastInvoiceNumber = lastInvoiceResult.rows[0].invoice_number;
-      if (lastInvoiceNumber && lastInvoiceNumber.startsWith(`RE-${invoiceYear}-`)) {
-        const numberPart = lastInvoiceNumber.substring(`RE-${invoiceYear}-`.length); // Remove "RE-YYYY-" prefix
-        const lastNumber = parseInt(numberPart);
-        if (!isNaN(lastNumber)) {
-          // Continue from last number, but respect year start number as minimum
-          const nextNumber = Math.max(lastNumber + 1, yearStartNumber);
-          invoiceNumber = `RE-${invoiceYear}-${String(nextNumber).padStart(3, '0')}`;
-        } else {
-          invoiceNumber = `RE-${invoiceYear}-${String(yearStartNumber).padStart(3, '0')}`;
-        }
-      } else {
-        invoiceNumber = `RE-${invoiceYear}-${String(yearStartNumber).padStart(3, '0')}`;
-      }
+    let yearStartNumber = 1;
+    if (prefix === 'RE') {
+      const yearlyStartResult = await client.query('SELECT start_number FROM yearly_invoice_start_numbers WHERE year = $1', [invoiceYear]);
+      if (yearlyStartResult.rows.length > 0) yearStartNumber = yearlyStartResult.rows[0].start_number;
     }
 
-    return invoiceNumber;
+    let nextNumber = yearStartNumber;
+    const lastInvoiceNumber = lastInvoiceResult.rows[0]?.invoice_number;
+    if (lastInvoiceNumber && lastInvoiceNumber.startsWith(yearPrefix)) {
+      const lastNumber = parseInt(lastInvoiceNumber.substring(yearPrefix.length));
+      // Continue from last number, but respect year start number as minimum
+      if (!isNaN(lastNumber)) nextNumber = Math.max(lastNumber + 1, yearStartNumber);
+    }
+
+    return `${yearPrefix}${String(nextNumber).padStart(3, '0')}`;
   } finally {
     client.release();
   }

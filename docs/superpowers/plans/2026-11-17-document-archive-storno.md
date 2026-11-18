@@ -104,9 +104,9 @@
 - Fehler: Entwurf, schon storniert, Stornorechnung selbst → 409 `INVOICE_NOT_CANCELLABLE`; `reason` leer oder > 500 → 400.
 - `releaseSources = false` wird vom Frontend für „Stornieren und neu erstellen“ genutzt; danach hängt das Frontend die Quellen per bestehendem Job-/Quote-Update auf den neuen Entwurf um. Falls das bestehende API dafür nicht reicht: `POST /:id/cancel` nimmt optional `replacementInvoiceId` und hängt in derselben Transaktion um.
 
-- [ ] **Step 1:** Failing tests: `ST-2026-001` beim ersten Storno, `ST-2026-002` beim zweiten, RE-Kreis unverändert; Positionen negiert; Summen exakt negiert (Rechnung mit Positionsrabatt, Gesamtrabatt, 7 % + 19 %); beide Status `cancelled`; Aufträge `invoice_id NULL`/`completed`, Angebot `accepted`; Kontingent unverändert bei ausgeschöpftem Free-Limit; doppeltes Storno 409.
-- [ ] **Step 2:** Implementieren, BTEST grün.
-- [ ] **Step 3:** Commit.
+- [x] **Step 1:** Failing tests: `ST-2026-001` beim ersten Storno, `ST-2026-002` beim zweiten, RE-Kreis unverändert; Positionen negiert; Summen exakt negiert (Rechnung mit Positionsrabatt, Gesamtrabatt, 7 % + 19 %); beide Status `cancelled`; Aufträge `invoice_id NULL`/`completed`, Angebot `accepted`; Kontingent unverändert bei ausgeschöpftem Free-Limit; doppeltes Storno 409.
+- [x] **Step 2:** Implementieren, BTEST grün.
+- [x] **Step 3:** Commit.
 
 ### Task 5: Folgewirkungen Status `cancelled`
 

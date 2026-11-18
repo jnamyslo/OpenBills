@@ -3,6 +3,8 @@ import logger from '../utils/logger.js';
 import { sendPlanError } from '../utils/plan.js';
 import { findAllInvoices, findInvoiceById } from '../queries/invoiceQueries.js';
 import { createInvoice, updateInvoice, deleteInvoice } from '../services/invoiceService.js';
+import { cancelInvoice } from '../services/cancellationService.js';
+import { audit } from '../auth/audit.js';
 
 const router = express.Router();
 
@@ -79,6 +81,34 @@ router.put('/:id', async (req, res) => {
     });
     if (error.statusCode === 400) return res.status(400).json({ error: error.message });
     res.status(500).json({ error: 'Failed to update invoice' });
+  }
+});
+
+// Storno: erzeugt eine Stornorechnung (ST-YYYY-NNN), Original und Storno werden 'cancelled'
+router.post('/:id/cancel', async (req, res) => {
+  try {
+    const { reason, releaseSources, replacementInvoiceId } = req.body ?? {};
+    const { original, cancellation } = await cancelInvoice(req.params.id, { reason, releaseSources, replacementInvoiceId });
+    await audit(req, {
+      action: 'invoice.cancelled',
+      entityType: 'invoice',
+      entityId: original.id,
+      details: {
+        invoiceNumber: original.invoiceNumber,
+        cancellationId: cancellation.id,
+        cancellationNumber: cancellation.invoiceNumber,
+        reason: cancellation.cancellationReason,
+        releaseSources: releaseSources ?? true,
+        replacementInvoiceId: replacementInvoiceId ?? null,
+      },
+    });
+    res.status(201).json({ original, cancellation });
+  } catch (error) {
+    if ([400, 404, 409].includes(error.statusCode)) {
+      return res.status(error.statusCode).json({ ...(error.code ? { code: error.code } : {}), error: error.message });
+    }
+    logger.error('Failed to cancel invoice', { error: error.message, stack: error.stack, invoiceId: req.params.id });
+    res.status(500).json({ error: 'Fehler beim Stornieren der Rechnung' });
   }
 });
 

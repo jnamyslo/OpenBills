@@ -1,11 +1,28 @@
 import { query } from '../database.js';
 
+// Storno-Bezug (Migration 015): Stornorechnung → Original (cancelsInvoice), Original → Storno (cancelledByInvoice)
+function cancellationFields(row) {
+  return {
+    invoiceType: row.invoice_type,
+    cancelsInvoiceId: row.cancels_invoice_id,
+    cancelsInvoice: row.cancels_invoice_id
+      ? { id: row.cancels_invoice_id, invoiceNumber: row.cancels_invoice_number, issueDate: row.cancels_invoice_issue_date }
+      : null,
+    cancelledByInvoice: row.cancelled_by_id ? { id: row.cancelled_by_id, invoiceNumber: row.cancelled_by_number } : null,
+    cancellationReason: row.cancellation_reason,
+  };
+}
+
 export async function findAllInvoices() {
   const result = await query(`
       SELECT i.*,
+             orig.invoice_number AS cancels_invoice_number, orig.issue_date AS cancels_invoice_issue_date,
+             st.id AS cancelled_by_id, st.invoice_number AS cancelled_by_number,
              COALESCE(items_subquery.items, '{}'::jsonb[]) as items,
              COALESCE(attachments_subquery.attachments, '[]'::jsonb) as attachments
       FROM invoices i
+      LEFT JOIN invoices orig ON orig.id = i.cancels_invoice_id
+      LEFT JOIN invoices st ON st.cancels_invoice_id = i.id
       LEFT JOIN (
         SELECT invoice_id,
                array_agg(
@@ -59,16 +76,21 @@ export async function findAllInvoices() {
     globalDiscountType: row.global_discount_type,
     globalDiscountValue: row.global_discount_value ? parseFloat(row.global_discount_value) : null,
     globalDiscountAmount: row.global_discount_amount ? parseFloat(row.global_discount_amount) : null,
-    createdAt: row.created_at
+    createdAt: row.created_at,
+    ...cancellationFields(row),
   }));
 }
 
 export async function findInvoiceById(id) {
   const result = await query(`
       SELECT i.*,
+             orig.invoice_number AS cancels_invoice_number, orig.issue_date AS cancels_invoice_issue_date,
+             st.id AS cancelled_by_id, st.invoice_number AS cancelled_by_number,
              COALESCE(items_subquery.items, '{}'::jsonb[]) as items,
              COALESCE(attachments_subquery.attachments, '[]'::jsonb) as attachments
       FROM invoices i
+      LEFT JOIN invoices orig ON orig.id = i.cancels_invoice_id
+      LEFT JOIN invoices st ON st.cancels_invoice_id = i.id
       LEFT JOIN (
         SELECT invoice_id,
                array_agg(
@@ -127,6 +149,7 @@ export async function findInvoiceById(id) {
     globalDiscountType: row.global_discount_type,
     globalDiscountValue: row.global_discount_value ? parseFloat(row.global_discount_value) : null,
     globalDiscountAmount: row.global_discount_amount ? parseFloat(row.global_discount_amount) : null,
-    createdAt: row.created_at
+    createdAt: row.created_at,
+    ...cancellationFields(row),
   };
 }
