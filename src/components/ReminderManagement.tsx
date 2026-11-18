@@ -210,7 +210,8 @@ export function ReminderManagement() {
       overdue: { label: 'Überfällig', color: 'bg-red-100 text-red-800' },
       reminded_1x: { label: '1x gemahnt', color: 'bg-orange-100 text-orange-800' },
       reminded_2x: { label: '2x gemahnt', color: 'bg-orange-200 text-orange-900' },
-      reminded_3x: { label: '3x gemahnt', color: 'bg-red-200 text-red-900' }
+      reminded_3x: { label: '3x gemahnt', color: 'bg-red-200 text-red-900' },
+      cancelled: { label: 'Storniert', color: 'bg-gray-100 text-gray-500 line-through' }
     };
 
     const config = statusConfig[status] || statusConfig.draft;
@@ -931,7 +932,8 @@ function getStatusBadgeForReminder(status: Invoice['status']) {
     overdue: { label: 'Überfällig', color: 'bg-red-100 text-red-800' },
     reminded_1x: { label: '1x gemahnt', color: 'bg-orange-100 text-orange-800' },
     reminded_2x: { label: '2x gemahnt', color: 'bg-orange-200 text-orange-900' },
-    reminded_3x: { label: '3x gemahnt', color: 'bg-red-200 text-red-900' }
+    reminded_3x: { label: '3x gemahnt', color: 'bg-red-200 text-red-900' },
+    cancelled: { label: 'Storniert', color: 'bg-gray-100 text-gray-500 line-through' }
   };
 
   const config = statusConfig[status] || statusConfig.draft;

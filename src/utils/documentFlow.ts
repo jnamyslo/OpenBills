@@ -67,6 +67,7 @@ const INVOICE_STATUS: Record<string, [string, string]> = {
   reminded_1x: ['1. Mahnung', 'bg-orange-100 text-orange-800'],
   reminded_2x: ['2. Mahnung', 'bg-orange-100 text-orange-800'],
   reminded_3x: ['3. Mahnung', 'bg-red-100 text-red-800'],
+  cancelled: ['Storniert', 'bg-gray-100 text-gray-500 line-through'],
 };
 
 const statusOf = (table: Record<string, [string, string]>, status: string): [string, string] =>

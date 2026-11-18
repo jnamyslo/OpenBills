@@ -212,6 +212,33 @@ describe.skipIf(!hasDb)('Storno', () => {
     expect((await cancel('00000000-0000-0000-0000-000000000000')).status).toBe(404);
   });
 
+  it('Reporting: Journal enthält Original und Storno mit Bezug, netto 0, nichts offen oder überfällig', async () => {
+    const original = await createInvoice({ status: 'overdue' });
+    const { body: { cancellation } } = await cancel(original.id);
+
+    const journal = await request(app).get('/api/reporting/invoice-journal').set('Cookie', cookie);
+    expect(journal.status).toBe(200);
+    const byNumber = Object.fromEntries(journal.body.invoices.map((i) => [i.invoiceNumber, i]));
+    expect(byNumber[original.invoiceNumber]).toMatchObject({ status: 'cancelled', invoiceType: 'invoice', cancelsInvoiceNumber: null });
+    expect(byNumber[cancellation.invoiceNumber]).toMatchObject({
+      status: 'cancelled', invoiceType: 'cancellation', cancelsInvoiceNumber: original.invoiceNumber,
+    });
+    const { summary } = journal.body;
+    expect(summary.totalInvoices).toBe(2);
+    for (const key of ['totalAmount', 'subtotalSum', 'taxSum', 'paidAmount', 'overdueAmount', 'outstandingAmount']) {
+      expect(summary[key]).toBeCloseTo(0, 6);
+    }
+
+    const stats = await request(app).get(`/api/reporting/statistics?year=${YEAR}`).set('Cookie', cookie);
+    expect(stats.status).toBe(200);
+    expect(stats.body.statusDistribution).toEqual([{ status: 'cancelled', count: 2, totalAmount: 0 }]);
+    expect(stats.body.yearOverview).toMatchObject({ overdueAmount: 0, paidAmount: 0 });
+    expect(stats.body.yearOverview.totalAmount).toBeCloseTo(0, 6);
+
+    const pdf = await post('/api/reporting/invoice-journal/pdf', {});
+    expect(pdf.status).toBe(200);
+  });
+
   it('paralleles Storno erzeugt genau eine Stornorechnung', async () => {
     const original = await createInvoice();
     const results = await Promise.all([cancel(original.id), cancel(original.id), cancel(original.id)]);

@@ -136,7 +136,8 @@ export function DownloadModal({
                 <strong>Status:</strong> {invoice.status === 'draft' ? 'Entwurf' : 
                                        invoice.status === 'sent' ? 'Versendet' :
                                        invoice.status === 'paid' ? 'Bezahlt' : 
-                                       invoice.status === 'overdue' ? 'Überfällig' : invoice.status}
+                                       invoice.status === 'overdue' ? 'Überfällig' :
+                                       invoice.status === 'cancelled' ? 'Storniert' : invoice.status}
               </p>
             )}
           </div>

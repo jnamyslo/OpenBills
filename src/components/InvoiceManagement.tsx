@@ -163,7 +163,7 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
     if (filterStatus === 'all') {
       matchesStatus = true;
     } else if (filterStatus === 'not-paid') {
-      matchesStatus = invoice.status !== 'paid';
+      matchesStatus = invoice.status !== 'paid' && invoice.status !== 'cancelled';
     } else {
       matchesStatus = invoice.status === filterStatus;
     }
@@ -673,6 +673,7 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
       case 'reminded_1x': return 'bg-orange-100 text-orange-800';
       case 'reminded_2x': return 'bg-orange-200 text-orange-900';
       case 'reminded_3x': return 'bg-red-200 text-red-900';
+      case 'cancelled': return 'bg-gray-100 text-gray-500 line-through';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
@@ -686,6 +687,7 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
       case 'reminded_1x': return '1x gemahnt';
       case 'reminded_2x': return '2x gemahnt';
       case 'reminded_3x': return '3x gemahnt';
+      case 'cancelled': return 'Storniert';
       default: return status;
     }
   };
@@ -882,11 +884,12 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
             className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="all">Alle Status</option>
-            <option value="not-paid">Alle außer bezahlt</option>
+            <option value="not-paid">Alle außer bezahlt/storniert</option>
             <option value="draft">Entwurf</option>
             <option value="sent">Versendet</option>
             <option value="paid">Bezahlt</option>
             <option value="overdue">Überfällig</option>
+            <option value="cancelled">Storniert</option>
           </select>
         </div>
       </div>

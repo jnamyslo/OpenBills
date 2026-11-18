@@ -13,6 +13,7 @@ import { EmailSendModal } from './EmailSendModal';
 import { generateInvoicePDF } from '../utils/pdfGenerator';
 import { apiService, isPlanError } from '../services/api';
 import { releaseForOutput } from '../utils/releaseForOutput';
+import { isOpenInvoice, isOverdueStatus } from '../utils/invoiceStatus';
 import { Invoice } from '../types';
 
 interface DashboardProps {
@@ -233,15 +234,14 @@ export function Dashboard({ onNavigate }: DashboardProps) {
   today.setHours(0, 0, 0, 0);
   const DAY_MS = 24 * 60 * 60 * 1000;
 
-  const isOverdue = (status: string) => status === 'overdue' || status.startsWith('reminded_');
   const sumTotals = (list: Invoice[]) => list.reduce((sum, invoice) => sum + invoice.total, 0);
   // Umsatz = alle nicht-Entwurf-Rechnungen nach Rechnungsdatum
   const issuedInvoices = invoices.filter(invoice => invoice.status !== 'draft');
   const monthKey = (date: Date) => `${date.getFullYear()}-${date.getMonth()}`;
 
-  const openInvoices = invoices.filter(invoice => invoice.status !== 'draft' && invoice.status !== 'paid');
+  const openInvoices = invoices.filter(invoice => isOpenInvoice(invoice.status));
   const overdueInvoices = invoices
-    .filter(invoice => isOverdue(invoice.status))
+    .filter(invoice => isOverdueStatus(invoice.status))
     .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
   const draftCount = invoices.filter(invoice => invoice.status === 'draft').length;
 
@@ -282,6 +282,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
       case 'reminded_1x': return '1. Mahnung';
       case 'reminded_2x': return '2. Mahnung';
       case 'reminded_3x': return '3. Mahnung';
+      case 'cancelled': return 'Storniert';
       default: return status;
     }
   };
@@ -361,7 +362,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
           Versenden
         </button>
       )}
-      {invoice.status !== 'draft' && invoice.status !== 'paid' && (
+      {isOpenInvoice(invoice.status) && (
         <button
           className="bg-green-100 hover:bg-green-200 text-green-700 px-3 py-1 rounded-md transition-colors flex items-center text-xs font-medium"
           title="Als bezahlt markieren"

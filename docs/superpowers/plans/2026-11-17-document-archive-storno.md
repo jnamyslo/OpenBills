@@ -117,9 +117,9 @@
 - Modify: Status-Badges/Labels (Suche nach `reminded_3x` im Frontend für alle Label-Maps)
 - Test: bestehende Frontend-Tests zu `documentFlow` erweitern; `backend/tests/reporting…` falls vorhanden, sonst in `cancellation.test.js`
 
-- [ ] **Step 1:** Failing tests: stornierte Rechnung nie überfällig/offen; Journal enthält beide Belege, Umsatzsumme netto 0.
-- [ ] **Step 2:** Implementieren, FTEST/BTEST grün, `docker compose … build frontend` ohne TS-Fehler.
-- [ ] **Step 3:** Commit.
+- [x] **Step 1:** Failing tests: stornierte Rechnung nie überfällig/offen; Journal enthält beide Belege, Umsatzsumme netto 0.
+- [x] **Step 2:** Implementieren, FTEST/BTEST grün, `docker compose … build frontend` ohne TS-Fehler.
+- [x] **Step 3:** Commit.
 
 ### Task 6: PDF und E-Rechnung für Stornorechnungen
 

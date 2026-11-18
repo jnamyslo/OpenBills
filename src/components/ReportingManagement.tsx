@@ -181,6 +181,7 @@ export function ReportingManagement() {
       case 'overdue': return 'text-red-600 bg-red-50';
       case 'sent': return 'text-blue-600 bg-blue-50';
       case 'draft': return 'text-gray-600 bg-gray-50';
+      case 'cancelled': return 'text-gray-500 bg-gray-50 line-through';
       default: return 'text-gray-600 bg-gray-50';
     }
   };
@@ -191,6 +192,7 @@ export function ReportingManagement() {
       case 'overdue': return 'Überfällig';
       case 'sent': return 'Gesendet';
       case 'draft': return 'Entwurf';
+      case 'cancelled': return 'Storniert';
       default: return status;
     }
   };

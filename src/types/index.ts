@@ -42,7 +42,10 @@ export interface Customer extends Timestamps {
 // Invoice Types
 // ============================================================================
 
-export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'reminded_1x' | 'reminded_2x' | 'reminded_3x';
+export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'reminded_1x' | 'reminded_2x' | 'reminded_3x' | 'cancelled';
+
+/** 'cancellation' = Stornorechnung (ST-YYYY-NNN) */
+export type InvoiceType = 'invoice' | 'cancellation';
 
 export type DiscountType = 'percentage' | 'fixed';
 
@@ -97,6 +100,14 @@ export interface Invoice extends Timestamps, GlobalDiscount {
   lastReminderDate?: Date;
   lastReminderSentAt?: Date;
   maxReminderStage?: number;
+  // Storno (vom Backend geliefert)
+  invoiceType?: InvoiceType;
+  cancelsInvoiceId?: UUID | null;
+  /** Bei Stornorechnungen: das stornierte Original */
+  cancelsInvoice?: { id: UUID; invoiceNumber: string; issueDate: Date } | null;
+  /** Bei stornierten Originalen: die Stornorechnung */
+  cancelledByInvoice?: { id: UUID; invoiceNumber: string } | null;
+  cancellationReason?: string | null;
 }
 
 // ============================================================================

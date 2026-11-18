@@ -733,7 +733,8 @@ function getStatusLabel(status: Invoice['status']): string {
     overdue: 'Überfällig',
     reminded_1x: '1x gemahnt',
     reminded_2x: '2x gemahnt',
-    reminded_3x: '3x gemahnt'
+    reminded_3x: '3x gemahnt',
+    cancelled: 'Storniert'
   };
   return labels[status] || status;
 }

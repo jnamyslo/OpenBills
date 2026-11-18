@@ -77,6 +77,13 @@ describe('buildChain', () => {
     const chain = buildChain({ kind: 'invoice', id: 'i1' }, { quotes, jobs, invoices });
     expect(chain.invoice[0].statusLabel).toBe('Bezahlt');
   });
+
+  it('zeigt stornierte Rechnungen als „Storniert“', () => {
+    const chain = buildChain({ kind: 'invoice', id: 'i3' }, {
+      quotes, jobs, invoices: [{ id: 'i3', invoiceNumber: 'RE-3', status: 'cancelled' }],
+    });
+    expect(chain.invoice[0]).toMatchObject({ statusLabel: 'Storniert', statusClass: 'bg-gray-100 text-gray-500 line-through' });
+  });
 });
 
 

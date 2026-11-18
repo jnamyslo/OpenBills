@@ -49,6 +49,8 @@ router.get('/invoice-journal', async (req, res) => {
         i.tax_amount,
         i.total,
         i.status,
+        i.invoice_type,
+        orig.invoice_number AS cancels_invoice_number,
         i.created_at,
         c.customer_number,
         CASE 
@@ -70,6 +72,7 @@ router.get('/invoice-journal', async (req, res) => {
         ) as item_discounts_total
       FROM invoices i
       LEFT JOIN customers c ON i.customer_id = c.id
+      LEFT JOIN invoices orig ON orig.id = i.cancels_invoice_id
       WHERE ${whereClause}
       ORDER BY i.issue_date DESC, i.invoice_number DESC
     `, params);
@@ -112,6 +115,8 @@ router.get('/invoice-journal', async (req, res) => {
           taxAmount: parseFloat(inv.tax_amount),
           total: parseFloat(inv.total),
           status: inv.status,
+          invoiceType: inv.invoice_type,
+          cancelsInvoiceNumber: inv.cancels_invoice_number,
           paidAmount: parseFloat(inv.paid_amount),
           overdueAmount: parseFloat(inv.overdue_amount),
           outstandingAmount: parseFloat(inv.outstanding_amount),
@@ -172,6 +177,8 @@ router.post('/invoice-journal/pdf', async (req, res) => {
         i.tax_amount,
         i.total,
         i.status,
+        i.invoice_type,
+        orig.invoice_number AS cancels_invoice_number,
         i.created_at,
         c.customer_number,
         CASE 
@@ -193,6 +200,7 @@ router.post('/invoice-journal/pdf', async (req, res) => {
         ) as item_discounts_total
       FROM invoices i
       LEFT JOIN customers c ON i.customer_id = c.id
+      LEFT JOIN invoices orig ON orig.id = i.cancels_invoice_id
       WHERE ${whereClause}
       ORDER BY i.issue_date DESC, i.invoice_number DESC
     `, params);
@@ -344,7 +352,8 @@ router.post('/invoice-journal/pdf', async (req, res) => {
         'draft': 'Entwurf',
         'sent': 'Gesendet',
         'paid': 'Bezahlt',
-        'overdue': 'Überfällig'
+        'overdue': 'Überfällig',
+        'cancelled': 'Storniert'
       };
 
       // Berechne Nettosumme nach Rabatten
@@ -361,7 +370,7 @@ router.post('/invoice-journal/pdf', async (req, res) => {
          .text(discountedSubtotal.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }), 320, yPosition)
          .text(parseFloat(invoice.tax_amount).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }), 380, yPosition)
          .text(parseFloat(invoice.total).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }), 440, yPosition)
-         .text(statusMap[invoice.status] || invoice.status, 500, yPosition);
+         .text(invoice.invoice_type === 'cancellation' ? 'Storno' : (statusMap[invoice.status] || invoice.status), 500, yPosition);
 
       yPosition += 15;
     });
