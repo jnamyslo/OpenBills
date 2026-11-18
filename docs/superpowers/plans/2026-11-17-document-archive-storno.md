@@ -170,7 +170,7 @@ Anlass: KoSIT-Lauf in Task 6. Summen wurden mit ungerundeter Steuer gebildet (BR
   - Build, Typecheck (Baseline 44 → 31), ESLint, FTEST und BTEST grün (2026-11-18). Manueller Test in einer Testinstanz steht noch aus.
   - Umsetzung: Gesperrte Rechnungen öffnen statt des Editors `InvoiceDetailsModal.tsx` (Daten, Storno-Bezug, `ArchiveVersions`, Stornieren / Stornieren und neu erstellen). Angebote zeigen `ArchiveVersions` im Editor-Kopf. „Stornieren und neu erstellen“ legt erst den Entwurf an (`utils/invoiceCopy.ts`) und storniert dann mit `replacementInvoiceId`; scheitert das Storno, wird der Entwurf gelöscht. Rechnungsdownload mit mehreren Formaten archiviert erst alle Dateien, dann startet der Download.
   - `exportArchiveUrl` kommt mit der Route in Task 8.
-  - Offen (N6): jsPDF/pdf-lib schreiben das aktuelle Datum (und eine zufällige File-ID) ins PDF. Erneutes Herunterladen derselben Rechnung erzeugt daher eine neue Archivfassung statt dedupliziert zu werden. Abhilfe: feste `CreationDate`/`ModDate`/File-ID je Beleg (z. B. aus Rechnungsdatum + ID) in `pdfGenerator.ts`/`zugferdGenerator.ts` – eigener Task, da es die PDF/A-Metadaten berührt.
+  - N6 (erledigt 2026-11-18): PDFs sind reproduzierbar (`src/utils/pdf/pdfIdentity.ts`): Datei-ID aus Belegtyp + ID, Erstell-/Änderungsdatum = Rechnungs- bzw. Angebotsdatum, bei Mahnungen heute 00:00 (Mahndatum steht im Beleg). pdf-lib lädt mit `updateMetadata: false`. Test `deterministicPdf.test.ts`. Neue Fassungen entstehen nur noch bei inhaltlicher Änderung (Stammdaten, Logo, Mahnung an einem anderen Tag).
 - [ ] **Step 5:** Commit.
 
 ### Task 8: Archiv-Export

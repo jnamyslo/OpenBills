@@ -4,6 +4,7 @@
  */
 
 import { PDFDocument, AFRelationship } from 'pdf-lib';
+import { documentDate } from './pdfIdentity';
 import { Invoice } from '../../types';
 import { PDFOptions } from '../pdfGenerator';
 import logger from '../logger';
@@ -259,7 +260,9 @@ export function generateZUGFeRDXML(source: Invoice, options: PDFOptions): string
  */
 export async function embedZUGFeRDXMLIntoPDF(pdfBuffer: ArrayBuffer, invoice: Invoice, options: PDFOptions): Promise<Blob> {
   try {
-    const pdfDoc = await PDFDocument.load(pdfBuffer);
+    // updateMetadata: false – sonst setzt pdf-lib Producer und Datum auf „jetzt“ (N6, reproduzierbar)
+    const pdfDoc = await PDFDocument.load(pdfBuffer, { updateMetadata: false });
+    const date = documentDate(invoice.issueDate);
     const xmlData = generateZUGFeRDXML(invoice, options);
     
     if (!xmlData || xmlData.trim().length === 0) {
@@ -273,14 +276,14 @@ export async function embedZUGFeRDXMLIntoPDF(pdfBuffer: ArrayBuffer, invoice: In
     pdfDoc.setKeywords(['ZUGFeRD', 'invoice', 'electronic invoice', 'EN 16931']);
     pdfDoc.setProducer('OpenBills');
     pdfDoc.setCreator('OpenBills');
-    pdfDoc.setCreationDate(new Date());
-    pdfDoc.setModificationDate(new Date());
+    pdfDoc.setCreationDate(date);
+    pdfDoc.setModificationDate(date);
     
     await pdfDoc.attach(xmlBytes, 'ZUGFeRD-invoice.xml', {
       mimeType: 'application/xml',
       description: 'ZUGFeRD invoice data',
-      creationDate: new Date(),
-      modificationDate: new Date(),
+      creationDate: date,
+      modificationDate: date,
       afRelationship: AFRelationship.Alternative,
     });
     

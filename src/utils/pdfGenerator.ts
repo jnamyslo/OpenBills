@@ -29,6 +29,7 @@ import { generateXRechnungXML } from './pdf/xrechnungGenerator';
 import { embedZUGFeRDXMLIntoPDF } from './pdf/zugferdGenerator';
 import { addDraftWatermark, DraftExportError } from './pdf/draftWatermark';
 import { isCancellation, amountSign, toPositiveBase, cancellationNote } from './pdf/cancellation';
+import { applyPdfIdentity, documentDate, startOfToday } from './pdf/pdfIdentity';
 
 // Export types for external use
 export interface PDFOptions {
@@ -78,6 +79,7 @@ export async function generateInvoicePDF(invoice: Invoice, options: PDFOptions):
   }
 
   const pdf = new jsPDF();
+  applyPdfIdentity(pdf, `invoice:${invoice.id}`, documentDate(invoice.issueDate));
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
   const locale = options.company.locale || 'de-DE';
@@ -900,6 +902,7 @@ export async function generateJobPDF(job: JobEntry, options: JobPDFOptions): Pro
  */
 export async function generateQuotePDF(quote: Quote & { description?: string }, options: QuotePDFOptions): Promise<Blob> {
   const pdf = new jsPDF();
+  applyPdfIdentity(pdf, `quote:${quote.id}`, documentDate(quote.issueDate));
   
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
@@ -1251,6 +1254,7 @@ export async function generateReminderPDF(
   options: PDFOptions
 ): Promise<Blob> {
   const pdf = new jsPDF();
+  applyPdfIdentity(pdf, `reminder:${invoice.id}:${stage}`, startOfToday());
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
   const locale = options.company.locale || 'de-DE';
