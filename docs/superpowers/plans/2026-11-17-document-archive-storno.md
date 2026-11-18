@@ -203,3 +203,22 @@
 
 - [ ] **Step 1:** Doku anpassen.
 - [ ] **Step 2:** Commit.
+
+### Task 12: Kunden archivieren statt löschen
+
+Hintergrund: Seit der Sperre (Task 3) antwortet `DELETE /api/customers/:id` mit 409 `CUSTOMER_HAS_INVOICES`, sobald freigegebene oder stornierte Rechnungen existieren (`invoices.customer_id` ist `ON DELETE CASCADE`). Echtes Löschen geht nicht: Rechnungen speichern nur `customer_name`, Adresse/USt-ID/E-Mail für Storno-XML, Mahnungen und „Fehlende Fassungen erzeugen“ kommen vom Kunden. Archivieren entspricht der Sperrung nach Art. 17 Abs. 3 lit. b DSGVO während der Aufbewahrungsfrist.
+
+**Files:**
+- Create: `backend/migrations/016_customer_archive.js` (`customers.archived_at TIMESTAMPTZ NULL`), Registrierung in `backend/migrations/index.js`
+- Modify: `backend/routes/customers.js` (`POST /:id/archive`, `POST /:id/unarchive`, Audit `customer.archived`/`customer.unarchived`; Liste liefert `archivedAt`; `DELETE` bleibt bei 409 für Kunden mit freigegebenen Rechnungen)
+- Modify: `backend/services/invoiceService.js`, `backend/services/quoteService.js`, Auftragsanlage in `backend/routes/jobs.js` (neue Belege für archivierte Kunden → 409 `CUSTOMER_ARCHIVED`; Storno einer Rechnung eines archivierten Kunden bleibt erlaubt)
+- Modify: `src/types/index.ts` (`Customer.archivedAt?`), `src/services/api.ts`, `src/context/CustomerContext.tsx`
+- Modify: `src/components/CustomerManagement.tsx` (Filter „Archivierte anzeigen“, Aktionen „Archivieren“/„Wiederherstellen“; bei 409 `CUSTOMER_HAS_INVOICES` Archivieren anbieten)
+- Modify: Kundenauswahl in Editoren (Grep `customers.map`/`customers.filter` in `InvoiceEditor`, `QuoteEditor`, `JobEntryForm`, `JobInvoiceGenerator` u. a.): archivierte Kunden ausblenden, außer der Beleg gehört bereits zu ihnen
+- Test: `backend/tests/customerArchive.test.js`
+
+- [ ] **Step 1:** Failing tests: Archivieren/Wiederherstellen mit Audit; archivierter Kunde in der Liste mit `archivedAt`; neue Rechnung/Angebot/Auftrag für archivierten Kunden 409; bestehende Rechnungen bleiben lesbar, Statuswechsel und Storno gehen; `DELETE` weiter 409 bei freigegebenen Rechnungen; Restore eines Backups ohne `archived_at` (alte Backups) funktioniert.
+- [ ] **Step 2:** Implementieren, BTEST grün.
+- [ ] **Step 3:** Frontend (Filter, Aktionen, Kundenauswahl), Build grün; manuell: Kunde mit Rechnung archivieren, taucht in Auswahl nicht mehr auf, Rechnung weiterhin herunterladbar.
+- [ ] **Step 4:** `CLAUDE.md` (Abschnitt „Belegarchiv und Storno“) um Kunden-Archivierung ergänzen.
+- [ ] **Step 5:** Commit.
