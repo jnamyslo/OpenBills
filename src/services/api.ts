@@ -88,6 +88,7 @@ interface BackupInfo {
   tableCount: number;
   totalRecords: number;
   encrypted: boolean;
+  includesArchive?: boolean;
   created: string;
 }
 
@@ -691,7 +692,7 @@ class ApiService {
     return this.request(`/backup/delete/${filename}`, { method: 'DELETE' });
   }
 
-  async createZipBackup(passphrase: string): Promise<{
+  async createZipBackup(passphrase: string, includeArchive = false): Promise<{
     success: boolean;
     message: string;
     filename: string;
@@ -702,8 +703,12 @@ class ApiService {
   }> {
     return this.request('/backup/create-zip', {
       method: 'POST',
-      body: JSON.stringify({ passphrase }),
+      body: JSON.stringify({ passphrase, includeArchive }),
     });
+  }
+
+  async getBackupSizeEstimate(): Promise<{ baseBytes: number; archiveBytes: number }> {
+    return this.request('/backup/size-estimate');
   }
 
   async downloadZipBackup(filename: string): Promise<void> {

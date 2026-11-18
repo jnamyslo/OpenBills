@@ -5,7 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import logger from '../utils/logger.js';
 import { audit } from '../auth/audit.js';
-import { BACKUP_TABLES } from '../utils/backupTables.js';
+import { BACKUP_TABLES, OPTIONAL_TABLES } from '../utils/backupTables.js';
 import { encryptBackup, decryptBackup, validatePassphrase, BackupPassphraseError } from '../utils/backupCrypto.js';
 import { encryptSmtpPass, decryptSmtpPass } from '../utils/smtpPassword.js';
 
@@ -59,9 +59,17 @@ function processValueForRestore(table, column, value) {
   return value;
 }
 
-async function readTables(client) {
+// Tabellen eines Backups: Belegarchiv nur auf Wunsch (Default aus, kann sehr groß werden).
+function backupTables(includeArchive) {
+  return includeArchive ? [...BACKUP_TABLES, ...OPTIONAL_TABLES] : BACKUP_TABLES;
+}
+
+// Pauschale je Archiveintrag für Metadaten (Nummer, Dateiname, Hash …) im Backup-JSON.
+const ARCHIVE_ROW_OVERHEAD = 400;
+
+async function readTables(client, includeArchive) {
   const data = {};
-  for (const table of BACKUP_TABLES) {
+  for (const table of backupTables(includeArchive)) {
     const result = await client.query(`SELECT * FROM ${client.escapeIdentifier(table)}`);
     data[table] = result.rows;
   }
@@ -310,11 +318,13 @@ router.post('/create-zip', async (req, res) => {
 
     logger.info('Creating full ZIP backup...');
 
+    const includeArchive = req.body?.includeArchive === true;
     const backup = {
       timestamp: new Date().toISOString(),
       version: '3.0',
       type: 'full',
-      data: await readTables(client)
+      includesArchive: includeArchive,
+      data: await readTables(client, includeArchive)
     };
 
     const { header, ciphertext } = encryptBackup(Buffer.from(JSON.stringify(backup)), req.body.passphrase);
@@ -329,6 +339,7 @@ router.post('/create-zip', async (req, res) => {
       created: backup.timestamp,
       version: backup.version,
       encrypted: true,
+      includesArchive: includeArchive,
       tables: Object.keys(backup.data).length,
       totalRecords: Object.values(backup.data).reduce((sum, records) => sum + records.length, 0)
     };
@@ -464,11 +475,14 @@ router.post('/restore-zip', async (req, res) => {
       let restoredTables = 0;
       let restoredRecords = 0;
 
-      await client.query(`TRUNCATE ${BACKUP_TABLES.map((t) => client.escapeIdentifier(t)).join(', ')} CASCADE`);
+      // Enthält das Backup das Belegarchiv, wird es ersetzt, sonst bleibt das vorhandene stehen.
+      // TRUNCATE feuert die Append-only-Zeilentrigger nicht und gilt nur in dieser Transaktion.
+      const tables = backupTables(Array.isArray(backupData.data.document_archive));
+      await client.query(`TRUNCATE ${tables.map((t) => client.escapeIdentifier(t)).join(', ')} CASCADE`);
 
       logger.info('Restoring data...');
       const failedTables = [];
-      for (const table of BACKUP_TABLES) {
+      for (const table of tables) {
         const rows = backupData.data[table];
         if (!Array.isArray(rows)) {
           logger.info(`Skipping table ${table} - no data in backup`);
@@ -560,6 +574,30 @@ router.post('/restore-zip', async (req, res) => {
   }
 });
 
+// Geschätzte Größe eines Backups (Backup-JSON ist verschlüsselt und damit kaum komprimierbar)
+router.get('/size-estimate', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    let baseBytes = 0;
+    for (const table of BACKUP_TABLES) {
+      const { rows } = await client.query(
+        `SELECT COALESCE(SUM(octet_length(row_to_json(t)::text)), 0)::bigint AS bytes FROM ${client.escapeIdentifier(table)} t`
+      );
+      baseBytes += Number(rows[0].bytes);
+    }
+    const { rows } = await client.query(
+      'SELECT COALESCE(SUM(octet_length(content)), 0)::bigint AS bytes, COUNT(*)::int AS count FROM document_archive'
+    );
+    const archiveBytes = Number(rows[0].bytes) + rows[0].count * ARCHIVE_ROW_OVERHEAD;
+    res.json({ baseBytes, archiveBytes });
+  } catch (error) {
+    logger.error('Error estimating backup size:', error);
+    res.status(500).json({ success: false, message: 'Fehler beim Schätzen der Backup-Größe', error: error.message });
+  } finally {
+    client.release();
+  }
+});
+
 // List ZIP backups
 router.get('/list-all', async (req, res) => {
   try {
@@ -588,6 +626,7 @@ router.get('/list-all', async (req, res) => {
             tableCount: metadata.tables || 0,
             totalRecords: metadata.totalRecords || 0,
             encrypted: Boolean(zip.getEntry('database.json.enc')),
+            includesArchive: metadata.includesArchive === true,
             created: stats.birthtime.toISOString()
           };
         } catch (error) {

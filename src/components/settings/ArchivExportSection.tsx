@@ -94,7 +94,7 @@ export function ArchivExportSection() {
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 md:p-6 space-y-4">
+    <div id="archiv-export" className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 md:p-6 space-y-4">
       <div>
         <h3 className="flex items-center gap-2 text-lg font-semibold text-gray-900">
           <Archive className="h-5 w-5 text-gray-500" />

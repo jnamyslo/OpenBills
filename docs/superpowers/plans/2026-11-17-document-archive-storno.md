@@ -171,7 +171,7 @@ Anlass: KoSIT-Lauf in Task 6. Summen wurden mit ungerundeter Steuer gebildet (BR
   - Umsetzung: Gesperrte Rechnungen öffnen statt des Editors `InvoiceDetailsModal.tsx` (Daten, Storno-Bezug, `ArchiveVersions`, Stornieren / Stornieren und neu erstellen). Angebote zeigen `ArchiveVersions` im Editor-Kopf. „Stornieren und neu erstellen“ legt erst den Entwurf an (`utils/invoiceCopy.ts`) und storniert dann mit `replacementInvoiceId`; scheitert das Storno, wird der Entwurf gelöscht. Rechnungsdownload mit mehreren Formaten archiviert erst alle Dateien, dann startet der Download.
   - `exportArchiveUrl` kommt mit der Route in Task 8.
   - N6 (erledigt 2026-11-18): PDFs sind reproduzierbar (`src/utils/pdf/pdfIdentity.ts`): Datei-ID aus Belegtyp + ID, Erstell-/Änderungsdatum = Rechnungs- bzw. Angebotsdatum, bei Mahnungen heute 00:00 (Mahndatum steht im Beleg). pdf-lib lädt mit `updateMetadata: false`. Test `deterministicPdf.test.ts`. Neue Fassungen entstehen nur noch bei inhaltlicher Änderung (Stammdaten, Logo, Mahnung an einem anderen Tag).
-- [ ] **Step 5:** Commit.
+- [x] **Step 5:** Commit.
 
 ### Task 7a: PDF/A-3b für alle Beleg-PDFs (eingeschoben)
 
@@ -204,7 +204,7 @@ Anlass: ZUGFeRD verlangt PDF/A-3; die PDFs waren es nicht (nicht eingebettete He
 - [x] **Step 2:** Implementieren, BTEST grün (447).
 - [ ] **Step 3:** Frontend-Dialog, Build grün, manuell mit Altbeleg ohne Fassung testen.
   - Umgesetzt als `ArchivExportSection` im Einstellungsbereich „Backup & Archiv“ (Einstellungen sind nur für Admins sichtbar). Build, Typecheck, FTEST grün. Manueller Test mit Altbeleg steht aus.
-- [ ] **Step 4:** Commit.
+- [x] **Step 4:** Commit.
 
 ### Task 9: Optionales Archiv im Backup
 
@@ -213,9 +213,11 @@ Anlass: ZUGFeRD verlangt PDF/A-3; die PDFs waren es nicht (nicht eingebettete He
 - Modify: `src/components/BackupManagement.tsx` (Checkbox, Größenanzeige, Warnung > 500 MB, Checkbox dann gesperrt, Link zum Archiv-Export)
 - Modify: `backend/tests/backupRestore.test.js`
 
-- [ ] **Step 1:** Failing tests: Backup ohne Option enthält kein Archiv; mit Option schon; Restore ohne Archiv lässt vorhandenes Archiv stehen; Restore mit Archiv ersetzt es; Größenschätzung.
-- [ ] **Step 2:** Implementieren, BTEST grün, Frontend-Build grün.
-- [ ] **Step 3:** Commit.
+- [x] **Step 1:** Failing tests: Backup ohne Option enthält kein Archiv; mit Option schon; Restore ohne Archiv lässt vorhandenes Archiv stehen; Restore mit Archiv ersetzt es; Größenschätzung.
+- [x] **Step 2:** Implementieren, BTEST grün (452), FTEST, Typecheck (30, Baseline), Build grün.
+  - Restore ersetzt das Archiv per `TRUNCATE` in der Restore-Transaktion statt `DISABLE/ENABLE TRIGGER`: Der Append-only-Trigger ist ein Zeilentrigger (UPDATE/DELETE) und feuert bei TRUNCATE nicht. Ob das Archiv ersetzt wird, entscheidet `data.document_archive` im verschlüsselten Payload (nicht das lesbare `metadata.json`).
+  - Größenschätzung: Basis = `SUM(octet_length(row_to_json(t)))` je Backup-Tabelle, Archiv = `SUM(octet_length(content))` + 400 Byte je Eintrag (Ciphertext ist nicht komprimierbar, ZIP ≈ JSON). Test: Abweichung zur echten ZIP-Größe < 20 %.
+- [x] **Step 3:** Commit.
 
 ### Task 10: Betreiber-Skript und Lösch-Workflow
 

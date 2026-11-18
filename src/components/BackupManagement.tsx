@@ -13,12 +13,15 @@ import {
   FileText,
   RefreshCw,
   Lock,
+  Archive,
   X
 } from 'lucide-react';
 import { apiService } from '../services/api';
 import { PasswordInput } from './PasswordInput';
 
 const MIN_PASSPHRASE_LENGTH = 12;
+// Upload-Grenze für den Restore (Nginx client_max_body_size, multer)
+const MAX_RESTORE_BYTES = 500 * 1024 * 1024;
 
 interface BackupInfo {
   filename: string;
@@ -27,6 +30,7 @@ interface BackupInfo {
   tableCount: number;
   totalRecords: number;
   encrypted: boolean;
+  includesArchive?: boolean;
   created: string;
 }
 
@@ -51,12 +55,32 @@ export function BackupManagement({ onClose, embedded = false }: BackupManagement
   const [passphrase, setPassphrase] = useState('');
   const [passphraseRepeat, setPassphraseRepeat] = useState('');
   const [restorePassphrase, setRestorePassphrase] = useState('');
+  const [includeArchive, setIncludeArchive] = useState(false);
+  const [sizeEstimate, setSizeEstimate] = useState<{ baseBytes: number; archiveBytes: number } | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
 
   useEffect(() => {
     // Demo: Backups gesperrt (Backend 403), Liste gar nicht erst laden
-    if (!demo) loadBackups();
+    if (!demo) {
+      loadBackups();
+      loadSizeEstimate();
+    }
   }, [demo]);
+
+  const loadSizeEstimate = async () => {
+    try {
+      setSizeEstimate(await apiService.getBackupSizeEstimate());
+    } catch (error) {
+      logger.error('Error loading backup size estimate:', error);
+    }
+  };
+
+  const archiveTooLarge = sizeEstimate !== null && sizeEstimate.baseBytes + sizeEstimate.archiveBytes > MAX_RESTORE_BYTES;
+  const archiveIncluded = includeArchive && !archiveTooLarge;
+
+  const scrollToArchiveExport = () => {
+    document.getElementById('archiv-export')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   const loadBackups = async () => {
     setIsLoading(true);
@@ -87,7 +111,7 @@ export function BackupManagement({ onClose, embedded = false }: BackupManagement
     if (!canCreate) return;
     setIsCreatingZipBackup(true);
     try {
-      const response = await apiService.createZipBackup(passphrase);
+      const response = await apiService.createZipBackup(passphrase, archiveIncluded);
       if (response.success) {
         setMessage({
           type: 'success',
@@ -272,6 +296,44 @@ export function BackupManagement({ onClose, embedded = false }: BackupManagement
                 />
               </div>
               {passphraseError && <p className="text-sm text-red-600">{passphraseError}</p>}
+              <div className="space-y-2">
+                <label className="flex items-start gap-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={archiveIncluded}
+                    onChange={(e) => setIncludeArchive(e.target.checked)}
+                    disabled={demo || archiveTooLarge}
+                    className="custom-checkbox mt-0.5"
+                  />
+                  <span>
+                    Belegarchiv einschließen
+                    {sizeEstimate && (
+                      <span className="text-gray-500">
+                        {' '}(Backup ca. {formatFileSize(sizeEstimate.baseBytes + (archiveIncluded ? sizeEstimate.archiveBytes : 0))}
+                        , Archiv ca. {formatFileSize(sizeEstimate.archiveBytes)})
+                      </span>
+                    )}
+                  </span>
+                </label>
+                {archiveTooLarge && (
+                  <p className="text-sm text-amber-800 flex items-start">
+                    <AlertTriangle className="h-4 w-4 mr-1 mt-0.5 flex-shrink-0" />
+                    <span>
+                      Das Backup wäre größer als 500 MB und ließe sich nicht über die Oberfläche wiederherstellen.
+                      Laden Sie das Belegarchiv zuerst über „Archiv exportieren“ separat herunter und erstellen Sie das
+                      Backup ohne Archiv.
+                    </span>
+                  </p>
+                )}
+                <p className="text-xs text-gray-600">
+                  Das Belegarchiv enthält alle ausgegebenen Rechnungen, Angebote und Mahnungen als Originaldatei. Ohne
+                  Archiv bleibt beim Wiederherstellen das vorhandene Archiv erhalten. Zur Aufbewahrung eignet sich{' '}
+                  <button type="button" onClick={scrollToArchiveExport} className="text-primary-custom underline hover:brightness-90">
+                    Archiv exportieren
+                  </button>
+                  .
+                </p>
+              </div>
               <p className="text-xs text-gray-600 flex items-start">
                 <AlertTriangle className="h-4 w-4 mr-1 flex-shrink-0 text-orange-500" />
                 Das Passwort wird nicht gespeichert. Ohne dieses Passwort kann das Backup nicht wiederhergestellt werden.
@@ -362,6 +424,12 @@ export function BackupManagement({ onClose, embedded = false }: BackupManagement
                           <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded">
                             ZIP - {formatFileSize(backup.size)}
                           </span>
+                          {backup.includesArchive && (
+                            <span className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded flex items-center">
+                              <Archive className="h-3 w-3 mr-1" />
+                              Mit Belegarchiv
+                            </span>
+                          )}
                           {backup.encrypted ? (
                             <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded flex items-center">
                               <Lock className="h-3 w-3 mr-1" />

@@ -30,6 +30,7 @@ describe.skipIf(!hasDb)('Backup/Restore', () => {
   beforeEach(async () => {
     await resetAuthTables();
     await pool.query(`TRUNCATE ${BACKUP_TABLES.join(', ')} CASCADE`);
+    await clearArchive();
     admin = await loginAs('admin');
   });
 
@@ -43,12 +44,12 @@ describe.skipIf(!hasDb)('Backup/Restore', () => {
     await pool.end();
   });
 
-  async function createZipBackup(passphrase = PASS) {
+  async function createZipBackup(passphrase = PASS, extra = {}) {
     const res = await request(app)
       .post('/api/backup/create-zip')
       .set('Cookie', admin.cookie)
       .set(ORIGIN)
-      .send({ passphrase });
+      .send({ passphrase, ...extra });
     expect(res.status).toBe(200);
     createdFiles.push(res.body.filename);
     return res.body.filename;
@@ -76,6 +77,24 @@ describe.skipIf(!hasDb)('Backup/Restore', () => {
        VALUES ($1, $2, 'Straße 1', 'Ort', '12345', 'DE')`,
       [`K-${name}`, name]
     );
+  }
+
+  async function clearArchive() {
+    // append-only: nur TRUNCATE (feuert keine Zeilen-Trigger)
+    await pool.query('TRUNCATE document_archive');
+  }
+
+  async function insertArchiveEntry(number, content = 'JVBERi0xLjcK') {
+    await pool.query(
+      `INSERT INTO document_archive (document_type, document_id, document_number, format, filename, content_type, size, content, sha256, source)
+       VALUES ('invoice', gen_random_uuid(), $1::text, 'pdf', $2, 'application/pdf', $3, $4, md5($1::text) || md5($1::text), 'output')`,
+      [number, `${number}.pdf`, Math.floor((content.length * 3) / 4), content]
+    );
+  }
+
+  async function archiveNumbers() {
+    const { rows } = await pool.query('SELECT document_number FROM document_archive ORDER BY document_number');
+    return rows.map((r) => r.document_number);
   }
 
   async function customerNames() {
@@ -165,6 +184,65 @@ describe.skipIf(!hasDb)('Backup/Restore', () => {
     const missing = await restore(zipBuffer);
     expect(missing.status).toBe(400);
     expect(await customerNames()).toEqual(['Neu']);
+  });
+
+  it('enthält das Belegarchiv nur auf Wunsch und vermerkt es in metadata.json', async () => {
+    await insertArchiveEntry('RE-2026-001');
+
+    const without = await createZipBackup();
+    expect(Object.keys((await readBackup(without)).data)).not.toContain('document_archive');
+    const metaWithout = JSON.parse(new AdmZip(path.join(backupDir, without)).getEntry('metadata.json').getData().toString('utf8'));
+    expect(metaWithout.includesArchive).toBe(false);
+
+    const withArchive = await createZipBackup(PASS, { includeArchive: true });
+    const backup = await readBackup(withArchive);
+    expect(backup.data.document_archive.map((r) => r.document_number)).toEqual(['RE-2026-001']);
+    const metaWith = JSON.parse(new AdmZip(path.join(backupDir, withArchive)).getEntry('metadata.json').getData().toString('utf8'));
+    expect(metaWith.includesArchive).toBe(true);
+  });
+
+  it('Restore ohne Archiv lässt das vorhandene Archiv stehen', async () => {
+    await insertCustomer('Alt');
+    const filename = await createZipBackup();
+    await insertArchiveEntry('RE-2026-007');
+
+    const res = await restore(await fs.readFile(path.join(backupDir, filename)), PASS);
+    expect(res.status).toBe(200);
+    expect(await customerNames()).toEqual(['Alt']);
+    expect(await archiveNumbers()).toEqual(['RE-2026-007']);
+  });
+
+  it('Restore mit Archiv ersetzt das vorhandene Archiv trotz Append-only', async () => {
+    await insertArchiveEntry('RE-2026-001');
+    const filename = await createZipBackup(PASS, { includeArchive: true });
+    await insertArchiveEntry('RE-2026-002');
+
+    const res = await restore(await fs.readFile(path.join(backupDir, filename)), PASS);
+    expect(res.status).toBe(200);
+    expect(await archiveNumbers()).toEqual(['RE-2026-001']);
+    // Append-only gilt danach weiter
+    await expect(pool.query('DELETE FROM document_archive')).rejects.toThrow(/append-only/);
+  });
+
+  it('schätzt die Backup-Größe getrennt nach Basisdaten und Archiv', async () => {
+    const empty = await request(app).get('/api/backup/size-estimate').set('Cookie', admin.cookie);
+    expect(empty.status).toBe(200);
+    expect(empty.body.archiveBytes).toBe(0);
+
+    await insertCustomer('Kunde');
+    await insertArchiveEntry('RE-2026-001', 'A'.repeat(40000));
+    const res = await request(app).get('/api/backup/size-estimate').set('Cookie', admin.cookie);
+    expect(res.status).toBe(200);
+    expect(res.body.baseBytes).toBeGreaterThan(empty.body.baseBytes);
+    expect(res.body.archiveBytes).toBeGreaterThanOrEqual(40000);
+    expect(res.body.archiveBytes).toBeLessThan(42000);
+
+    // Schätzung passt zur tatsächlichen Größe (± 20 %)
+    const filename = await createZipBackup(PASS, { includeArchive: true });
+    const { size } = await fs.stat(path.join(backupDir, filename));
+    const estimate = res.body.baseBytes + res.body.archiveBytes;
+    expect(estimate).toBeGreaterThan(size * 0.8);
+    expect(estimate).toBeLessThan(size * 1.2);
   });
 
   it('stellt alte unverschlüsselte ZIP-Backups ohne Passwort wieder her', async () => {
