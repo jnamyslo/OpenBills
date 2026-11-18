@@ -4,6 +4,8 @@ import logger from '../utils/logger.js';
 import { validateSchema, schemas } from '../utils/validation.js';
 import { requireFeature, sendPlanError } from '../utils/plan.js';
 import { assertCustomerSlotAvailable } from '../services/quotaService.js';
+import { audit } from '../auth/audit.js';
+import { customerArchivedError, sendCustomerArchivedError } from '../utils/customerArchive.js';
 
 const router = express.Router();
 
@@ -28,6 +30,7 @@ router.get('/', async (req, res) => {
         c.tax_id,
         c.phone,
         c.created_at,
+        c.archived_at,
         -- Additional emails (JSON aggregation)
         COALESCE(
           JSON_AGG(
@@ -91,7 +94,7 @@ router.get('/', async (req, res) => {
       LEFT JOIN customer_specific_materials cm ON c.id = cm.customer_id
       GROUP BY 
         c.id, c.customer_number, c.name, c.email, c.address, c.address_supplement, c.city, 
-        c.postal_code, c.country, c.tax_id, c.phone, c.created_at
+        c.postal_code, c.country, c.tax_id, c.phone, c.created_at, c.archived_at
       ORDER BY c.created_at DESC
     `);
     
@@ -118,7 +121,8 @@ router.get('/', async (req, res) => {
         unitPrice: parseFloat(material.unitPrice),
         taxRate: parseFloat(material.taxRate)
       })),
-      createdAt: row.created_at
+      createdAt: row.created_at,
+      archivedAt: row.archived_at
     }));
     res.json(customers);
   } catch (error) {
@@ -152,6 +156,7 @@ router.get('/:id', async (req, res) => {
         c.tax_id,
         c.phone,
         c.created_at,
+        c.archived_at,
         -- Additional emails (JSON aggregation)
         COALESCE(
           JSON_AGG(
@@ -218,7 +223,7 @@ router.get('/:id', async (req, res) => {
       WHERE c.id = $1
       GROUP BY 
         c.id, c.customer_number, c.name, c.email, c.address, c.address_supplement, c.city, 
-        c.postal_code, c.country, c.tax_id, c.phone, c.created_at
+        c.postal_code, c.country, c.tax_id, c.phone, c.created_at, c.archived_at
     `, [id]);
     
     if (result.rows.length === 0) {
@@ -276,7 +281,8 @@ router.get('/:id', async (req, res) => {
           }
           return a.name.localeCompare(b.name);
         }),
-      createdAt: row.created_at
+      createdAt: row.created_at,
+      archivedAt: row.archived_at
     };
     
     res.json(customer);
@@ -386,16 +392,20 @@ router.put('/:id', async (req, res) => {
     const { id } = req.params;
     const { name, email, address, addressSupplement, city, postalCode, country, taxId, phone } = req.body;
 
+    // Archivierte Kunden: Stammdaten bleiben unverändert (nachträglich erzeugte Fassungen = Original)
     const result = await query(`
       UPDATE customers 
       SET name = $1, email = $2, address = $3, address_supplement = $4, city = $5, postal_code = $6, 
           country = $7, tax_id = $8, phone = $9
-      WHERE id = $10
+      WHERE id = $10 AND archived_at IS NULL
       RETURNING *
     `, [name, email || null, address, addressSupplement || null, city, postalCode, country, taxId, phone, id]);
 
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Customer not found' });
+      const exists = await query('SELECT 1 FROM customers WHERE id = $1', [id]);
+      if (exists.rows.length === 0) return res.status(404).json({ error: 'Customer not found' });
+      sendCustomerArchivedError(res, customerArchivedError());
+      return;
     }
 
     const row = result.rows[0];
@@ -462,6 +472,27 @@ router.delete('/:id', async (req, res) => {
     res.status(500).json({ error: 'Failed to delete customer' });
   }
 });
+
+// Archivieren statt löschen (Kunden mit aufbewahrungspflichtigen Rechnungen); idempotent
+async function setArchived(req, res, archived) {
+  try {
+    const { id } = req.params;
+    const result = await query(
+      `UPDATE customers SET archived_at = ${archived ? 'COALESCE(archived_at, now())' : 'NULL'}
+       WHERE id = $1 RETURNING id, archived_at`,
+      [id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Customer not found' });
+    await audit(req, { action: archived ? 'customer.archived' : 'customer.unarchived', entityType: 'customer', entityId: id });
+    res.json({ id, archivedAt: result.rows[0].archived_at });
+  } catch (error) {
+    logger.error(`Failed to ${archived ? 'archive' : 'unarchive'} customer`, { error: error.message, customerId: req.params.id });
+    res.status(500).json({ error: archived ? 'Kunde konnte nicht archiviert werden' : 'Kunde konnte nicht wiederhergestellt werden' });
+  }
+}
+
+router.post('/:id/archive', (req, res) => setArchived(req, res, true));
+router.post('/:id/unarchive', (req, res) => setArchived(req, res, false));
 
 // Add additional email to customer
 router.post('/:id/emails', async (req, res) => {

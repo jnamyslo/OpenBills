@@ -21,6 +21,7 @@ import * as migration012 from './012_job_global_discount.js';
 import * as migration013 from './013_quote_item_kind.js';
 import * as migration014 from './014_quote_responses.js';
 import * as migration015 from './015_document_archive.js';
+import * as migration016 from './016_customer_archive.js';
 
 // List of all migrations in execution order
 const migrations = [
@@ -39,6 +40,7 @@ const migrations = [
   migration013,
   migration014,
   migration015,
+  migration016,
 ];
 
 /**

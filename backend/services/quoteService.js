@@ -7,6 +7,7 @@ import { validateDiscountFields } from '../utils/validation.js';
 import { countReleaseIfNeeded } from './quotaService.js';
 import { calculateTotals } from '../utils/documentTotals.js';
 import { computeDocumentTotals } from './documentTotalsService.js';
+import { loadActiveCustomer, assertCustomerChangeAllowed, customerArchivedError } from '../utils/customerArchive.js';
 
 export async function createQuote(data) {
   const discountValidation = validateDiscountFields(data);
@@ -37,12 +38,12 @@ export async function createQuote(data) {
   try {
     await client.query('BEGIN');
 
-    // Get customer name
-    const customerResult = await client.query('SELECT name FROM customers WHERE id = $1', [customerId]);
-    if (customerResult.rows.length === 0) {
+    // Get customer name (archivierte Kunden: keine neuen Angebote)
+    const customer = await loadActiveCustomer(client, customerId);
+    if (!customer) {
       throw new Error('Customer not found');
     }
-    const customerName = customerResult.rows[0].name;
+    const customerName = customer.name;
 
     // Generate quote number - format: AN-YYYY-XXX
     // Regenerated on each attempt in case a concurrent request just took this number.
@@ -148,6 +149,7 @@ export async function updateQuote(id, data) {
     }
 
     const current = currentQuote.rows[0];
+    await assertCustomerChangeAllowed(client, current.customer_id, updateData.customerId);
 
     // Summen nur neu berechnen, wenn Positionen mitkommen (sonst wie bisher übernehmen)
     const globalDiscountType = updateData.globalDiscountType ?? current.global_discount_type;
@@ -253,6 +255,16 @@ export async function deleteQuote(id) {
   return result.rows.length > 0;
 }
 
+async function isCustomerArchived(client, customerId) {
+  const { rows } = await client.query('SELECT archived_at FROM customers WHERE id = $1', [customerId]);
+  return Boolean(rows[0]?.archived_at);
+}
+
+function archivedResult() {
+  const err = customerArchivedError();
+  return { error: err.message, status: err.statusCode, code: err.code };
+}
+
 export async function convertQuoteToInvoice(id) {
   const client = await pool.connect();
 
@@ -312,6 +324,11 @@ export async function convertQuoteToInvoice(id) {
     }
 
     const quote = quoteResult.rows[0];
+
+    if (await isCustomerArchived(client, quote.customer_id)) {
+      await client.query('ROLLBACK');
+      return archivedResult();
+    }
 
     // Check if quote is already converted
     if (quote.converted_to_invoice_id) {
@@ -459,6 +476,10 @@ export async function convertQuoteToJob(id) {
     if (quote.status !== 'accepted') {
       await client.query('ROLLBACK');
       return { error: 'Nur angenommene Angebote können in einen Auftrag umgewandelt werden', status: 400 };
+    }
+    if (await isCustomerArchived(client, quote.customer_id)) {
+      await client.query('ROLLBACK');
+      return archivedResult();
     }
     if (quote.converted_to_invoice_id) {
       await client.query('ROLLBACK');

@@ -5,6 +5,7 @@ import { findAllInvoices, findInvoiceById } from '../queries/invoiceQueries.js';
 import { createInvoice, updateInvoice, deleteInvoice } from '../services/invoiceService.js';
 import { cancelInvoice } from '../services/cancellationService.js';
 import { audit } from '../auth/audit.js';
+import { sendCustomerArchivedError } from '../utils/customerArchive.js';
 
 const router = express.Router();
 
@@ -50,6 +51,7 @@ router.post('/', async (req, res) => {
     res.status(201).json(invoice);
   } catch (error) {
     if (sendPlanError(res, error)) return;
+    if (sendCustomerArchivedError(res, error)) return;
     logger.error('Failed to create invoice', {
       error: error.message,
       stack: error.stack,
@@ -72,6 +74,7 @@ router.put('/:id', async (req, res) => {
   } catch (error) {
     if (sendPlanError(res, error)) return;
     if (error.code === 'INVOICE_LOCKED') return res.status(409).json({ code: error.code, error: error.message });
+    if (sendCustomerArchivedError(res, error)) return;
     logger.error('Failed to update invoice', {
       error: error.message,
       stack: error.stack,

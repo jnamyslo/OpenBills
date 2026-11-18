@@ -5,6 +5,7 @@ import { validateDiscountFields } from '../utils/validation.js';
 import { countReleaseIfNeeded } from './quotaService.js';
 import { assertUpdateAllowed, assertDeleteAllowed } from '../utils/invoiceLock.js';
 import { computeDocumentTotals } from './documentTotalsService.js';
+import { loadActiveCustomer, assertCustomerChangeAllowed } from '../utils/customerArchive.js';
 
 /**
  * Nächste Nummer im Kreis `<prefix>-YYYY-NNN` (Jahr aus dem Rechnungsdatum).
@@ -80,12 +81,12 @@ export async function createInvoice(data) {
     try {
       await client.query('BEGIN');
 
-    // Get customer name
-    const customerResult = await client.query('SELECT name FROM customers WHERE id = $1', [customerId]);
-    if (customerResult.rows.length === 0) {
+    // Get customer name (archivierte Kunden: keine neuen Rechnungen)
+    const customer = await loadActiveCustomer(client, customerId);
+    if (!customer) {
       throw new Error('Customer not found');
     }
-    const customerName = customerResult.rows[0].name;
+    const customerName = customer.name;
 
     // Summen Cent-genau (Positionen, Gesamtrabatt je Steuersatz, Steuer je Satz gerundet)
     const totals = await computeDocumentTotals(client, items, globalDiscountType, globalDiscountValue);
@@ -182,6 +183,8 @@ export async function updateInvoice(id, data) {
       await client.query('COMMIT');
       return await findInvoiceById(id);
     }
+
+    await assertCustomerChangeAllowed(client, current.customer_id, updateData.customerId);
 
     // Summen nur neu berechnen, wenn Positionen mitkommen (sonst wie bisher übernehmen)
     const globalDiscountType = updateData.globalDiscountType ?? current.global_discount_type;

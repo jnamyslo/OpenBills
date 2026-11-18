@@ -256,8 +256,9 @@ Hintergrund: Seit der Sperre (Task 3) antwortet `DELETE /api/customers/:id` mit 
 - Test: `backend/tests/customerArchive.test.js`
 - Review (2026-11-18, N5): Archivierte Kunden behalten ihre Stammdaten unverändert (kein Bearbeiten im archivierten Zustand), damit nachträglich erzeugte Fassungen dem Original entsprechen.
 
-- [ ] **Step 1:** Failing tests: Archivieren/Wiederherstellen mit Audit; archivierter Kunde in der Liste mit `archivedAt`; neue Rechnung/Angebot/Auftrag für archivierten Kunden 409; bestehende Rechnungen bleiben lesbar, Statuswechsel und Storno gehen; `DELETE` weiter 409 bei freigegebenen Rechnungen; Restore eines Backups ohne `archived_at` (alte Backups) funktioniert.
-- [ ] **Step 2:** Implementieren, BTEST grün.
+- [x] **Step 1:** Failing tests: Archivieren/Wiederherstellen mit Audit; archivierter Kunde in der Liste mit `archivedAt`; neue Rechnung/Angebot/Auftrag für archivierten Kunden 409; bestehende Rechnungen bleiben lesbar, Statuswechsel und Storno gehen; `DELETE` weiter 409 bei freigegebenen Rechnungen; Restore eines Backups ohne `archived_at` (alte Backups) funktioniert.
+- [x] **Step 2:** Implementieren, BTEST grün (461).
+  - Gesperrt sind auch: Kundenwechsel eines Entwurfs/Angebots/Auftrags auf einen archivierten Kunden, Angebot → Rechnung/Auftrag, `PUT /api/customers/:id` (409 `CUSTOMER_ARCHIVED`, Helper `backend/utils/customerArchive.js`). Bearbeiten bestehender Entwürfe/Aufträge ohne Kundenwechsel bleibt erlaubt. Archivierte Kunden zählen weiter gegen das Kundenlimit des Tarifs (sonst ließe sich das Limit per Archivieren/Wiederherstellen umgehen).
 - [ ] **Step 3:** Frontend (Filter, Aktionen, Kundenauswahl), Build grün; manuell: Kunde mit Rechnung archivieren, taucht in Auswahl nicht mehr auf, Rechnung weiterhin herunterladbar.
 - [ ] **Step 4:** `CLAUDE.md` (Abschnitt „Belegarchiv und Storno“) um Kunden-Archivierung ergänzen.
 - [ ] **Step 5:** Commit.

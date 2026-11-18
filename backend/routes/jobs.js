@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto';
 import logger from '../utils/logger.js';
 import { findAllJobs, findJobById } from '../queries/jobQueries.js';
 import { validateDiscountFields } from '../utils/validation.js';
+import { loadActiveCustomer, assertCustomerChangeAllowed, sendCustomerArchivedError } from '../utils/customerArchive.js';
 
 const router = express.Router();
 
@@ -139,13 +140,13 @@ router.post('/', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    // Get customer name
-    const customerResult = await client.query('SELECT name FROM customers WHERE id = $1', [customerId]);
-    if (customerResult.rows.length === 0) {
+    // Get customer name (archivierte Kunden: keine neuen Aufträge)
+    const customer = await loadActiveCustomer(client, customerId);
+    if (!customer) {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'Customer not found', customerId });
     }
-    const customerName = customerResult.rows[0].name;
+    const customerName = customer.name;
 
     // Validate date format
     const jobDate = new Date(date);
@@ -289,6 +290,7 @@ router.post('/', async (req, res) => {
     return res.status(201).json(job);
   } catch (error) {
     await client.query('ROLLBACK');
+    if (sendCustomerArchivedError(res, error)) return;
     if (error.code === '23505' && attempt < maxAttempts - 1) {
       lastError = error;
       continue;
@@ -321,7 +323,7 @@ router.put('/:id', async (req, res) => {
     const { id } = req.params;
     
     // Check if job exists and get current status
-    const currentJobResult = await client.query('SELECT status FROM job_entries WHERE id = $1', [id]);
+    const currentJobResult = await client.query('SELECT status, customer_id FROM job_entries WHERE id = $1', [id]);
     if (currentJobResult.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Job not found' });
@@ -360,6 +362,8 @@ router.put('/:id', async (req, res) => {
       globalDiscountType,
       globalDiscountValue
     } = req.body;
+
+    await assertCustomerChangeAllowed(client, currentJob.customer_id, customerId);
 
     // Get customer name if customerId is provided
     let customerName = null;
@@ -579,6 +583,7 @@ router.put('/:id', async (req, res) => {
     res.json(job);
   } catch (error) {
     await client.query('ROLLBACK');
+    if (sendCustomerArchivedError(res, error)) return;
     logger.error('Error updating job:', error);
     res.status(500).json({ error: 'Failed to update job' });
   } finally {

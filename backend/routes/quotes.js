@@ -9,6 +9,7 @@ import { createQuote, updateQuote, deleteQuote, convertQuoteToInvoice, convertQu
 import { createQuoteResponseToken, deleteQuoteResponseToken, quoteResponseLink } from '../services/quoteResponseService.js';
 import { isDemoMode } from '../demo/index.js';
 import { archiveSentFiles } from '../services/archiveService.js';
+import { sendCustomerArchivedError } from '../utils/customerArchive.js';
 
 const router = express.Router();
 
@@ -54,6 +55,7 @@ router.post('/', async (req, res) => {
     res.status(201).json(quote);
   } catch (error) {
     if (sendPlanError(res, error)) return;
+    if (sendCustomerArchivedError(res, error)) return;
     logger.error('Failed to create quote', {
       error: error.message,
       stack: error.stack,
@@ -75,6 +77,7 @@ router.put('/:id', async (req, res) => {
     res.json(quote);
   } catch (error) {
     if (sendPlanError(res, error)) return;
+    if (sendCustomerArchivedError(res, error)) return;
     logger.error('Failed to update quote', {
       error: error.message,
       stack: error.stack,
@@ -208,7 +211,7 @@ router.post('/:id/send-email', requireFeature('email'), enforcePlatformMailLimit
 router.post('/:id/convert-to-invoice', async (req, res) => {
   try {
     const result = await convertQuoteToInvoice(req.params.id);
-    if (result.error) return res.status(result.status).json({ error: result.error });
+    if (result.error) return res.status(result.status).json({ ...(result.code ? { code: result.code } : {}), error: result.error });
     res.status(201).json(result.invoice);
   } catch (error) {
     logger.error('Failed to convert quote to invoice', {
@@ -225,7 +228,7 @@ router.post('/:id/convert-to-invoice', async (req, res) => {
 router.post('/:id/convert-to-job', requireFeature('jobs'), async (req, res) => {
   try {
     const result = await convertQuoteToJob(req.params.id);
-    if (result.error) return res.status(result.status).json({ error: result.error });
+    if (result.error) return res.status(result.status).json({ ...(result.code ? { code: result.code } : {}), error: result.error });
     res.status(201).json(result.job);
   } catch (error) {
     logger.error('Failed to convert quote to job', {
