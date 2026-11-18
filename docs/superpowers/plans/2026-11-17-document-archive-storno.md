@@ -163,10 +163,14 @@ Anlass: KoSIT-Lauf in Task 6. Summen wurden mit ungerundeter Steuer gebildet (BR
 - Test: `src/utils/__tests__/archiveOutput.test.ts`
 - Review (2026-11-18, N3): Mailrouten liefern `archived: false`, wenn die Archivierung nach erfolgreichem Versand scheitert (`backend/routes/email.js`, `backend/routes/quotes.js`); das Frontend zeigt dann eine Warnung („Versendet, aber nicht archiviert – bitte erneut herunterladen“).
 
-- [ ] **Step 1:** Failing test: Helper archiviert vor dem Download; Entwurf wird nicht archiviert; Archivfehler bricht den Download ab (sonst kein Nachweis) und `releaseForOutput` setzt zurück.
-- [ ] **Step 2:** Helper + API + Umbau aller Download-Stellen (Grep auf `downloadBlob(` als Checkliste; Vorschau in `DocumentPreview.tsx` bleibt ohne Archiv).
-- [ ] **Step 3:** Sperr-UI und Storno-Dialoge. „Stornieren und neu erstellen“: Storno mit `releaseSources: false`, Kopie als Entwurf anlegen, Quellen umhängen, Editor öffnen.
+- [x] **Step 1:** Failing test: Helper archiviert vor dem Download; Entwurf wird nicht archiviert; Archivfehler bricht den Download ab (sonst kein Nachweis) und `releaseForOutput` setzt zurück.
+- [x] **Step 2:** Helper + API + Umbau aller Download-Stellen (Grep auf `downloadBlob(` als Checkliste; Vorschau in `DocumentPreview.tsx` bleibt ohne Archiv).
+- [x] **Step 3:** Sperr-UI und Storno-Dialoge. „Stornieren und neu erstellen“: Storno mit `releaseSources: false`, Kopie als Entwurf anlegen, Quellen umhängen, Editor öffnen.
 - [ ] **Step 4:** Frontend-Build (TS + ESLint) grün; manuell in einer Testinstanz: Rechnung freigeben, herunterladen, Archivfassung sichtbar, Bearbeiten nicht möglich, Storno erzeugen, Storno-PDF/XML herunterladen.
+  - Build, Typecheck (Baseline 44 → 31), ESLint, FTEST und BTEST grün (2026-11-18). Manueller Test in einer Testinstanz steht noch aus.
+  - Umsetzung: Gesperrte Rechnungen öffnen statt des Editors `InvoiceDetailsModal.tsx` (Daten, Storno-Bezug, `ArchiveVersions`, Stornieren / Stornieren und neu erstellen). Angebote zeigen `ArchiveVersions` im Editor-Kopf. „Stornieren und neu erstellen“ legt erst den Entwurf an (`utils/invoiceCopy.ts`) und storniert dann mit `replacementInvoiceId`; scheitert das Storno, wird der Entwurf gelöscht. Rechnungsdownload mit mehreren Formaten archiviert erst alle Dateien, dann startet der Download.
+  - `exportArchiveUrl` kommt mit der Route in Task 8.
+  - Offen (N6): jsPDF/pdf-lib schreiben das aktuelle Datum (und eine zufällige File-ID) ins PDF. Erneutes Herunterladen derselben Rechnung erzeugt daher eine neue Archivfassung statt dedupliziert zu werden. Abhilfe: feste `CreationDate`/`ModDate`/File-ID je Beleg (z. B. aus Rechnungsdatum + ID) in `pdfGenerator.ts`/`zugferdGenerator.ts` – eigener Task, da es die PDF/A-Metadaten berührt.
 - [ ] **Step 5:** Commit.
 
 ### Task 8: Archiv-Export

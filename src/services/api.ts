@@ -1,4 +1,4 @@
-import { Customer, Invoice, Quote, Company, JobEntry, MaterialTemplate, InvoiceTemplate, HourlyRate, YearlyInvoiceStartNumber, InvoiceJournalResponse, ReportingStatistics, ReminderEligibility, DemoInfo, PlanInfo, PlanErrorBody, AuthUser, AuthRole, TokenStatus, AuditLogFilters, AuditLogPage, QuoteResponseView, QuoteDecision } from '../types';
+import { ArchiveDocumentType, ArchiveEntry, ArchiveFormat, ArchiveSource, Customer, Invoice, Quote, Company, JobEntry, MaterialTemplate, InvoiceTemplate, HourlyRate, YearlyInvoiceStartNumber, InvoiceJournalResponse, ReportingStatistics, ReminderEligibility, DemoInfo, PlanInfo, PlanErrorBody, AuthUser, AuthRole, TokenStatus, AuditLogFilters, AuditLogPage, QuoteResponseView, QuoteDecision } from '../types';
 import logger from '../utils/logger';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
@@ -71,6 +71,14 @@ interface EmailAttachment {
   name: string;
   content: string;
   contentType: string;
+}
+
+/** `archived: false` = versendet, aber nicht archiviert; fehlt bei Entwürfen. */
+export interface MailSendResult {
+  success: boolean;
+  message: string;
+  messageId?: string;
+  archived?: boolean;
 }
 
 interface BackupInfo {
@@ -284,6 +292,51 @@ class ApiService {
     await this.request(`/invoices/${id}`, { method: 'DELETE' });
   }
 
+  /** Storno; mit `replacementInvoiceId` werden Aufträge/Angebot auf diesen Entwurf umgehängt. */
+  async cancelInvoice(
+    id: string,
+    data: { reason: string; releaseSources: boolean; replacementInvoiceId?: string }
+  ): Promise<{ original: Invoice; cancellation: Invoice }> {
+    return this.request(`/invoices/${id}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // --------------------------------------------------------------------------
+  // Belegarchiv API
+  // --------------------------------------------------------------------------
+
+  async archiveDocument(data: {
+    documentType: ArchiveDocumentType;
+    documentId: string;
+    format: ArchiveFormat;
+    filename: string;
+    content: string;
+    source: ArchiveSource;
+    reminderStage?: 1 | 2 | 3;
+  }): Promise<{ id: string; created: boolean }> {
+    return this.request('/archive', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getArchive(params: { documentType?: ArchiveDocumentType; documentId?: string } = {}): Promise<ArchiveEntry[]> {
+    const queryParams = new URLSearchParams();
+    if (params.documentType) queryParams.append('documentType', params.documentType);
+    if (params.documentId) queryParams.append('documentId', params.documentId);
+    return this.request<ArchiveEntry[]>(`/archive?${queryParams}`);
+  }
+
+  async getArchiveMissing(): Promise<{ invoices: string[]; quotes: string[] }> {
+    return this.request('/archive/missing');
+  }
+
+  archiveDownloadUrl(id: string): string {
+    return `${this.baseUrl}/archive/${encodeURIComponent(id)}/download`;
+  }
+
   // --------------------------------------------------------------------------
   // Quote API
   // --------------------------------------------------------------------------
@@ -328,7 +381,7 @@ class ApiService {
     customText?: string,
     attachments?: EmailAttachment[],
     pdfBuffer?: string
-  ): Promise<{ success: boolean; message: string; messageId?: string }> {
+  ): Promise<MailSendResult> {
     return this.request(`/quotes/${quoteId}/send-email`, {
       method: 'POST',
       body: JSON.stringify({
@@ -473,7 +526,7 @@ class ApiService {
     format: 'zugferd' | 'xrechnung' = 'zugferd',
     customText?: string,
     attachments?: EmailAttachment[]
-  ): Promise<{ success: boolean; message: string; messageId?: string }> {
+  ): Promise<MailSendResult> {
     return this.request('/email/send-invoice', {
       method: 'POST',
       body: JSON.stringify({
@@ -493,7 +546,7 @@ class ApiService {
     invoiceData: Invoice,
     customText?: string,
     attachments?: EmailAttachment[]
-  ): Promise<{ success: boolean; message: string; messageId?: string }> {
+  ): Promise<MailSendResult> {
     return this.request('/email/send-invoice-multi', {
       method: 'POST',
       body: JSON.stringify({
@@ -515,7 +568,7 @@ class ApiService {
     fee: number,
     customText?: string,
     additionalAttachments?: EmailAttachment[]
-  ): Promise<{ success: boolean; message: string; messageId?: string }> {
+  ): Promise<MailSendResult> {
     return this.request('/email/send-reminder', {
       method: 'POST',
       body: JSON.stringify({

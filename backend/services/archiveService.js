@@ -124,17 +124,23 @@ async function insertArchiveEntry(client, params, buffer) {
   return { id: existing.id, created: false };
 }
 
-/** Für Mailrouten: archiviert nach erfolgreichem Versand; Fehler lassen den Versand nicht scheitern. */
+/**
+ * Für Mailrouten: archiviert nach erfolgreichem Versand; Fehler lassen den Versand nicht scheitern.
+ * Gibt `false` zurück, wenn mindestens eine Datei nicht archiviert werden konnte (Frontend warnt dann).
+ */
 export async function archiveSentFiles(files, userId) {
+  let allArchived = true;
   for (const file of files) {
     try {
       await archiveDocument(null, { ...file, source: 'output', userId });
     } catch (error) {
+      allArchived = false;
       logger.error('Versendeter Beleg konnte nicht archiviert werden', {
         documentType: file.documentType, documentId: file.documentId, format: file.format, error: error.message,
       });
     }
   }
+  return allArchived;
 }
 
 export async function listArchive({ documentType, documentId } = {}) {

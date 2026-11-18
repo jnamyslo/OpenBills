@@ -10,6 +10,7 @@ import { formatCurrency } from '../utils/formatters';
 import { generateReminderPDF } from '../utils/pdfGenerator';
 import { ReminderSendModal } from './ReminderSendModal';
 import { blobToBase64 } from '../utils/blobUtils';
+import { archiveAndDownload } from '../utils/archiveOutput';
 import { DocumentPreview, PreviewDocument } from './DocumentPreview';
 
 export function ReminderManagement() {
@@ -131,17 +132,10 @@ export function ReminderManagement() {
         { format: 'zugferd', company, customer }
       );
 
-      // Download
-      const url = URL.createObjectURL(pdfBlob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `Mahnung-${stage}-${invoice.invoiceNumber}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      await archiveAndDownload(invoice, 'reminder', 'pdf', pdfBlob, `Mahnung-${stage}-${invoice.invoiceNumber}.pdf`, stage);
     } catch (error) {
       logger.error('Error downloading reminder:', error);
+      alert('Fehler beim Herunterladen der Mahnung: ' + (error as Error).message);
     }
   };
 

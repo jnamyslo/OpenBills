@@ -8,6 +8,7 @@ import { useQuotes } from '../context/QuoteContext';
 import { useCustomers } from '../context/CustomerContext';
 import { useCompany } from '../context/CompanyContext';
 import { DocumentChain } from './DocumentChain';
+import { ArchiveVersions } from './ArchiveVersions';
 import { useDocumentHelpers } from '../hooks/useDocumentHelpers';
 import { Quote, QuoteItem, QuoteAttachment } from '../types';
 import { AttachmentManager } from './AttachmentManager';
@@ -306,7 +307,14 @@ export function QuoteEditor({ quote, onClose, onNavigateToCustomers, onNavigateT
         title={quote ? 'Angebot bearbeiten' : 'Neues Angebot'}
         subtitle={quote ? quote.quoteNumber : 'Erstellen Sie ein neues Angebot'}
         onClose={onClose}
-        header={quote ? <DocumentChain kind="quote" id={quote.id} /> : undefined}
+        header={quote ? (
+          <>
+            <DocumentChain kind="quote" id={quote.id} />
+            {quote.status !== 'draft' && (
+              <div className="mt-4"><ArchiveVersions documentId={quote.id} /></div>
+            )}
+          </>
+        ) : undefined}
         footer={
           <>
             <button

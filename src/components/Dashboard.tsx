@@ -13,6 +13,7 @@ import { EmailSendModal } from './EmailSendModal';
 import { generateInvoicePDF } from '../utils/pdfGenerator';
 import { apiService, isPlanError } from '../services/api';
 import { releaseForOutput } from '../utils/releaseForOutput';
+import { notArchivedNote } from '../utils/archiveOutput';
 import { isOpenInvoice, isOverdueStatus } from '../utils/invoiceStatus';
 import { Invoice } from '../types';
 
@@ -130,7 +131,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
       // Entwürfe werden vor dem Versand freigegeben (zählt gegen das Plan-Kontingent),
       // damit der Kunde kein Dokument mit Wasserzeichen erhält.
       const invoiceToSend = emailModal.invoice;
-      await releaseForOutput(invoiceToSend, status => updateInvoice(invoiceToSend.id, { status }), async released => {
+      const sent = await releaseForOutput(invoiceToSend, status => updateInvoice(invoiceToSend.id, { status }), async released => {
         const invoiceFormats = [];
         for (const format of formats) {
           const pdfBlob = await generateInvoicePDF(released, { format, company, customer });
@@ -148,6 +149,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
         if (!result.success) {
           throw new Error(`Fehler beim E-Mail-Versand: ${result.message}`);
         }
+        return result;
       });
       
       const formatLabels = formats.map(f => {
@@ -162,7 +164,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
         ? ` mit ${attachments.length} zusätzlichen Anhang${attachments.length > 1 ? 'en' : ''}`
         : '';
       
-      alert(`Rechnung erfolgreich per E-Mail versendet! (${formatLabels.join(', ')})${attachmentInfo}`);
+      alert(`Rechnung erfolgreich per E-Mail versendet! (${formatLabels.join(', ')})${attachmentInfo}${notArchivedNote(sent.archived === false ? 1 : 0)}`);
       
       // Close email dialog
       setEmailModal({ isOpen: false, invoice: null, customer: null });

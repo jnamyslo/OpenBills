@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { demoMailNote } from '../utils/demo';
 import logger from '../utils/logger';
 import { withInvoiceContent } from '../utils/attachmentContent';
-import { Plus, Edit, Trash2, Search, Download, FileText, Send, Check, Mail, Eye } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Download, FileText, Send, Check, Mail, Eye, Ban, Info } from 'lucide-react';
 import { useCustomers } from '../context/CustomerContext';
 import { useInvoices } from '../context/InvoiceContext';
+import { useJobs } from '../context/JobContext';
+import { useQuotes } from '../context/QuoteContext';
 import { useCompany } from '../context/CompanyContext';
 import { featureUpgradeReason, usePlan } from '../context/PlanContext';
 import { Customer, Invoice } from '../types';
@@ -12,6 +14,10 @@ import { InvoiceEditor } from './InvoiceEditor';
 import { ConfirmationModal } from './ConfirmationModal';
 import { EmailSendModal } from './EmailSendModal';
 import { DownloadModal } from './DownloadModal';
+import { CancelInvoiceModal, CancelMode } from './CancelInvoiceModal';
+import { InvoiceDetailsModal } from './InvoiceDetailsModal';
+import { isCancellable } from '../utils/invoiceStatus';
+import { draftCopyOfInvoice } from '../utils/invoiceCopy';
 import { DocumentPreview, PreviewDocument } from './DocumentPreview';
 import { createInvoiceAttachmentPreviewDocuments } from '../utils/previewDocuments';
 import { generateInvoicePDF, downloadBlob } from '../utils/pdfGenerator';
@@ -19,6 +25,7 @@ import { apiService, isPlanError } from '../services/api';
 import { formatCurrency } from '../utils/formatters';
 import { blobToBase64, base64ToBlob } from '../utils/blobUtils';
 import { releaseForOutput } from '../utils/releaseForOutput';
+import { archiveOutput, notArchivedNote } from '../utils/archiveOutput';
 import { clearCreateRoute } from '../utils/quickActions';
 
 interface InvoiceManagementProps {
@@ -31,7 +38,9 @@ interface InvoiceManagementProps {
 
 export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate, autoCreate }: InvoiceManagementProps = {}) {
   const { customers } = useCustomers();
-  const { invoices, deleteInvoice, updateInvoice } = useInvoices();
+  const { invoices, addInvoice, deleteInvoice, updateInvoice, refreshInvoices } = useInvoices();
+  const { refreshJobEntries } = useJobs();
+  const { refreshQuotes } = useQuotes();
   const { company } = useCompany();
   const { hasFeature, showUpgrade } = usePlan();
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -42,6 +51,10 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
   const [isSendingEmail, setIsSendingEmail] = useState<string | null>(null);
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
   const [isBulkOperation, setIsBulkOperation] = useState(false);
+  // Gesperrte (freigegebene) Rechnungen öffnen die Detailansicht statt des Editors
+  const [detailsInvoice, setDetailsInvoice] = useState<Invoice | null>(null);
+  const [cancelRequest, setCancelRequest] = useState<{ invoice: Invoice; mode: CancelMode } | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
   
   
   // Get locale from company settings, default to 'de-DE'
@@ -93,7 +106,6 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
     message: string;
     onConfirm: () => void;
     isDestructive?: boolean;
-    isGoBDWarning?: boolean;
   }>({
     isOpen: false,
     title: '',
@@ -172,22 +184,13 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
   });
 
   const handleOpenEditor = (invoice?: Invoice) => {
-    // Check if invoice is sent, reminded, or has any status other than draft and warn user
+    // Freigegebene Rechnungen sind gesperrt (Backend: 409 INVOICE_LOCKED) → Detailansicht
     if (invoice && invoice.status !== 'draft') {
-      setConfirmModal({
-        isOpen: true,
-        title: 'Rechnung bearbeiten',
-        message: 'Diese Rechnung wurde bereits versendet bzw. gemahnt. Änderungen an versendeten oder gemahnten Rechnungen sollten nur in Ausnahmefällen vorgenommen werden, da sie die GoBD-Konformität beeinträchtigen können. Möchten Sie trotzdem fortfahren?',
-        onConfirm: () => {
-          setEditingInvoice(invoice || null);
-          setIsEditorOpen(true);
-        },
-        isGoBDWarning: true
-      });
-    } else {
-      setEditingInvoice(invoice || null);
-      setIsEditorOpen(true);
+      setDetailsInvoice(invoice);
+      return;
     }
+    setEditingInvoice(invoice || null);
+    setIsEditorOpen(true);
   };
 
   // Dashboard-Schnellaktion: direkt neu anlegen
@@ -202,38 +205,57 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
     setEditingInvoice(null);
   };
 
+  // Nur Entwürfe; freigegebene Rechnungen werden storniert
   const handleDelete = async (invoice: Invoice) => {
-    if (invoice.status !== 'draft') {
-      setConfirmModal({
-        isOpen: true,
-        title: 'Rechnung löschen',
-        message: 'Diese Rechnung wurde bereits versendet bzw. gemahnt. Das Löschen versendeter oder gemahnter Rechnungen kann die GoBD-Konformität verletzen und ist rechtlich problematisch. Sind Sie sicher, dass Sie fortfahren möchten?',
-        onConfirm: async () => {
-          try {
-            await deleteInvoice(invoice.id);
-          } catch (error) {
-            logger.error('Error deleting invoice', { error });
-            alert('Fehler beim Löschen der Rechnung. Bitte versuchen Sie es erneut.');
-          }
-        },
-        isDestructive: true,
-        isGoBDWarning: true
-      });
-    } else {
-      setConfirmModal({
-        isOpen: true,
-        title: 'Rechnung löschen',
-        message: `Möchten Sie die Rechnung ${invoice.invoiceNumber} wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.`,
-        onConfirm: async () => {
-          try {
-            await deleteInvoice(invoice.id);
-          } catch (error) {
-            logger.error('Error deleting invoice', { error });
-            alert('Fehler beim Löschen der Rechnung. Bitte versuchen Sie es erneut.');
-          }
-        },
-        isDestructive: true
-      });
+    setConfirmModal({
+      isOpen: true,
+      title: 'Rechnung löschen',
+      message: `Möchten Sie die Rechnung ${invoice.invoiceNumber} wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.`,
+      onConfirm: async () => {
+        try {
+          await deleteInvoice(invoice.id);
+        } catch (error) {
+          logger.error('Error deleting invoice', { error });
+          alert('Fehler beim Löschen der Rechnung: ' + (error as Error).message);
+        }
+      },
+      isDestructive: true
+    });
+  };
+
+  const handleCancelConfirm = async (reason: string, releaseSources: boolean) => {
+    if (!cancelRequest) return;
+    const { invoice, mode } = cancelRequest;
+    setIsCancelling(true);
+    try {
+      if (mode === 'cancel') {
+        const { cancellation } = await apiService.cancelInvoice(invoice.id, { reason, releaseSources });
+        await Promise.all([refreshInvoices(), refreshJobEntries(), refreshQuotes()]);
+        setCancelRequest(null);
+        setDetailsInvoice(null);
+        alert(`Rechnung ${invoice.invoiceNumber} storniert. Stornorechnung ${cancellation.invoiceNumber} wurde erstellt.`);
+        return;
+      }
+
+      // Stornieren und neu erstellen: erst den Entwurf anlegen, dann stornieren und die
+      // Quellen (Aufträge, Angebot) in derselben Transaktion auf den Entwurf umhängen.
+      const draft = await addInvoice(draftCopyOfInvoice(await withInvoiceContent(invoice)));
+      try {
+        await apiService.cancelInvoice(invoice.id, { reason, releaseSources: false, replacementInvoiceId: draft.id });
+      } catch (error) {
+        await deleteInvoice(draft.id).catch(() => undefined);
+        throw error;
+      }
+      await Promise.all([refreshInvoices(), refreshJobEntries(), refreshQuotes()]);
+      setCancelRequest(null);
+      setDetailsInvoice(null);
+      setEditingInvoice(draft);
+      setIsEditorOpen(true);
+    } catch (error) {
+      logger.error('Fehler beim Stornieren', { error: String(error), invoiceId: invoice.id });
+      if (!isPlanError(error)) alert('Fehler beim Stornieren: ' + (error as Error).message);
+    } finally {
+      setIsCancelling(false);
     }
   };
 
@@ -287,17 +309,23 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
     // Plan-Kontingent) → Dokument ohne Wasserzeichen. Ohne Freigabe trägt ein Entwurf
     // das Wasserzeichen; XRechnung ist dann nicht möglich.
     const downloadInvoiceFiles = async (invoice: Invoice, customer: Customer, delayMs: number) => {
+      // Erst alle Dateien erzeugen und archivieren, dann herunterladen: scheitert das Archiv,
+      // wird nichts ausgegeben (und releaseForOutput setzt die Freigabe zurück).
       const download = async (doc: Invoice) => {
-        for (let i = 0; i < formats.length; i++) {
-          const format = formats[i];
-          if (i > 0) {
-            await new Promise(resolve => setTimeout(resolve, delayMs));
-          }
-          const pdfBlob = await generateInvoicePDF(doc, { format, company, customer });
+        const files = [];
+        for (const format of formats) {
+          const blob = await generateInvoicePDF(doc, { format, company, customer });
           const filename = format === 'xrechnung'
             ? `${doc.invoiceNumber}_xrechnung.xml`
             : `${doc.invoiceNumber}.pdf`;
-          downloadBlob(pdfBlob, filename);
+          await archiveOutput(doc, 'invoice', format, blob, filename);
+          files.push({ blob, filename });
+        }
+        for (let i = 0; i < files.length; i++) {
+          if (i > 0) {
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+          }
+          downloadBlob(files[i].blob, files[i].filename);
         }
       };
       if (markAsSent) {
@@ -459,6 +487,7 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
       try {
         let successCount = 0;
         let errorCount = 0;
+        let notArchived = 0;
         
         for (const invoice of emailModal.bulkInvoices) {
           try {
@@ -512,7 +541,7 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
 
             // Entwürfe werden vor dem Versand freigegeben (zählt gegen das Plan-Kontingent),
             // damit der Kunde kein Dokument mit Wasserzeichen erhält.
-            await releaseForOutput(invoice, status => updateInvoice(invoice.id, { status }), async released => {
+            const sent = await releaseForOutput(invoice, status => updateInvoice(invoice.id, { status }), async released => {
               const invoiceFormats = [];
               for (const format of formats) {
                 const pdfBlob = await generateInvoicePDF(released, { format, company, customer });
@@ -529,7 +558,9 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
               if (!result.success) {
                 throw new Error(`Email send failed: ${result.message}`);
               }
+              return result;
             });
+            if (sent.archived === false) notArchived++;
             
             successCount++;
           } catch (error) {
@@ -550,7 +581,7 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
           ? ` mit ${attachments.length} zusätzlichen Anhang${attachments.length > 1 ? 'en' : ''}`
           : '';
         
-        alert(`${successCount} Rechnung(en) erfolgreich versendet! (${formatLabels.join(', ')})${attachmentInfo}${errorCount > 0 ? ` - ${errorCount} Fehler` : ''}${demoMailNote()}`);
+        alert(`${successCount} Rechnung(en) erfolgreich versendet! (${formatLabels.join(', ')})${attachmentInfo}${errorCount > 0 ? ` - ${errorCount} Fehler` : ''}${demoMailNote()}${notArchivedNote(notArchived)}`);
         
         // Clear selection and close modal
         setSelectedInvoiceIds([]);
@@ -615,7 +646,7 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
       // Entwürfe werden vor dem Versand freigegeben (zählt gegen das Plan-Kontingent),
       // damit der Kunde kein Dokument mit Wasserzeichen erhält.
       const invoiceToSend = emailModal.invoice;
-      await releaseForOutput(invoiceToSend, status => updateInvoice(invoiceToSend.id, { status }), async released => {
+      const sent = await releaseForOutput(invoiceToSend, status => updateInvoice(invoiceToSend.id, { status }), async released => {
         const invoiceFormats = [];
         for (const format of formats) {
           const pdfBlob = await generateInvoicePDF(released, { format, company, customer });
@@ -633,6 +664,7 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
         if (!result.success) {
           throw new Error(`Fehler beim E-Mail-Versand: ${result.message}`);
         }
+        return result;
       });
       
       const formatLabels = formats.map(f => {
@@ -647,7 +679,7 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
         ? ` mit ${attachments.length} zusätzlichen Anhang${attachments.length > 1 ? 'en' : ''}`
         : '';
       
-      alert(`Rechnung erfolgreich per E-Mail versendet! (${formatLabels.join(', ')})${attachmentInfo}${demoMailNote()}`);
+      alert(`Rechnung erfolgreich per E-Mail versendet! (${formatLabels.join(', ')})${attachmentInfo}${demoMailNote()}${notArchivedNote(sent.archived === false ? 1 : 0)}`);
       
       // Close email dialog
       setEmailModal({ isOpen: false, invoice: null, customer: null, isBulkMode: false, bulkInvoices: [] });
@@ -691,6 +723,14 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
       default: return status;
     }
   };
+
+  const getInvoiceStatusLabel = (invoice: Invoice) =>
+    invoice.invoiceType === 'cancellation' ? 'Stornorechnung' : getStatusLabel(invoice.status);
+
+  const cancellationNote = (invoice: Invoice) =>
+    invoice.cancelsInvoice ? `Storno zu ${invoice.cancelsInvoice.invoiceNumber}`
+      : invoice.cancelledByInvoice ? `Storniert durch ${invoice.cancelledByInvoice.invoiceNumber}`
+      : null;
 
   // Bulk operations functions
   const handleInvoiceSelection = (invoiceId: string, checked: boolean) => {
@@ -951,6 +991,9 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
                   </td>
                   <td className="px-3 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                     {invoice.invoiceNumber}
+                    {cancellationNote(invoice) && (
+                      <div className="text-xs font-normal text-gray-500">{cancellationNote(invoice)}</div>
+                    )}
                   </td>
                   <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
                     {invoice.customerName}
@@ -967,7 +1010,7 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
                   <td className="px-3 py-4 whitespace-nowrap">
                     <div className="flex flex-col space-y-1">
                       <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(invoice.status)}`}>
-                        {getStatusLabel(invoice.status)}
+                        {getInvoiceStatusLabel(invoice)}
                       </span>
                       {invoice.status === 'draft' && (
                         <button
@@ -996,9 +1039,9 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
                       <button
                         onClick={() => handleOpenEditor(invoice)}
                         className="bg-primary-light-custom hover:bg-primary-medium-custom text-primary-custom hover:text-primary-custom p-1.5 rounded-md transition-colors duration-200 shadow-sm"
-                        title="Bearbeiten"
+                        title={invoice.status === 'draft' ? 'Bearbeiten' : 'Details'}
                       >
-                        <Edit className="h-3.5 w-3.5" />
+                        {invoice.status === 'draft' ? <Edit className="h-3.5 w-3.5" /> : <Info className="h-3.5 w-3.5" />}
                       </button>
                       <button
                         onClick={() => handlePreview(invoice)}
@@ -1031,13 +1074,24 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
                           <Mail className="h-3.5 w-3.5" />
                         )}
                       </button>
-                      <button
-                        onClick={() => handleDelete(invoice)}
-                        className="bg-red-100 hover:bg-red-200 text-red-700 hover:text-red-800 p-1.5 rounded-md transition-colors duration-200 shadow-sm"
-                        title="Löschen"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      {invoice.status === 'draft' && (
+                        <button
+                          onClick={() => handleDelete(invoice)}
+                          className="bg-red-100 hover:bg-red-200 text-red-700 hover:text-red-800 p-1.5 rounded-md transition-colors duration-200 shadow-sm"
+                          title="Löschen"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                      {isCancellable(invoice) && (
+                        <button
+                          onClick={() => setCancelRequest({ invoice, mode: 'cancel' })}
+                          className="bg-red-100 hover:bg-red-200 text-red-700 hover:text-red-800 p-1.5 rounded-md transition-colors duration-200 shadow-sm"
+                          title="Stornieren"
+                        >
+                          <Ban className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -1088,6 +1142,9 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
                   <div className="flex justify-between items-start mb-3">
                     <div className="flex-1 min-w-0">
                       <h3 className="text-sm font-medium text-gray-900 truncate">{invoice.invoiceNumber}</h3>
+                      {cancellationNote(invoice) && (
+                        <p className="text-xs text-gray-500 truncate">{cancellationNote(invoice)}</p>
+                      )}
                       <p className="text-sm text-gray-600 truncate">{invoice.customerName}</p>
                       <p className="text-xs text-gray-500 mt-1">
                         {new Date(invoice.issueDate).toLocaleDateString('de-DE')} - Fällig: {new Date(invoice.dueDate).toLocaleDateString('de-DE')}
@@ -1096,7 +1153,7 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
                     <div className="text-right ml-4">
                       <p className="text-sm font-medium text-gray-900">{formatCurrency(invoice.total, locale)}</p>
                       <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(invoice.status)}`}>
-                        {getStatusLabel(invoice.status)}
+                        {getInvoiceStatusLabel(invoice)}
                       </span>
                     </div>
                   </div>
@@ -1126,9 +1183,9 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
                       <button
                         onClick={() => handleOpenEditor(invoice)}
                         className="bg-primary-light-custom hover:bg-primary-medium-custom text-primary-custom hover:text-primary-custom p-2 rounded-md transition-colors duration-200 shadow-sm"
-                        title="Bearbeiten"
+                        title={invoice.status === 'draft' ? 'Bearbeiten' : 'Details'}
                       >
-                        <Edit className="h-3 w-3" />
+                        {invoice.status === 'draft' ? <Edit className="h-3 w-3" /> : <Info className="h-3 w-3" />}
                       </button>
                       
                       <button
@@ -1165,13 +1222,24 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
                         )}
                       </button>
                       
-                      <button
-                        onClick={() => handleDelete(invoice)}
-                        className="bg-red-100 hover:bg-red-200 text-red-700 hover:text-red-800 p-2 rounded-md transition-colors duration-200 shadow-sm"
-                        title="Löschen"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
+                      {invoice.status === 'draft' && (
+                        <button
+                          onClick={() => handleDelete(invoice)}
+                          className="bg-red-100 hover:bg-red-200 text-red-700 hover:text-red-800 p-2 rounded-md transition-colors duration-200 shadow-sm"
+                          title="Löschen"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      )}
+                      {isCancellable(invoice) && (
+                        <button
+                          onClick={() => setCancelRequest({ invoice, mode: 'cancel' })}
+                          className="bg-red-100 hover:bg-red-200 text-red-700 hover:text-red-800 p-2 rounded-md transition-colors duration-200 shadow-sm"
+                          title="Stornieren"
+                        >
+                          <Ban className="h-3 w-3" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1196,8 +1264,28 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
         title={confirmModal.title}
         message={confirmModal.message}
         isDestructive={confirmModal.isDestructive}
-        isGoBDWarning={confirmModal.isGoBDWarning}
       />
+
+      {detailsInvoice && (
+        <InvoiceDetailsModal
+          invoice={invoices.find(inv => inv.id === detailsInvoice.id) ?? detailsInvoice}
+          locale={locale}
+          statusLabel={getInvoiceStatusLabel(invoices.find(inv => inv.id === detailsInvoice.id) ?? detailsInvoice)}
+          onClose={() => setDetailsInvoice(null)}
+          onDownload={invoice => { setDetailsInvoice(null); handleExport(invoice); }}
+          onCancel={(invoice, mode) => setCancelRequest({ invoice, mode })}
+        />
+      )}
+
+      {cancelRequest && (
+        <CancelInvoiceModal
+          invoice={cancelRequest.invoice}
+          mode={cancelRequest.mode}
+          isLoading={isCancelling}
+          onClose={() => setCancelRequest(null)}
+          onConfirm={handleCancelConfirm}
+        />
+      )}
       
       {/* Email Send Modal */}
       <EmailSendModal

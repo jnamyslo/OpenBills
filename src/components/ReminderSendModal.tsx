@@ -12,6 +12,7 @@ import { apiService } from '../services/api';
 import logger from '../utils/logger';
 import { withInvoiceContent } from '../utils/attachmentContent';
 import { DocumentPreview, PreviewDocument } from './DocumentPreview';
+import { archiveAndDownload, notArchivedNote } from '../utils/archiveOutput';
 
 interface ReminderSendModalProps {
   isOpen: boolean;
@@ -171,15 +172,7 @@ export function ReminderSendModal({
           }
         );
 
-        // Create download link
-        const url = URL.createObjectURL(pdfBlob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `Mahnung_${stage}_${inv.invoiceNumber}.pdf`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
+        await archiveAndDownload(inv, 'reminder', 'pdf', pdfBlob, `Mahnung_${stage}_${inv.invoiceNumber}.pdf`, stage);
 
         // Update status if requested
         if (updateStatus) {
@@ -204,6 +197,7 @@ export function ReminderSendModal({
     try {
       const invoicesToProcess = isBulkMode ? bulkInvoices : [invoice];
       let successCount = 0;
+      let notArchived = 0;
 
       for (const inv of invoicesToProcess) {
         try {
@@ -296,7 +290,7 @@ export function ReminderSendModal({
           }
 
           // Send email via backend - this will log to email_history
-          await apiService.sendReminderEmail(
+          const sent = await apiService.sendReminderEmail(
             inv.id,
             stage,
             customerEmails,
@@ -306,6 +300,8 @@ export function ReminderSendModal({
             customText || reminderText,
             additionalAttachments
           );
+
+          if (sent.archived === false) notArchived++;
 
           // Update status if requested
           if (updateStatus) {
@@ -320,7 +316,7 @@ export function ReminderSendModal({
       }
 
       if (successCount > 0) {
-        alert(`${successCount} Mahnung(en) erfolgreich versendet!${demoMailNote()}`);
+        alert(`${successCount} Mahnung(en) erfolgreich versendet!${demoMailNote()}${notArchivedNote(notArchived)}`);
         onSuccess();
         onClose();
       } else {

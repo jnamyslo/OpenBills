@@ -16,12 +16,13 @@ import { QuoteCustomerResponseButton } from './QuoteCustomerResponse';
 import { EmailSendModal } from './EmailSendModal';
 import { apiService, isPlanError } from '../services/api';
 import { formatCurrency } from '../utils/formatters';
-import { generateQuotePDF, downloadBlob } from '../utils/pdfGenerator';
+import { generateQuotePDF } from '../utils/pdfGenerator';
 import { DocumentPreview, PreviewDocument } from './DocumentPreview';
 import { createQuoteAttachmentPreviewDocuments } from '../utils/previewDocuments';
 import { processAttachments, AttachmentFile } from '../utils/fileUtils';
 import { blobToBase64 } from '../utils/blobUtils';
 import { releaseForOutput } from '../utils/releaseForOutput';
+import { archiveAndDownload, notArchivedNote } from '../utils/archiveOutput';
 
 interface QuoteManagementProps {
   onNavigate?: (page: string, quoteId?: string) => void;
@@ -356,7 +357,7 @@ export function QuoteManagement({ onNavigate }: QuoteManagementProps = {}) {
         }
         try {
           const pdfBlob = await generateQuotePDF(quote, { company, customer });
-          downloadBlob(pdfBlob, `${quote.quoteNumber}.pdf`);
+          await archiveAndDownload(quote, 'quote', 'pdf', pdfBlob, `${quote.quoteNumber}.pdf`);
           successCount++;
         } catch (error) {
           logger.error('Error downloading quote', { error, quoteId });
@@ -441,7 +442,7 @@ export function QuoteManagement({ onNavigate }: QuoteManagementProps = {}) {
       });
 
       const filename = `${quote.quoteNumber.replace(/\//g, '-')}_${customer.name.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
-      downloadBlob(pdfBlob, filename);
+      await archiveAndDownload(quote, 'quote', 'pdf', pdfBlob, filename);
       
       logger.info('Quote PDF downloaded', { quoteId: quote.id, quoteNumber: quote.quoteNumber });
     } catch (error) {
@@ -497,6 +498,7 @@ export function QuoteManagement({ onNavigate }: QuoteManagementProps = {}) {
       try {
         let successCount = 0;
         let errorCount = 0;
+        let notArchived = 0;
         
         for (const quote of emailModal.bulkQuotes) {
           try {
@@ -536,13 +538,13 @@ export function QuoteManagement({ onNavigate }: QuoteManagementProps = {}) {
 
             // Entwürfe werden vor dem Versand freigegeben (zählt gegen das Plan-Kontingent),
             // damit der Kunde kein Dokument mit Wasserzeichen erhält.
-            await releaseForOutput(quote, status => updateQuote(quote.id, { status }), async released => {
+            const sent = await releaseForOutput(quote, status => updateQuote(quote.id, { status }), async released => {
               const pdfBlob = await generateQuotePDF(released, {
                 company,
                 customer: customer!,
               });
 
-              await apiService.sendQuoteEmail(
+              return apiService.sendQuoteEmail(
                 quote.id,
                 emailAddresses,
                 customText,
@@ -550,6 +552,7 @@ export function QuoteManagement({ onNavigate }: QuoteManagementProps = {}) {
                 await blobToBase64(pdfBlob)
               );
             });
+            if (sent.archived === false) notArchived++;
 
             successCount++;
           } catch (error) {
@@ -561,9 +564,9 @@ export function QuoteManagement({ onNavigate }: QuoteManagementProps = {}) {
         setSelectedQuoteIds([]);
 
         if (errorCount === 0) {
-          alert(`Alle ${successCount} Angebote erfolgreich per E-Mail versendet!${demoMailNote()}`);
+          alert(`Alle ${successCount} Angebote erfolgreich per E-Mail versendet!${demoMailNote()}${notArchivedNote(notArchived)}`);
         } else {
-          alert(`${successCount} Angebote erfolgreich versendet, ${errorCount} Fehler aufgetreten.${demoMailNote()}`);
+          alert(`${successCount} Angebote erfolgreich versendet, ${errorCount} Fehler aufgetreten.${demoMailNote()}${notArchivedNote(notArchived)}`);
         }
         
         setEmailModal({ isOpen: false, quote: null, customer: null, isBulkMode: false, bulkQuotes: [] });
@@ -626,14 +629,14 @@ export function QuoteManagement({ onNavigate }: QuoteManagementProps = {}) {
       // Entwürfe werden vor dem Versand freigegeben (zählt gegen das Plan-Kontingent),
       // damit der Kunde kein Dokument mit Wasserzeichen erhält.
       const quoteToSend = emailModal.quote;
-      await releaseForOutput(quoteToSend, status => updateQuote(quoteToSend.id, { status }), async released => {
+      const sent = await releaseForOutput(quoteToSend, status => updateQuote(quoteToSend.id, { status }), async released => {
         const pdfBlob = await generateQuotePDF(released, {
           company,
           customer,
         });
 
         // Convert blob to base64 for backend
-        await apiService.sendQuoteEmail(
+        return apiService.sendQuoteEmail(
           quoteToSend.id,
           allEmails,
           customText,
@@ -647,7 +650,7 @@ export function QuoteManagement({ onNavigate }: QuoteManagementProps = {}) {
         ? ` mit ${totalAttachments} Anhang${totalAttachments > 1 ? 'en' : ''}`
         : '';
       
-      alert(`Angebot erfolgreich per E-Mail versendet!${attachmentInfo}${demoMailNote()}`);
+      alert(`Angebot erfolgreich per E-Mail versendet!${attachmentInfo}${demoMailNote()}${notArchivedNote(sent.archived === false ? 1 : 0)}`);
       setEmailModal({ isOpen: false, quote: null, customer: null });
     } catch (error) {
       logger.error('Error sending quote email:', error);

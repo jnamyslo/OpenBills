@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isOpenInvoice, isOverdueStatus } from '../invoiceStatus';
+import { isCancellable, isOpenInvoice, isOverdueStatus } from '../invoiceStatus';
 import type { InvoiceStatus } from '../../types';
 
 const ALL: InvoiceStatus[] = ['draft', 'sent', 'paid', 'overdue', 'reminded_1x', 'reminded_2x', 'reminded_3x', 'cancelled'];
@@ -11,5 +11,12 @@ describe('invoiceStatus', () => {
 
   it('überfällig sind überfällige und gemahnte Rechnungen, stornierte nie', () => {
     expect(ALL.filter(isOverdueStatus)).toEqual(['overdue', 'reminded_1x', 'reminded_2x', 'reminded_3x']);
+  });
+
+  it('stornierbar sind freigegebene Rechnungen, keine Entwürfe, stornierten oder Stornorechnungen', () => {
+    expect(ALL.filter(status => isCancellable({ status, invoiceType: 'invoice' })))
+      .toEqual(['sent', 'paid', 'overdue', 'reminded_1x', 'reminded_2x', 'reminded_3x']);
+    expect(isCancellable({ status: 'sent', invoiceType: 'cancellation' })).toBe(false);
+    expect(isCancellable({ status: 'sent' })).toBe(true);
   });
 });

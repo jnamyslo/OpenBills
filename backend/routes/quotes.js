@@ -178,8 +178,9 @@ router.post('/:id/send-email', requireFeature('email'), enforcePlatformMailLimit
 
     if (!result.success && responseToken) await deleteQuoteResponseToken(responseToken);
 
+    let archived;
     if (result.success && quote.status !== 'draft' && pdfBuffer) {
-      await archiveSentFiles([{
+      archived = await archiveSentFiles([{
         documentType: 'quote',
         documentId: quote.id,
         format: 'pdf',
@@ -190,7 +191,7 @@ router.post('/:id/send-email', requireFeature('email'), enforcePlatformMailLimit
     }
 
     if (result.success) {
-      res.json(result);
+      res.json({ ...result, archived });
     } else {
       res.status(500).json(result);
     }

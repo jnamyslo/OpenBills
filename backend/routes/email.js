@@ -99,12 +99,14 @@ router.post('/send-invoice-multi', async (req, res) => {
     const successCount = results.filter(r => r.success).length;
     const failureCount = results.filter(r => !r.success).length;
 
-    if (successCount > 0 && !isDraft) {
-      await archiveSentFiles(processedFormats.map(({ format, content }) => invoiceArchiveFile(invoiceData, format, content)), req.user?.id);
-    }
+    // undefined = nichts zu archivieren (Entwurf / nicht versendet)
+    const archived = successCount > 0 && !isDraft
+      ? await archiveSentFiles(processedFormats.map(({ format, content }) => invoiceArchiveFile(invoiceData, format, content)), req.user?.id)
+      : undefined;
 
     res.json({
       success: successCount > 0,
+      archived,
       message: `Rechnung versendet: ${successCount} erfolgreich, ${failureCount} fehlgeschlagen`,
       results,
       successCount,
@@ -162,10 +164,11 @@ router.post('/send-invoice', async (req, res) => {
     
     const result = await sendInvoiceEmail(customerEmail, pdfBuffer, invoiceData, format, customText, processedAttachments, companySettings);
 
-    if (!isDraft) await archiveSentFiles([invoiceArchiveFile(invoiceData, format, invoicePDF)], req.user?.id);
+    const archived = isDraft ? undefined : await archiveSentFiles([invoiceArchiveFile(invoiceData, format, invoicePDF)], req.user?.id);
     
     res.json({
       success: true,
+      archived,
       message: 'Rechnung erfolgreich per E-Mail versendet',
       messageId: result.messageId
     });
@@ -208,8 +211,9 @@ router.post('/send-reminder', async (req, res) => {
     );
 
     const status = await loadInvoiceStatus(invoiceData.id);
+    let archived;
     if (result.success && status && status !== 'draft') {
-      await archiveSentFiles([{
+      archived = await archiveSentFiles([{
         documentType: 'reminder',
         documentId: invoiceData.id,
         reminderStage: Number(stage),
@@ -220,7 +224,7 @@ router.post('/send-reminder', async (req, res) => {
       }], req.user?.id);
     }
 
-    res.json(result);
+    res.json({ ...result, archived });
     
   } catch (error) {
     logger.error('Fehler beim Mahnungs-Versand:', error);

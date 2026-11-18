@@ -212,6 +212,7 @@ describe.skipIf(!hasDb)('Belegarchiv', () => {
         invoiceData: invoiceData(),
       });
       expect(res.status).toBe(200);
+      expect(res.body.archived).toBe(true);
       const { rows } = await archived();
       expect(rows).toEqual([
         { document_type: 'invoice', document_id: invoiceId, format: 'xrechnung', filename: 'XRechnung_RE-2026-001.xml', reminder_stage: null },
@@ -227,6 +228,33 @@ describe.skipIf(!hasDb)('Belegarchiv', () => {
       });
       expect(res.status).toBe(200);
       expect(mail.sendInvoiceEmailMultiFormat).toHaveBeenCalled();
+      expect(res.body.archived).toBeUndefined();
+      expect((await archived()).rows).toEqual([]);
+    });
+
+    it('meldet archived: false, wenn das Archivieren nach dem Versand scheitert', async () => {
+      // Inhalt passt nicht zum Format → Archiv lehnt ab, der Versand bleibt erfolgreich
+      const multi = await request(app).post('/api/email/send-invoice-multi').set('Cookie', cookie).set(ORIGIN).send({
+        customerEmails: ['k@test.example'],
+        invoiceFormats: [{ format: 'zugferd', content: XML }],
+        invoiceData: invoiceData(),
+      });
+      expect(multi.status).toBe(200);
+      expect(multi.body).toMatchObject({ success: true, archived: false });
+
+      const single = await request(app).post('/api/email/send-invoice').set('Cookie', cookie).set(ORIGIN).send({
+        customerEmail: 'k@test.example', invoicePDF: XML, invoiceData: invoiceData(), format: 'zugferd',
+      });
+      expect(single.body).toMatchObject({ success: true, archived: false });
+
+      const reminder = await request(app).post('/api/email/send-reminder').set('Cookie', cookie).set(ORIGIN).send({
+        customerEmails: ['k@test.example'], reminderPDF: XML, invoiceData: invoiceData(), stage: 1,
+      });
+      expect(reminder.body.archived).toBe(false);
+
+      const quote = await request(app).post(`/api/quotes/${quoteId}/send-email`).set('Cookie', cookie).set(ORIGIN)
+        .send({ customerEmails: ['k@test.example'], pdfBuffer: XML });
+      expect(quote.body.archived).toBe(false);
       expect((await archived()).rows).toEqual([]);
     });
 
@@ -271,6 +299,7 @@ describe.skipIf(!hasDb)('Belegarchiv', () => {
         customerEmails: ['k@test.example'], reminderPDF: PDF, invoiceData: invoiceData(), stage: 2,
       });
       expect(res.status).toBe(200);
+      expect(res.body.archived).toBe(true);
       expect((await archived()).rows).toMatchObject([{ document_type: 'reminder', document_id: invoiceId, format: 'pdf', reminder_stage: 2 }]);
     });
 
@@ -278,6 +307,7 @@ describe.skipIf(!hasDb)('Belegarchiv', () => {
       const res = await request(app).post(`/api/quotes/${quoteId}/send-email`).set('Cookie', cookie).set(ORIGIN)
         .send({ customerEmails: ['k@test.example'], pdfBuffer: PDF });
       expect(res.status).toBe(200);
+      expect(res.body.archived).toBe(true);
       expect((await archived()).rows).toMatchObject([{ document_type: 'quote', document_id: quoteId, format: 'pdf', filename: 'Angebot_AN-2026-001.pdf' }]);
 
       await pool.query("UPDATE quotes SET status = 'draft' WHERE id = $1", [quoteId]);

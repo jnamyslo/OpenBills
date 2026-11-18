@@ -111,6 +111,35 @@ export interface Invoice extends Timestamps, GlobalDiscount {
 }
 
 // ============================================================================
+// Belegarchiv
+// ============================================================================
+
+export type ArchiveDocumentType = 'invoice' | 'quote' | 'reminder';
+export type ArchiveFormat = 'pdf' | 'zugferd' | 'xrechnung';
+/** 'regenerated' = nachträglich erzeugt (Altbeleg ohne Originalfassung) */
+export type ArchiveSource = 'output' | 'regenerated';
+
+/** Archivierte Fassung ohne Dateiinhalt (GET /api/archive) */
+export interface ArchiveEntry {
+  id: UUID;
+  documentType: ArchiveDocumentType;
+  documentId: UUID;
+  documentNumber: string;
+  customerName: string | null;
+  issueDate: string | null;
+  total: number | null;
+  reminderStage: number | null;
+  format: ArchiveFormat;
+  filename: string;
+  contentType: string;
+  size: number;
+  sha256: string;
+  source: ArchiveSource;
+  createdAt: string;
+  createdBy: number | null;
+}
+
+// ============================================================================
 // Quote Types
 // ============================================================================
 
