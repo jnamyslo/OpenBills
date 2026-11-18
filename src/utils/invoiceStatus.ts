@@ -14,3 +14,8 @@ export function isOverdueStatus(status: InvoiceStatus): boolean {
 export function isCancellable(invoice: Pick<Invoice, 'status' | 'invoiceType'>): boolean {
   return invoice.status !== 'draft' && invoice.status !== 'cancelled' && invoice.invoiceType !== 'cancellation';
 }
+
+/** Stornorechnung, die noch nie ausgegeben (versendet/heruntergeladen) und daher nicht archiviert wurde. */
+export function isUnsentCancellation(invoice: Pick<Invoice, 'id' | 'invoiceType'>, unarchivedIds: ReadonlySet<string>): boolean {
+  return invoice.invoiceType === 'cancellation' && unarchivedIds.has(invoice.id);
+}

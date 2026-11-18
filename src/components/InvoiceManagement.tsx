@@ -16,7 +16,7 @@ import { EmailSendModal } from './EmailSendModal';
 import { DownloadModal } from './DownloadModal';
 import { CancelInvoiceModal, CancelMode } from './CancelInvoiceModal';
 import { InvoiceDetailsModal } from './InvoiceDetailsModal';
-import { isCancellable } from '../utils/invoiceStatus';
+import { isCancellable, isUnsentCancellation } from '../utils/invoiceStatus';
 import { draftCopyOfInvoice } from '../utils/invoiceCopy';
 import { DocumentPreview, PreviewDocument } from './DocumentPreview';
 import { createInvoiceAttachmentPreviewDocuments } from '../utils/previewDocuments';
@@ -55,6 +55,8 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
   const [detailsInvoice, setDetailsInvoice] = useState<Invoice | null>(null);
   const [cancelRequest, setCancelRequest] = useState<{ invoice: Invoice; mode: CancelMode } | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
+  // Freigegebene Rechnungen ohne Archivfassung; Stornorechnungen darunter gelten als „noch nicht versendet“
+  const [unarchivedIds, setUnarchivedIds] = useState<ReadonlySet<string>>(new Set());
   
   
   // Get locale from company settings, default to 'de-DE'
@@ -112,6 +114,13 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
     message: '',
     onConfirm: () => {},
   });
+
+  // Neu laden, wenn sich Rechnungen ändern oder Versand-/Download-Dialog schließt (Ausgabe archiviert)
+  useEffect(() => {
+    apiService.getArchiveMissing()
+      .then(missing => setUnarchivedIds(new Set(missing.invoices)))
+      .catch(error => logger.warn('Fehlende Archivfassungen konnten nicht geladen werden', { error: String(error) }));
+  }, [invoices, emailModal.isOpen, downloadModal.isOpen]);
 
   // Update filter and search when initialFilter/initialSearchTerm props change
   useEffect(() => {
@@ -175,7 +184,7 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
     if (filterStatus === 'all') {
       matchesStatus = true;
     } else if (filterStatus === 'not-paid') {
-      matchesStatus = invoice.status !== 'paid' && invoice.status !== 'cancelled';
+      matchesStatus = (invoice.status !== 'paid' && invoice.status !== 'cancelled') || isUnsentCancellation(invoice, unarchivedIds);
     } else {
       matchesStatus = invoice.status === filterStatus;
     }
@@ -1012,7 +1021,7 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
                       <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(invoice.status)}`}>
                         {getInvoiceStatusLabel(invoice)}
                       </span>
-                      {invoice.status === 'draft' && (
+                      {(invoice.status === 'draft' || isUnsentCancellation(invoice, unarchivedIds)) && (
                         <button
                           className="bg-primary-light-custom hover:bg-primary-medium-custom text-primary-custom hover:text-primary-custom px-2 py-1 rounded-md transition-colors duration-200 shadow-sm flex items-center text-xs font-medium"
                           title="Per E-Mail versenden"
@@ -1160,7 +1169,7 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
 
                   {/* Action buttons for mobile */}
                   <div className="flex flex-wrap gap-2 mt-3">
-                    {invoice.status === 'draft' && (
+                    {(invoice.status === 'draft' || isUnsentCancellation(invoice, unarchivedIds)) && (
                       <button
                         className="bg-primary-light-custom hover:bg-primary-medium-custom text-primary-custom hover:text-primary-custom px-3 py-1 rounded-md transition-colors duration-200 shadow-sm flex items-center text-xs font-medium"
                         onClick={() => handleSendEmail(invoice)}
