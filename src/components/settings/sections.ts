@@ -103,7 +103,7 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
   },
   { id: 'email', group: 'System', label: 'E-Mail', description: 'Versand, SMTP, Historie', fields: [] },
   { id: 'benutzer', group: 'System', label: 'Benutzer', description: 'Zugänge und Rollen', fields: [] },
-  { id: 'backup', group: 'System', label: 'Backup', description: 'Sichern und wiederherstellen', fields: [] },
+  { id: 'backup', group: 'System', label: 'Backup & Archiv', description: 'Sichern, wiederherstellen, Archiv exportieren', fields: [] },
   { id: 'audit', group: 'System', label: 'Audit-Log', description: 'Protokoll sicherheitsrelevanter Aktionen', fields: [] },
 ];
 

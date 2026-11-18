@@ -337,6 +337,32 @@ class ApiService {
     return `${this.baseUrl}/archive/${encodeURIComponent(id)}/download`;
   }
 
+  /** Archiv-Export (ZIP, nur Admins); `from`/`to` als JJJJ-MM-TT, optional. */
+  async downloadArchiveExport(params: { from?: string; to?: string } = {}): Promise<void> {
+    const queryParams = new URLSearchParams();
+    if (params.from) queryParams.append('from', params.from);
+    if (params.to) queryParams.append('to', params.to);
+    const response = await fetch(`${this.baseUrl}/archive/export?${queryParams}`, { credentials: 'same-origin' });
+    await handleAuthStatus(response);
+    if (!response.ok) {
+      const errorData: ErrorBody = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Fehler beim Archiv-Export');
+    }
+    const disposition = response.headers.get('Content-Disposition') ?? '';
+    const match = disposition.match(/filename\*=UTF-8''([^;]+)/);
+    const filename = match ? decodeURIComponent(match[1]) : 'openbills-archiv.zip';
+
+    const blob = await response.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(downloadUrl);
+  }
+
   // --------------------------------------------------------------------------
   // Quote API
   // --------------------------------------------------------------------------

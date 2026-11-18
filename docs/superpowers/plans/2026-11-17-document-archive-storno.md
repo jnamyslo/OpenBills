@@ -200,9 +200,10 @@ Anlass: ZUGFeRD verlangt PDF/A-3; die PDFs waren es nicht (nicht eingebettete He
 - Frontend-Dialog: Zeitraum, Anzahl fehlender Fassungen (`GET /api/archive/missing`), „Fehlende Fassungen erzeugen“ (PDF für Rechnungen/Angebote, ZUGFeRD-PDF für Rechnungen, `source: 'regenerated'`, Fortschrittsanzeige), dann Download.
 - Kein Plan-Gating (alle Tarife).
 
-- [ ] **Step 1:** Failing tests: ZIP-Struktur, CSV-Kopfzeilen und BOM, Storno im Journal mit Bezug, Zeitraumfilter, Nicht-Admin 403, Pfad-Sanitizing.
-- [ ] **Step 2:** Implementieren, BTEST grün.
+- [x] **Step 1:** Failing tests: ZIP-Struktur, CSV-Kopfzeilen und BOM, Storno im Journal mit Bezug, Zeitraumfilter, Nicht-Admin 403, Pfad-Sanitizing.
+- [x] **Step 2:** Implementieren, BTEST grün (447).
 - [ ] **Step 3:** Frontend-Dialog, Build grün, manuell mit Altbeleg ohne Fassung testen.
+  - Umgesetzt als `ArchivExportSection` im Einstellungsbereich „Backup & Archiv“ (Einstellungen sind nur für Admins sichtbar). Build, Typecheck, FTEST grün. Manueller Test mit Altbeleg steht aus.
 - [ ] **Step 4:** Commit.
 
 ### Task 9: Optionales Archiv im Backup

@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { ConfirmationModal } from './ConfirmationModal';
 import { BackupManagement } from './BackupManagement';
+import { ArchivExportSection } from './settings/ArchivExportSection';
 import { EmailManagement } from './EmailManagement';
 import { UserManagement } from './UserManagement';
 import { AuditLogView } from './AuditLogView';
@@ -119,6 +120,7 @@ export function Settings({ section, onNavigate }: SettingsProps) {
             Erstellen Sie vor wichtigen Änderungen ein Backup und bewahren Sie es an einem sicheren Ort auf. Ein Backup enthält alle Kunden, Rechnungen, Aufträge und Einstellungen.
           </p>
           <BackupManagement embedded />
+          <ArchivExportSection />
         </div>
       );
       case 'audit': return <AuditLogView />;
