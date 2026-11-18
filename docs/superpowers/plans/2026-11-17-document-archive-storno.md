@@ -182,7 +182,8 @@ Anlass: ZUGFeRD verlangt PDF/A-3; die PDFs waren es nicht (nicht eingebettete He
 - [x] **Step 1:** Schrift einbetten (lazy geladener Chunk, `putOnlyUsedFonts`, `compress`), alle `setFont` auf `PDF_FONT`.
 - [x] **Step 2:** `finalizePdfA`: PDF 1.7, XMP (pdfaid 3/B, dc/xmp/pdf passend zum Info-Dictionary), sRGB-OutputIntent, bei ZUGFeRD `factur-x.xml` (`text/xml`, `Alternative`, `/AF`) mit Factur-X-Erweiterungsschema (`ConformanceLevel` XRECHNUNG). Rechnung, Storno, Angebot, Mahnung; Entwürfe nicht (Wasserzeichen). Einbettungsfehler werfen statt PDF ohne XML.
 - [x] **Step 3:** veraPDF 1.30.4 (`scripts/pdfa-validate.sh`): 4/4 PASS PDF/A-3b (2026-11-18).
-- [ ] **Step 4:** Mustang 2.26.0 gegen `*-zugferd.pdf` (Skript lädt das Jar; im Agentenlauf nicht ausgeführt). Logo mit Transparenz manuell im Browser erzeugen und mit veraPDF prüfen (Logo-Code braucht `Image`, in Node nicht testbar).
+- [x] **Step 4:** Mustang 2.26.0 gegen `*-zugferd.pdf`: Rechnung und Storno `valid` (PDF, XML, gesamt; 0 Fehler; Profil XRechnung 3.0), 2026-11-18.
+- [ ] **Step 5:** Logo mit Transparenz manuell im Browser erzeugen und mit veraPDF prüfen (Logo-Code braucht `Image`, in Node nicht testbar).
 - Größe: ca. 65 KB je PDF statt ca. 10 KB (Schrift-Teilsatz).
 
 ### Task 8: Archiv-Export
