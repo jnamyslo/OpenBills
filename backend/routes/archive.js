@@ -2,6 +2,10 @@ import express from 'express';
 import logger from '../utils/logger.js';
 import { audit } from '../auth/audit.js';
 import { archiveDocument, listArchive, getArchiveFile, countMissing } from '../services/archiveService.js';
+import { buildArchiveZip, sanitizePathSegment } from '../services/archiveExportService.js';
+import { berlinDate } from '../services/cancellationService.js';
+import { requireAdmin } from '../auth/middleware.js';
+import { query } from '../database.js';
 
 const router = express.Router();
 
@@ -38,6 +42,36 @@ router.get('/missing', async (req, res) => {
   } catch (error) {
     logger.error('Fehler beim Prüfen fehlender Archivfassungen:', error);
     res.status(500).json({ error: 'Fehler beim Prüfen fehlender Archivfassungen' });
+  }
+});
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const validDate = (value) => value === undefined
+  || (typeof value === 'string' && ISO_DATE.test(value) && !Number.isNaN(Date.parse(value)));
+
+// Export als ZIP (alle Tarife, nur Admins); Zeitraum optional nach Belegdatum
+router.get('/export', requireAdmin, async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    if (!validDate(from) || !validDate(to)) {
+      return res.status(400).json({ error: 'Ungültiger Zeitraum (Format JJJJ-MM-TT)' });
+    }
+    const zip = await buildArchiveZip({ from, to });
+    const { rows: [company] } = await query('SELECT name FROM company WHERE id = 1');
+    const firm = sanitizePathSegment(company?.name ?? 'Firma').replace(/\s+/g, '-');
+    const filename = `openbills-archiv_${firm}_${berlinDate()}.zip`;
+    await audit(req, {
+      action: 'archive.exported',
+      entityType: 'archive',
+      entityId: null,
+      details: { from: from ?? null, to: to ?? null, size: zip.length },
+    });
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    res.send(zip);
+  } catch (error) {
+    logger.error('Fehler beim Archiv-Export:', error);
+    res.status(500).json({ error: 'Fehler beim Archiv-Export' });
   }
 });
 
