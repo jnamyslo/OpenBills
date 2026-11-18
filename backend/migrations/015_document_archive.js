@@ -43,7 +43,7 @@ export async function up(client) {
       sha256 VARCHAR(64) NOT NULL,
       source VARCHAR(20) NOT NULL CHECK (source IN ('output', 'regenerated')),
       created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-      created_by UUID,
+      created_by INTEGER, -- users.id, ohne FK (users ist nicht im Backup)
       UNIQUE (document_type, document_id, format, sha256)
     )
   `);

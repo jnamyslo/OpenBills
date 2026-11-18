@@ -65,9 +65,9 @@
 - Routen: `POST /api/archive`, `GET /api/archive`, `GET /api/archive/missing`, `GET /api/archive/:id/download` (Audit `archive.downloaded`).
 - Mailrouten archivieren **nach** erfolgreichem Versand und nur, wenn der Beleg nicht `draft` ist; ein Archivfehler lässt den Versand nicht scheitern, wird aber geloggt.
 
-- [ ] **Step 1:** Failing tests: Ablage, Deduplizierung (`created: false`), Entwurf → 409, Liste ohne `content`, Download liefert Datei + Audit; Mailroute mit gemocktem Transport archiviert jede Datei, Entwurf nicht.
-- [ ] **Step 2:** Implementieren, BTEST grün.
-- [ ] **Step 3:** Commit.
+- [x] **Step 1:** Failing tests: Ablage, Deduplizierung (`created: false`), Entwurf → 409, Liste ohne `content`, Download liefert Datei + Audit; Mailroute mit gemocktem Transport archiviert jede Datei, Entwurf nicht.
+- [x] **Step 2:** Implementieren, BTEST grün.
+- [x] **Step 3:** Commit.
 
 ### Task 3: Sperre nach Freigabe
 

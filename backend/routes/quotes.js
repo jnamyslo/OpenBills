@@ -8,6 +8,7 @@ import { findAllQuotes, findQuoteById } from '../queries/quoteQueries.js';
 import { createQuote, updateQuote, deleteQuote, convertQuoteToInvoice, convertQuoteToJob } from '../services/quoteService.js';
 import { createQuoteResponseToken, deleteQuoteResponseToken, quoteResponseLink } from '../services/quoteResponseService.js';
 import { isDemoMode } from '../demo/index.js';
+import { archiveSentFiles } from '../services/archiveService.js';
 
 const router = express.Router();
 
@@ -176,6 +177,17 @@ router.post('/:id/send-email', requireFeature('email'), enforcePlatformMailLimit
     );
 
     if (!result.success && responseToken) await deleteQuoteResponseToken(responseToken);
+
+    if (result.success && quote.status !== 'draft' && pdfBuffer) {
+      await archiveSentFiles([{
+        documentType: 'quote',
+        documentId: quote.id,
+        format: 'pdf',
+        filename: `Angebot_${quote.quoteNumber}.pdf`,
+        contentType: 'application/pdf',
+        contentBase64: pdfBuffer,
+      }], req.user?.id);
+    }
 
     if (result.success) {
       res.json(result);

@@ -72,6 +72,21 @@ describe.skipIf(!hasDb)('Demo: eigene Daten je Sitzung', () => {
     expect(await count('SELECT COUNT(*) AS n FROM public.invoices')).toBe(0);
   });
 
+  it('Belegarchiv liegt je Sitzung, append-only, nicht in public', async () => {
+    const a = await login();
+    const b = await login();
+    const { rows: [inv] } = await pool.query(`SELECT id FROM ${TEMPLATE_SCHEMA}.invoices WHERE status <> 'draft' LIMIT 1`);
+    const res = await request(app).post('/api/archive').set(ORIGIN).set('Cookie', a).send({
+      documentType: 'invoice', documentId: inv.id, format: 'pdf', filename: 'x.pdf',
+      contentType: 'application/pdf', content: Buffer.from('%PDF').toString('base64'),
+    });
+    expect(res.status).toBe(201);
+    expect((await request(app).get('/api/archive').set('Cookie', a)).body).toHaveLength(1);
+    expect((await request(app).get('/api/archive').set('Cookie', b)).body).toHaveLength(0);
+    expect(await count('SELECT COUNT(*) AS n FROM public.document_archive')).toBe(0);
+    await expect(pool.query(`DELETE FROM "${schemaOf(a)}".document_archive`)).rejects.toThrow(/append-only/);
+  });
+
   it('Änderungen sieht nur die eigene Sitzung; Vorlage und public bleiben unverändert', async () => {
     const a = await login();
     const b = await login();

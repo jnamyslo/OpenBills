@@ -3,6 +3,7 @@ import { query } from '../database.js';
 import { sendInvoiceEmail, sendInvoiceEmailMultiFormat, sendReminderEmail, testEmailConnection } from '../services/emailService.js';
 import logger from '../utils/logger.js';
 import { stampDraftWatermark } from '../utils/draftWatermark.js';
+import { archiveSentFiles } from '../services/archiveService.js';
 
 const router = express.Router();
 
@@ -13,6 +14,19 @@ async function loadInvoiceStatus(invoiceId) {
   if (!invoiceId) return null;
   const result = await query('SELECT status FROM invoices WHERE id = $1', [invoiceId]);
   return result.rows[0]?.status ?? null;
+}
+
+/** Archivdatei für eine versendete Rechnung; Dateinamen wie im Mailanhang (emailService). */
+function invoiceArchiveFile(invoiceData, format, content) {
+  const isXml = format === 'xrechnung';
+  return {
+    documentType: 'invoice',
+    documentId: invoiceData.id,
+    format: isXml ? 'xrechnung' : format === 'zugferd' ? 'zugferd' : 'pdf',
+    filename: isXml ? `XRechnung_${invoiceData.invoiceNumber}.xml` : `Rechnung_${invoiceData.invoiceNumber}.pdf`,
+    contentType: isXml ? 'application/xml' : 'application/pdf',
+    contentBase64: Buffer.isBuffer(content) ? content.toString('base64') : content,
+  };
 }
 
 // Test email configuration
@@ -85,6 +99,10 @@ router.post('/send-invoice-multi', async (req, res) => {
     const successCount = results.filter(r => r.success).length;
     const failureCount = results.filter(r => !r.success).length;
 
+    if (successCount > 0 && !isDraft) {
+      await archiveSentFiles(processedFormats.map(({ format, content }) => invoiceArchiveFile(invoiceData, format, content)), req.user?.id);
+    }
+
     res.json({
       success: successCount > 0,
       message: `Rechnung versendet: ${successCount} erfolgreich, ${failureCount} fehlgeschlagen`,
@@ -143,6 +161,8 @@ router.post('/send-invoice', async (req, res) => {
     }
     
     const result = await sendInvoiceEmail(customerEmail, pdfBuffer, invoiceData, format, customText, processedAttachments, companySettings);
+
+    if (!isDraft) await archiveSentFiles([invoiceArchiveFile(invoiceData, format, invoicePDF)], req.user?.id);
     
     res.json({
       success: true,
@@ -186,7 +206,20 @@ router.post('/send-reminder', async (req, res) => {
       companySettings,
       additionalAttachments || []
     );
-    
+
+    const status = await loadInvoiceStatus(invoiceData.id);
+    if (result.success && status && status !== 'draft') {
+      await archiveSentFiles([{
+        documentType: 'reminder',
+        documentId: invoiceData.id,
+        reminderStage: Number(stage),
+        format: 'pdf',
+        filename: `Mahnung-${stage}_${invoiceData.invoiceNumber}.pdf`,
+        contentType: 'application/pdf',
+        contentBase64: reminderPDF,
+      }], req.user?.id);
+    }
+
     res.json(result);
     
   } catch (error) {

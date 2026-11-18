@@ -1,6 +1,6 @@
 import { pool, runWithSchema } from '../database.js';
 import logger from '../utils/logger.js';
-import { BACKUP_TABLES } from '../utils/backupTables.js';
+import { BACKUP_TABLES, OPTIONAL_TABLES } from '../utils/backupTables.js';
 import { isDemoMode } from './index.js';
 import { seedDemoData } from './seed.js';
 
@@ -21,7 +21,7 @@ export const MAX_DEMO_SESSIONS = 100;
 export const DEMO_LOCK_KEY = 4711_2026;
 
 // Je Sitzung kopiert. audit_log auch, damit niemand Aktionen/IPs anderer Besucher sieht.
-export const SESSION_TABLES = [...BACKUP_TABLES, 'usage_counters', 'audit_log'];
+export const SESSION_TABLES = [...BACKUP_TABLES, ...OPTIONAL_TABLES, 'usage_counters', 'audit_log'];
 
 // Nur im Speicher: Schemas, deren Existenz dieser Prozess bestätigt hat (spart die Prüfung je Request).
 const readySchemas = new Set();
