@@ -7,6 +7,30 @@ import { createSession, getSession } from '../auth/sessions.js';
 import { hashToken } from '../auth/crypto.js';
 import { resetOperator } from '../scripts/operator.js';
 import { createOnboardingLink } from '../scripts/onboarding.js';
+import { parseArgs } from '../scripts/archiveExport.js';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import AdmZip from 'adm-zip';
+
+const backendDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+const runScript = (args) => promisify(execFile)('node', ['scripts/archiveExport.js', ...args], {
+  cwd: backendDir,
+  encoding: 'buffer',
+  maxBuffer: 50 * 1024 * 1024,
+  env: { ...process.env, LOG_LEVEL: 'DEBUG' },
+});
+
+describe('archiveExport parseArgs', () => {
+  it('liest --out/--from/--to und lehnt Unbekanntes ab', () => {
+    expect(parseArgs(['--out', '/tmp/a.zip', '--from', '2026-01-01', '--to', '2026-12-31']))
+      .toEqual({ out: '/tmp/a.zip', from: '2026-01-01', to: '2026-12-31' });
+    expect(() => parseArgs(['--from', '01.01.2026'])).toThrow(/Ungültiges Datum/);
+    expect(() => parseArgs(['--foo', 'x'])).toThrow(/Unbekannter/);
+    expect(() => parseArgs(['--out'])).toThrow(/unvollständiger/);
+  });
+});
 
 describe.skipIf(!hasDb)('Betreiber-Skripte (DB)', () => {
   beforeAll(migrateTestDb);
@@ -62,6 +86,29 @@ describe.skipIf(!hasDb)('Betreiber-Skripte (DB)', () => {
       hashToken(a.split('/').pop()),
     ]);
     expect(rows[0].used_at).not.toBeNull();
+  });
+
+  it('archiveExport schreibt ein gültiges ZIP nach stdout und meldet fehlende Fassungen auf stderr', async () => {
+    await pool.query('TRUNCATE invoices, customers CASCADE');
+    const { rows: [{ id: customerId }] } = await pool.query(
+      `INSERT INTO customers (name, address, city, postal_code, country, customer_number)
+       VALUES ('Kunde', 'Str. 1', 'Berlin', '10115', 'DE', 'K-1') RETURNING id`
+    );
+    await pool.query(
+      `INSERT INTO invoices (invoice_number, customer_id, customer_name, issue_date, due_date, subtotal, tax_amount, total, status)
+       VALUES ('RE-2026-001', $1, 'Kunde', '2026-03-10', '2026-03-24', 100, 19, 119, 'sent')`,
+      [customerId]
+    );
+
+    // LOG_LEVEL=DEBUG: Logger-Ausgaben dürfen das ZIP auf stdout nicht verunreinigen
+    const { stdout, stderr } = await runScript(['--from', '2026-01-01']);
+    const zip = new AdmZip(stdout);
+    expect(zip.getEntry('LIESMICH.txt')).not.toBeNull();
+    expect(zip.getEntry('rechnungsjournal.csv').getData().toString('utf8')).toContain('RE-2026-001');
+    expect(stderr.toString('utf8')).toMatch(/1 freigegebene Belege ohne Archivfassung \(1 Rechnungen, 0 Angebote\)/);
+    const { rows: log } = await pool.query(`SELECT details FROM audit_log WHERE action = 'archive.exported'`);
+    expect(log).toHaveLength(1);
+    expect(log[0].details).toMatchObject({ from: '2026-01-01', source: 'script' });
   });
 
   it('createOnboardingLink wirft mit Kunden-Admin', async () => {

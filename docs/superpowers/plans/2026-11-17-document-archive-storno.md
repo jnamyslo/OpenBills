@@ -226,9 +226,10 @@ Anlass: ZUGFeRD verlangt PDF/A-3; die PDFs waren es nicht (nicht eingebettete He
 - Modify: `manage-instances.sh` (`archive-export <name>` → `backups/archiv_<name>_<timestamp>.zip`; `remove` fragt vorher „Archiv-Export erstellen? [J/n]“, bei `--yes` automatisch ja)
 - Modify: `backend/tests/scripts.test.js`
 
-- [ ] **Step 1:** Failing test: Skript erzeugt gültiges ZIP und meldet fehlende Fassungen.
+- [x] **Step 1:** Failing test: Skript erzeugt gültiges ZIP und meldet fehlende Fassungen.
 - [ ] **Step 2:** Implementieren, BTEST grün; `manage-instances.sh archive-export <test>` manuell gegen eine lokale Instanz.
-- [ ] **Step 3:** Commit.
+  - Umgesetzt, BTEST grün (454). Skript: `--out`/`--from`/`--to`, Konsole komplett auf stderr umgeleitet (Test mit `LOG_LEVEL=DEBUG`), Audit `archive.exported` mit `source: 'script'`. `remove` bricht ab, wenn der Export scheitert (z. B. Backend gestoppt), auch bei `--yes`; mit `n` lässt sich der Export überspringen. Manueller Lauf gegen eine lokale Instanz steht aus (Image muss neu gebaut werden).
+- [x] **Step 3:** Commit.
 
 ### Task 11: Dokumentation
 

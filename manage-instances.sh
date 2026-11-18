@@ -232,6 +232,18 @@ remove_instance() {
     print_warning "Dies wird die Instanz '$instance_name' vollständig entfernen!"
     print_warning "Alle Daten (Datenbank, Konfiguration) gehen verloren!"
     echo
+    # Aufbewahrungspflicht der Kunden: vor dem Löschen Belegarchiv sichern (bei --yes immer)
+    local export_answer=J
+    if [ "$assume_yes" != "--yes" ]; then
+        read -p "$(echo -e "${YELLOW}Archiv-Export erstellen? [J/n]${NC}: ")" export_answer
+    fi
+    if [[ ! "$export_answer" =~ ^[Nn] ]]; then
+        if ! archive_export "$instance_name"; then
+            print_error "Instanz wird nicht gelöscht. Instanz starten ('$0 start $instance_name') oder den Export mit 'n' überspringen."
+            return 1
+        fi
+    fi
+    echo
     if [ "$assume_yes" = "--yes" ]; then
         confirmation="LÖSCHEN"
     else
@@ -252,6 +264,42 @@ remove_instance() {
         print_success "Instanz '$instance_name' wurde vollständig entfernt"
     else
         print_info "Vorgang abgebrochen"
+    fi
+}
+
+# Belegarchiv als lesbares ZIP nach backups/archiv_<name>_<timestamp>.zip (wie „Archiv exportieren“ in der App).
+# Weitere Argumente (--from/--to JJJJ-MM-TT) gehen an backend/scripts/archiveExport.js.
+archive_export() {
+    local instance_name=$1
+    shift
+    if [ -z "$instance_name" ]; then
+        print_error "Bitte geben Sie den Instanznamen an"
+        echo "Usage: $0 archive-export <instance_name> [--from JJJJ-MM-TT] [--to JJJJ-MM-TT]"
+        return 1
+    fi
+    if [ ! -f ".env.${instance_name}" ]; then
+        print_error "Instanz '$instance_name' nicht gefunden"
+        return 1
+    fi
+
+    compose_cmd "$instance_name"
+    local compose=("${COMPOSE[@]}")
+    if [ -z "$("${compose[@]}" ps --status running -q backend 2>/dev/null)" ]; then
+        print_error "Das Backend von Instanz '$instance_name' läuft nicht. Zuerst starten: $0 start $instance_name"
+        return 1
+    fi
+
+    local backup_dir="backups"
+    local file="${backup_dir}/archiv_${instance_name}_$(date +%Y%m%d_%H%M%S).zip"
+    mkdir -p "$backup_dir"
+    print_info "Erstelle Archiv-Export für Instanz: $instance_name"
+    # stdout = ZIP, Meldungen (u. a. fehlende Fassungen) kommen über stderr
+    if "${compose[@]}" exec -T -e LOG_LEVEL=WARN backend node scripts/archiveExport.js "$@" > "$file"; then
+        print_success "Archiv-Export erstellt: $file"
+    else
+        rm -f "$file"
+        print_error "Archiv-Export fehlgeschlagen"
+        return 1
     fi
 }
 
@@ -531,7 +579,10 @@ case "$1" in
         fi
         ;;
     remove|delete)
-        remove_instance "$2" "$3"
+        remove_instance "$2" "$3" || exit 1
+        ;;
+    archive-export)
+        archive_export "${@:2}" || exit 1
         ;;
     set-plan)
         set_plan "$2" "$3" "$4" "$5" || exit 1
@@ -566,13 +617,16 @@ case "$1" in
         echo "  stop <instance>         - Instanz stoppen"
         echo "  restart <instance>      - Instanz neu starten"
         echo "  restart all             - Einmal bauen, alle laufenden Instanzen mit neuem Image neu starten"
-        echo "  remove <instance> [--yes] - Instanz löschen (⚠️  Datenverlust!), --yes ohne Rückfrage"
+        echo "  remove <instance> [--yes] - Instanz löschen (⚠️  Datenverlust!), fragt vorher nach Archiv-Export;"
+        echo "                            --yes ohne Rückfrage, Archiv-Export dann immer"
         echo "  set-plan <inst> <plan> [--notify [email]]"
         echo "                          - Tarif wechseln (Upgrade/Downgrade), Daten bleiben erhalten; --notify sendet"
         echo "                            eine Bestätigungsmail (an <email> oder die Kunden-Admins der Instanz)"
         echo "  update <inst|all>       - git pull, dann Instanz(en) neu bauen und aktualisieren"
         echo "  logs <instance> [svc]   - Logs anzeigen"
         echo "  backup <instance>       - Datenbank-Backup erstellen"
+        echo "  archive-export <inst> [--from JJJJ-MM-TT] [--to JJJJ-MM-TT]"
+        echo "                          - Belegarchiv als lesbares ZIP nach backups/archiv_<inst>_<zeit>.zip"
         echo "  config <instance>       - Konfiguration bearbeiten"
         echo "  onboarding-link <inst> [--send-to <email>]"
         echo "                          - Neuen Onboarding-Link erzeugen, optional per Mail an den Kunden senden"
@@ -584,6 +638,7 @@ case "$1" in
         echo "  $0 start client1"
         echo "  $0 logs client1 backend"
         echo "  $0 backup client1"
+        echo "  $0 archive-export client1"
         echo "  $0 config client1"
         echo "  $0 onboarding-link client1"
         echo "  $0 onboarding-link client1 --send-to kunde@example.com"
