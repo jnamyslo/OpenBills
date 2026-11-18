@@ -85,10 +85,10 @@
   - Andere Felder: erlaubt, wenn sie nach Normalisierung dem gespeicherten Wert entsprechen.
 - `deleteInvoice` wirft 409, wenn nicht `draft`.
 
-- [ ] **Step 1:** Failing tests: Positionsänderung 409; Payload aus Frontend (`InvoiceContext.updateInvoice` mit vollem Objekt, nur Status geändert) → 200; `sent → draft` ohne Archiv 200, mit Archiv 409; `paid → sent` 200; `cancelled` → alles 409; Löschen `sent` 409, `draft` 200.
-- [ ] **Step 2:** Implementieren, BTEST grün.
-- [ ] **Step 3:** Bestehende Tests prüfen (`documentChain.test.js` u. a. bearbeiten ggf. freigegebene Rechnungen) und anpassen.
-- [ ] **Step 4:** Commit.
+- [x] **Step 1:** Failing tests: Positionsänderung 409; Payload aus Frontend (`InvoiceContext.updateInvoice` mit vollem Objekt, nur Status geändert) → 200; `sent → draft` ohne Archiv 200, mit Archiv 409; `paid → sent` 200; `cancelled` → alles 409; Löschen `sent` 409, `draft` 200.
+- [x] **Step 2:** Implementieren, BTEST grün.
+- [x] **Step 3:** Bestehende Tests prüfen (`documentChain.test.js` u. a. bearbeiten ggf. freigegebene Rechnungen) und anpassen.
+- [x] **Step 4:** Commit.
 
 ### Task 4: Nummernkreis ST und Storno-Service
 

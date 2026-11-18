@@ -69,6 +69,7 @@ router.put('/:id', async (req, res) => {
     res.json(invoice);
   } catch (error) {
     if (sendPlanError(res, error)) return;
+    if (error.code === 'INVOICE_LOCKED') return res.status(409).json({ code: error.code, error: error.message });
     logger.error('Failed to update invoice', {
       error: error.message,
       stack: error.stack,
@@ -88,6 +89,7 @@ router.delete('/:id', async (req, res) => {
     if (!deleted) return res.status(404).json({ error: 'Invoice not found' });
     res.json({ message: 'Invoice deleted successfully' });
   } catch (error) {
+    if (error.code === 'INVOICE_LOCKED') return res.status(409).json({ code: error.code, error: error.message });
     logger.error('Failed to delete invoice', {
       error: error.message,
       stack: error.stack,

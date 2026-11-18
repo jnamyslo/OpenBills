@@ -1,8 +1,9 @@
-import { pool, query } from '../database.js';
+import { pool } from '../database.js';
 import { findInvoiceById } from '../queries/invoiceQueries.js';
 import logger from '../utils/logger.js';
 import { validateDiscountFields } from '../utils/validation.js';
 import { countReleaseIfNeeded } from './quotaService.js';
+import { assertUpdateAllowed, assertDeleteAllowed } from '../utils/invoiceLock.js';
 
 export async function generateInvoiceNumber(issueDate) {
   const client = await pool.connect();
@@ -207,7 +208,7 @@ export async function updateInvoice(id, data) {
     const updateData = data;
 
     // First, get the current invoice to preserve existing values
-    const currentInvoice = await client.query('SELECT * FROM invoices WHERE id = $1', [id]);
+    const currentInvoice = await client.query('SELECT * FROM invoices WHERE id = $1 FOR UPDATE', [id]);
 
     if (currentInvoice.rows.length === 0) {
       await client.query('ROLLBACK');
@@ -215,6 +216,25 @@ export async function updateInvoice(id, data) {
     }
 
     const current = currentInvoice.rows[0];
+
+    // Freigegebene Rechnungen: nur Statuswechsel (siehe utils/invoiceLock.js)
+    if (current.status !== 'draft' || updateData.status === 'cancelled') {
+      const [items, attachments, archive] = await Promise.all([
+        client.query('SELECT * FROM invoice_items WHERE invoice_id = $1 ORDER BY item_order', [id]),
+        client.query('SELECT id FROM invoice_attachments WHERE invoice_id = $1', [id]),
+        client.query(
+          "SELECT 1 FROM document_archive WHERE document_type IN ('invoice', 'reminder') AND document_id = $1 LIMIT 1",
+          [id]
+        ),
+      ]);
+      assertUpdateAllowed(current, items.rows, attachments.rows, updateData, archive.rows.length > 0);
+
+      const status = updateData.status ?? current.status;
+      await client.query('UPDATE invoices SET status = $1 WHERE id = $2', [status, id]);
+      await countReleaseIfNeeded(client, 'invoices', id, status);
+      await client.query('COMMIT');
+      return await findInvoiceById(id);
+    }
 
     // Recalculate totals if items are provided
     let calculatedSubtotal = updateData.subtotal ?? current.subtotal;
@@ -376,6 +396,22 @@ export async function updateInvoice(id, data) {
 }
 
 export async function deleteInvoice(id) {
-  const result = await query('DELETE FROM invoices WHERE id = $1 RETURNING id', [id]);
-  return result.rows.length > 0;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: [current] } = await client.query('SELECT status FROM invoices WHERE id = $1 FOR UPDATE', [id]);
+    if (!current) {
+      await client.query('ROLLBACK');
+      return false;
+    }
+    assertDeleteAllowed(current);
+    await client.query('DELETE FROM invoices WHERE id = $1', [id]);
+    await client.query('COMMIT');
+    return true;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
