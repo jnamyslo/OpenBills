@@ -8,6 +8,7 @@ import { PDFOptions } from '../pdfGenerator';
 import { escapeXML, formatAmountForXML, roundToCents, getCountryCode } from './xmlUtils';
 import { hasOnlyZeroTaxRate, getTaxCategoryCode, getTaxExemptionReason } from './taxCalculations';
 import { calculateInvoiceWithDiscounts } from '../discountUtils';
+import { isCancellation, amountSign, toPositiveBase, cancelledInvoiceRef, cancellationNote } from './cancellation';
 
 /**
  * Generate XRechnung XML as a Blob
@@ -15,7 +16,15 @@ import { calculateInvoiceWithDiscounts } from '../discountUtils';
  * @param options - PDF options with company and customer data
  * @returns Promise with XML Blob
  */
-export function generateXRechnungXML(invoice: Invoice, options: PDFOptions): Promise<Blob> {
+export async function generateXRechnungXML(source: Invoice, options: PDFOptions): Promise<Blob> {
+  // Stornorechnung: 384 + Bezug (BG-3), Rechnen auf positiver Basis, Vorzeichen bei der Ausgabe
+  const cancellation = isCancellation(source);
+  const ref = cancellation ? cancelledInvoiceRef(source) : null;
+  const sign = amountSign(source);
+  const invoice = toPositiveBase(source);
+  /** Betrag mit Vorzeichen des Belegs (Storno negativ), nie "-0.00". */
+  const amount = (value: number) => formatAmountForXML(roundToCents(sign * value) || 0);
+
   // Use new payment information or fall back to legacy fields
   const paymentInfo = options.company.paymentInformation;
 
@@ -66,7 +75,7 @@ export function generateXRechnungXML(invoice: Invoice, options: PDFOptions): Pro
   <cbc:ID>${escapeXML(invoice.invoiceNumber)}</cbc:ID>
   <cbc:IssueDate>${new Date(invoice.issueDate).toISOString().split('T')[0]}</cbc:IssueDate>
   <cbc:DueDate>${new Date(invoice.dueDate).toISOString().split('T')[0]}</cbc:DueDate>
-  <cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>
+  <cbc:InvoiceTypeCode>${cancellation ? '384' : '380'}</cbc:InvoiceTypeCode>
   ${(() => {
     const bankAccount = paymentInfo?.bankAccount || options.company.bankAccount;
     const bic = paymentInfo?.bic || options.company.bic || 'XXXXXXXX';
@@ -77,12 +86,18 @@ export function generateXRechnungXML(invoice: Invoice, options: PDFOptions): Pro
       ? getTaxExemptionReason(getTaxCategoryCode(0, options.company.isSmallBusiness))
       : '';
 
-    const noteContent = [invoice.notes, bankInfo, reverseChargeNote].filter(Boolean).join('\n');
+    const noteContent = [invoice.notes, cancellation ? cancellationNote(source) : '', bankInfo, reverseChargeNote].filter(Boolean).join('\n');
     
     return noteContent ? `<cbc:Note>${escapeXML(noteContent)}</cbc:Note>` : '';
   })()}
   <cbc:DocumentCurrencyCode>EUR</cbc:DocumentCurrencyCode>
-  <cbc:BuyerReference>${options.customer.customerNumber || 'KUNDE'}</cbc:BuyerReference>
+  <cbc:BuyerReference>${options.customer.customerNumber || 'KUNDE'}</cbc:BuyerReference>${ref ? `
+  <cac:BillingReference>
+    <cac:InvoiceDocumentReference>
+      <cbc:ID>${escapeXML(ref.invoiceNumber)}</cbc:ID>
+      <cbc:IssueDate>${ref.issueDate}</cbc:IssueDate>
+    </cac:InvoiceDocumentReference>
+  </cac:BillingReference>` : ''}
   
   
   <cac:AccountingSupplierParty>
@@ -133,7 +148,7 @@ export function generateXRechnungXML(invoice: Invoice, options: PDFOptions): Pro
     </cac:Party>
   </cac:AccountingCustomerParty>
   <cac:Delivery>
-    <cbc:ActualDeliveryDate>${new Date(invoice.issueDate).toISOString().split('T')[0]}</cbc:ActualDeliveryDate>
+    <cbc:ActualDeliveryDate>${ref ? ref.issueDate : new Date(invoice.issueDate).toISOString().split('T')[0]}</cbc:ActualDeliveryDate>
   </cac:Delivery>
   
   <cac:PaymentMeans>
@@ -154,7 +169,7 @@ export function generateXRechnungXML(invoice: Invoice, options: PDFOptions): Pro
   <cac:AllowanceCharge>
     <cbc:ChargeIndicator>false</cbc:ChargeIndicator>
     <cbc:AllowanceChargeReason>Rabatt</cbc:AllowanceChargeReason>
-    <cbc:Amount currencyID="EUR">${formatAmountForXML(allowance.amount)}</cbc:Amount>
+    <cbc:Amount currencyID="EUR">${amount(allowance.amount)}</cbc:Amount>
     <cac:TaxCategory>
       <cbc:ID>${allowance.categoryCode}</cbc:ID>
       <cbc:Percent>${allowance.rate}</cbc:Percent>
@@ -164,15 +179,15 @@ export function generateXRechnungXML(invoice: Invoice, options: PDFOptions): Pro
     </cac:TaxCategory>
   </cac:AllowanceCharge>`).join('')}
   <cac:TaxTotal>
-    <cbc:TaxAmount currencyID="EUR">${formatAmountForXML(headerTaxAmount)}</cbc:TaxAmount>
+    <cbc:TaxAmount currencyID="EUR">${amount(headerTaxAmount)}</cbc:TaxAmount>
     ${taxBreakdownEntries
       .map(([rate, breakdown]) => {
         const categoryCode = getTaxCategoryCode(Number(rate), options.company.isSmallBusiness);
         const exemptionReason = getTaxExemptionReason(categoryCode);
         return `
     <cac:TaxSubtotal>
-      <cbc:TaxableAmount currencyID="EUR">${formatAmountForXML(breakdown.taxableAmount)}</cbc:TaxableAmount>
-      <cbc:TaxAmount currencyID="EUR">${formatAmountForXML(roundToCents(breakdown.taxAmount))}</cbc:TaxAmount>
+      <cbc:TaxableAmount currencyID="EUR">${amount(breakdown.taxableAmount)}</cbc:TaxableAmount>
+      <cbc:TaxAmount currencyID="EUR">${amount(roundToCents(breakdown.taxAmount))}</cbc:TaxAmount>
       <cac:TaxCategory>
         <cbc:ID>${categoryCode}</cbc:ID>
         <cbc:Percent>${rate}</cbc:Percent>${exemptionReason ? `
@@ -186,14 +201,14 @@ export function generateXRechnungXML(invoice: Invoice, options: PDFOptions): Pro
   </cac:TaxTotal>
 
   <cac:LegalMonetaryTotal>
-    <cbc:LineExtensionAmount currencyID="EUR">${formatAmountForXML(headerLineExtensionAmount)}</cbc:LineExtensionAmount>
-    <cbc:TaxExclusiveAmount currencyID="EUR">${formatAmountForXML(taxExclusiveAmount)}</cbc:TaxExclusiveAmount>
-    <cbc:TaxInclusiveAmount currencyID="EUR">${formatAmountForXML(invoice.total)}</cbc:TaxInclusiveAmount>
-    <cbc:AllowanceTotalAmount currencyID="EUR">${formatAmountForXML(allowanceTotalAmount)}</cbc:AllowanceTotalAmount>
+    <cbc:LineExtensionAmount currencyID="EUR">${amount(headerLineExtensionAmount)}</cbc:LineExtensionAmount>
+    <cbc:TaxExclusiveAmount currencyID="EUR">${amount(taxExclusiveAmount)}</cbc:TaxExclusiveAmount>
+    <cbc:TaxInclusiveAmount currencyID="EUR">${amount(invoice.total)}</cbc:TaxInclusiveAmount>
+    <cbc:AllowanceTotalAmount currencyID="EUR">${amount(allowanceTotalAmount)}</cbc:AllowanceTotalAmount>
     <cbc:ChargeTotalAmount currencyID="EUR">0.00</cbc:ChargeTotalAmount>
     <cbc:PrepaidAmount currencyID="EUR">0.00</cbc:PrepaidAmount>
     <cbc:PayableRoundingAmount currencyID="EUR">0.00</cbc:PayableRoundingAmount>
-    <cbc:PayableAmount currencyID="EUR">${formatAmountForXML(invoice.total)}</cbc:PayableAmount>
+    <cbc:PayableAmount currencyID="EUR">${amount(invoice.total)}</cbc:PayableAmount>
   </cac:LegalMonetaryTotal>
   
   ${invoice.items.map((item, index) => {
@@ -205,12 +220,12 @@ export function generateXRechnungXML(invoice: Invoice, options: PDFOptions): Pro
     return `
   <cac:InvoiceLine>
     <cbc:ID>${index + 1}</cbc:ID>
-    <cbc:InvoicedQuantity unitCode="C62">${formatAmountForXML(item.quantity)}</cbc:InvoicedQuantity>
-    <cbc:LineExtensionAmount currencyID="EUR">${formatAmountForXML((item.quantity * item.unitPrice) - (item.discountAmount || 0))}</cbc:LineExtensionAmount>${(item.discountAmount || 0) > 0 ? `
+    <cbc:InvoicedQuantity unitCode="C62">${amount(item.quantity)}</cbc:InvoicedQuantity>
+    <cbc:LineExtensionAmount currencyID="EUR">${amount((item.quantity * item.unitPrice) - (item.discountAmount || 0))}</cbc:LineExtensionAmount>${(item.discountAmount || 0) > 0 ? `
     <cac:AllowanceCharge>
       <cbc:ChargeIndicator>false</cbc:ChargeIndicator>
       <cbc:AllowanceChargeReason>Rabatt</cbc:AllowanceChargeReason>
-      <cbc:Amount currencyID="EUR">${formatAmountForXML(item.discountAmount || 0)}</cbc:Amount>
+      <cbc:Amount currencyID="EUR">${amount(item.discountAmount || 0)}</cbc:Amount>
     </cac:AllowanceCharge>` : ''}
     <cac:Item>
       <cbc:Description>${item.description}</cbc:Description>
@@ -234,8 +249,7 @@ export function generateXRechnungXML(invoice: Invoice, options: PDFOptions): Pro
   }).join('')}
 </ubl:Invoice>`;
 
-  const blob = new Blob([xmlContent], { type: 'application/xml' });
-  return Promise.resolve(blob);
+  return new Blob([xmlContent], { type: 'application/xml' });
 }
 
 

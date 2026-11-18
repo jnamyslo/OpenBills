@@ -132,8 +132,8 @@
 **Interfaces:**
 - Consumes: `Invoice.invoiceType === 'cancellation'` und Originaldaten (`cancelsInvoice { invoiceNumber, issueDate }` — in Task 4 mit ausliefern).
 
-- [ ] **Step 1:** Failing tests: XML beider Formate enthält 384, Referenz mit Nummer + Datum, `BilledQuantity`/`InvoicedQuantity` negativ, `ChargeAmount`/`PriceAmount` positiv, Gesamtsumme negativ und gleich der negierten Originalsumme; normale Rechnung unverändert 380 ohne Referenz.
-- [ ] **Step 2:** Implementieren, FTEST grün.
+- [x] **Step 1:** Failing tests: XML beider Formate enthält 384, Referenz mit Nummer + Datum, `BilledQuantity`/`InvoicedQuantity` negativ, `ChargeAmount`/`PriceAmount` positiv, Gesamtsumme negativ und gleich der negierten Originalsumme; normale Rechnung unverändert 380 ohne Referenz.
+- [x] **Step 2:** Implementieren, FTEST grün.
 - [ ] **Step 3:** KoSIT-Validator in Docker (aktuelle Release von `itplr-kosit/validator` + `validator-configuration-xrechnung`) gegen Beispiel-Storno beider Formate (ZUGFeRD-XML aus der PDF extrahiert). Ergebnis und Versionen im PR vermerken. Bei Fehlern: Generator anpassen, nicht die Regel umgehen.
 - [ ] **Step 4:** Commit.
 

@@ -10,6 +10,7 @@ import logger from '../logger';
 import { escapeXML, formatAmountForXML, roundToCents, getCountryCode } from './xmlUtils';
 import { hasOnlyZeroTaxRate, getTaxCategoryCode, getTaxExemptionReason } from './taxCalculations';
 import { calculateInvoiceWithDiscounts } from '../discountUtils';
+import { isCancellation, amountSign, toPositiveBase, cancelledInvoiceRef, cancellationNote } from './cancellation';
 
 /**
  * Generate ZUGFeRD XML string
@@ -17,7 +18,16 @@ import { calculateInvoiceWithDiscounts } from '../discountUtils';
  * @param options - PDF options with company and customer data
  * @returns ZUGFeRD XML string
  */
-export function generateZUGFeRDXML(invoice: Invoice, options: PDFOptions): string {
+export function generateZUGFeRDXML(source: Invoice, options: PDFOptions): string {
+  // Stornorechnung: 384 + Bezug (BG-3), Rechnen auf positiver Basis, Vorzeichen bei der Ausgabe
+  const cancellation = isCancellation(source);
+  const ref = cancellation ? cancelledInvoiceRef(source) : null;
+  const sign = amountSign(source);
+  const invoice = toPositiveBase(source);
+  /** Betrag mit Vorzeichen des Belegs (Storno negativ), nie "-0.00". */
+  const amount = (value: number) => formatAmountForXML(roundToCents(sign * value) || 0);
+  const date102 = (isoDate: string) => isoDate.replace(/-/g, '');
+
   // Use new payment information or fall back to legacy fields
   const paymentInfo = options.company.paymentInformation;
 
@@ -69,7 +79,7 @@ export function generateZUGFeRDXML(invoice: Invoice, options: PDFOptions): strin
   
 	<rsm:ExchangedDocument>
 		<ram:ID>${escapeXML(invoice.invoiceNumber)}</ram:ID>
-		<ram:TypeCode>380</ram:TypeCode>
+		<ram:TypeCode>${cancellation ? '384' : '380'}</ram:TypeCode>
 		<ram:IssueDateTime>
 			<udt:DateTimeString format="102">${new Date(invoice.issueDate).toISOString().split('T')[0].replace(/-/g, '')}</udt:DateTimeString>
 		</ram:IssueDateTime>
@@ -85,7 +95,7 @@ export function generateZUGFeRDXML(invoice: Invoice, options: PDFOptions): strin
           ? getTaxExemptionReason(getTaxCategoryCode(0, options.company.isSmallBusiness))
           : '';
 
-        return [bankInfo, reverseChargeNote].filter(Boolean).join('\n');
+        return [cancellation ? escapeXML(cancellationNote(source)) : '', bankInfo, reverseChargeNote].filter(Boolean).join('\n');
       })()}</ram:Content>
 		</ram:IncludedNote>
 	</rsm:ExchangedDocument>
@@ -112,7 +122,7 @@ export function generateZUGFeRDXML(invoice: Invoice, options: PDFOptions): strin
 				</ram:NetPriceProductTradePrice>
 			</ram:SpecifiedLineTradeAgreement>
 			<ram:SpecifiedLineTradeDelivery>
-				<ram:BilledQuantity unitCode="C62">${item.quantity}</ram:BilledQuantity>
+				<ram:BilledQuantity unitCode="C62">${sign * item.quantity}</ram:BilledQuantity>
 			</ram:SpecifiedLineTradeDelivery>
 			<ram:SpecifiedLineTradeSettlement>
 				<ram:ApplicableTradeTax>
@@ -124,11 +134,11 @@ export function generateZUGFeRDXML(invoice: Invoice, options: PDFOptions): strin
 					<ram:ChargeIndicator>
 						<udt:Indicator>false</udt:Indicator>
 					</ram:ChargeIndicator>
-					<ram:ActualAmount>${formatAmountForXML(item.discountAmount || 0)}</ram:ActualAmount>
+					<ram:ActualAmount>${amount(item.discountAmount || 0)}</ram:ActualAmount>
 					<ram:Reason>Rabatt</ram:Reason>
 				</ram:SpecifiedTradeAllowanceCharge>` : ''}
 				<ram:SpecifiedTradeSettlementLineMonetarySummation>
-					<ram:LineTotalAmount>${formatAmountForXML((item.quantity * item.unitPrice) - (item.discountAmount || 0))}</ram:LineTotalAmount>
+					<ram:LineTotalAmount>${amount((item.quantity * item.unitPrice) - (item.discountAmount || 0))}</ram:LineTotalAmount>
 				</ram:SpecifiedTradeSettlementLineMonetarySummation>
 			</ram:SpecifiedLineTradeSettlement>
 		</ram:IncludedSupplyChainTradeLineItem>`;
@@ -178,7 +188,7 @@ export function generateZUGFeRDXML(invoice: Invoice, options: PDFOptions): strin
 		<ram:ApplicableHeaderTradeDelivery>
 			<ram:ActualDeliverySupplyChainEvent>
 				<ram:OccurrenceDateTime>
-					<udt:DateTimeString format="102">${new Date(invoice.issueDate).toISOString().split('T')[0].replace(/-/g, '')}</udt:DateTimeString>
+					<udt:DateTimeString format="102">${ref ? date102(ref.issueDate) : new Date(invoice.issueDate).toISOString().split('T')[0].replace(/-/g, '')}</udt:DateTimeString>
 				</ram:OccurrenceDateTime>
 			</ram:ActualDeliverySupplyChainEvent>
 		</ram:ApplicableHeaderTradeDelivery>
@@ -200,10 +210,10 @@ export function generateZUGFeRDXML(invoice: Invoice, options: PDFOptions): strin
 					const categoryCode = getTaxCategoryCode(Number(rate), options.company.isSmallBusiness);
 					const exemptionReason = getTaxExemptionReason(categoryCode);
 					return `<ram:ApplicableTradeTax>
-				<ram:CalculatedAmount>${formatAmountForXML(roundToCents(breakdown.taxAmount))}</ram:CalculatedAmount>
+				<ram:CalculatedAmount>${amount(roundToCents(breakdown.taxAmount))}</ram:CalculatedAmount>
 				<ram:TypeCode>VAT</ram:TypeCode>${exemptionReason ? `
 				<ram:ExemptionReason>${escapeXML(exemptionReason)}</ram:ExemptionReason>` : ''}
-				<ram:BasisAmount>${formatAmountForXML(breakdown.taxableAmount)}</ram:BasisAmount>
+				<ram:BasisAmount>${amount(breakdown.taxableAmount)}</ram:BasisAmount>
 				<ram:CategoryCode>${categoryCode}</ram:CategoryCode>
 				<ram:RateApplicablePercent>${rate}</ram:RateApplicablePercent>
 			</ram:ApplicableTradeTax>`;
@@ -212,7 +222,7 @@ export function generateZUGFeRDXML(invoice: Invoice, options: PDFOptions): strin
 				<ram:ChargeIndicator>
 					<udt:Indicator>false</udt:Indicator>
 				</ram:ChargeIndicator>
-				<ram:ActualAmount>${formatAmountForXML(allowance.amount)}</ram:ActualAmount>
+				<ram:ActualAmount>${amount(allowance.amount)}</ram:ActualAmount>
 				<ram:Reason>Rabatt</ram:Reason>
 				<ram:CategoryTradeTax>
 					<ram:TypeCode>VAT</ram:TypeCode>
@@ -227,13 +237,19 @@ export function generateZUGFeRDXML(invoice: Invoice, options: PDFOptions): strin
 				</ram:DueDateDateTime>
 			</ram:SpecifiedTradePaymentTerms>
 			<ram:SpecifiedTradeSettlementHeaderMonetarySummation>
-				<ram:LineTotalAmount>${formatAmountForXML(headerLineExtensionAmount)}</ram:LineTotalAmount>
-				${allowanceTotalAmount > 0 ? `<ram:AllowanceTotalAmount>${formatAmountForXML(allowanceTotalAmount)}</ram:AllowanceTotalAmount>` : ''}
-				<ram:TaxBasisTotalAmount>${formatAmountForXML(taxExclusiveAmount)}</ram:TaxBasisTotalAmount>
-				<ram:TaxTotalAmount currencyID="EUR">${formatAmountForXML(headerTaxAmount)}</ram:TaxTotalAmount>
-				<ram:GrandTotalAmount>${formatAmountForXML(invoice.total)}</ram:GrandTotalAmount>
-				<ram:DuePayableAmount>${formatAmountForXML(invoice.total)}</ram:DuePayableAmount>
-			</ram:SpecifiedTradeSettlementHeaderMonetarySummation>
+				<ram:LineTotalAmount>${amount(headerLineExtensionAmount)}</ram:LineTotalAmount>
+				${allowanceTotalAmount > 0 ? `<ram:AllowanceTotalAmount>${amount(allowanceTotalAmount)}</ram:AllowanceTotalAmount>` : ''}
+				<ram:TaxBasisTotalAmount>${amount(taxExclusiveAmount)}</ram:TaxBasisTotalAmount>
+				<ram:TaxTotalAmount currencyID="EUR">${amount(headerTaxAmount)}</ram:TaxTotalAmount>
+				<ram:GrandTotalAmount>${amount(invoice.total)}</ram:GrandTotalAmount>
+				<ram:DuePayableAmount>${amount(invoice.total)}</ram:DuePayableAmount>
+			</ram:SpecifiedTradeSettlementHeaderMonetarySummation>${ref ? `
+			<ram:InvoiceReferencedDocument>
+				<ram:IssuerAssignedID>${escapeXML(ref.invoiceNumber)}</ram:IssuerAssignedID>
+				<ram:FormattedIssueDateTime>
+					<qdt:DateTimeString format="102">${date102(ref.issueDate)}</qdt:DateTimeString>
+				</ram:FormattedIssueDateTime>
+			</ram:InvoiceReferencedDocument>` : ''}
 		</ram:ApplicableHeaderTradeSettlement>
 	</rsm:SupplyChainTradeTransaction>
 </rsm:CrossIndustryInvoice>`;
@@ -257,7 +273,7 @@ export async function embedZUGFeRDXMLIntoPDF(pdfBuffer: ArrayBuffer, invoice: In
     
     const xmlBytes = new TextEncoder().encode(xmlData);
     
-    pdfDoc.setTitle(`Rechnung ${invoice.invoiceNumber}`);
+    pdfDoc.setTitle(`${isCancellation(invoice) ? 'Stornorechnung' : 'Rechnung'} ${invoice.invoiceNumber}`);
     pdfDoc.setSubject(`ZUGFeRD invoice ${invoice.invoiceNumber}`);
     pdfDoc.setKeywords(['ZUGFeRD', 'invoice', 'electronic invoice', 'EN 16931']);
     pdfDoc.setProducer('OpenBills');

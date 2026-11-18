@@ -28,6 +28,7 @@ import type { PDFContext, PageMargins } from './pdf/pdfComponents';
 import { generateXRechnungXML } from './pdf/xrechnungGenerator';
 import { embedZUGFeRDXMLIntoPDF } from './pdf/zugferdGenerator';
 import { addDraftWatermark, DraftExportError } from './pdf/draftWatermark';
+import { isCancellation, amountSign, toPositiveBase, cancellationNote } from './pdf/cancellation';
 
 // Export types for external use
 export interface PDFOptions {
@@ -80,6 +81,13 @@ export async function generateInvoicePDF(invoice: Invoice, options: PDFOptions):
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
   const locale = options.company.locale || 'de-DE';
+
+  // Stornorechnung: Rechnen auf positiver Basis (discountUtils schneidet Negatives ab), Anzeige mit Vorzeichen
+  const cancellation = isCancellation(invoice);
+  const sign = amountSign(invoice);
+  const base = toPositiveBase(invoice);
+  const signed = (value: number) => (sign * value) || 0;
+  const notes = cancellation ? cancellationNote(invoice, locale) : invoice.notes;
   
   // Colors configuration
   const primaryColor = options.company.primaryColor || '#2563eb';
@@ -124,7 +132,14 @@ export async function generateInvoicePDF(invoice: Invoice, options: PDFOptions):
     const daysDifference = Math.ceil((dueDate.getTime() - issueDate.getTime()) / (1000 * 3600 * 24));
     const dueDateDisplay = daysDifference <= 0 ? 'sofort' : new Date(invoice.dueDate).toLocaleDateString(locale);
 
-    const metadataBox = {
+    const metadataBox = cancellation ? {
+      title: 'STORNORECHNUNG',
+      fields: [
+        { label: 'Storno-Nr.:', value: invoice.invoiceNumber },
+        { label: 'Datum:', value: new Date(invoice.issueDate).toLocaleDateString(locale) },
+        { label: 'Zu Rechnung:', value: invoice.cancelsInvoice?.invoiceNumber ?? '' }
+      ]
+    } : {
       title: 'RECHNUNG',
       fields: [
         { label: 'Rechnungs-Nr.:', value: invoice.invoiceNumber },
@@ -141,7 +156,7 @@ export async function generateInvoicePDF(invoice: Invoice, options: PDFOptions):
   resetFont(pdf, darkText);
 
   // === ITEMS TABLE ===
-  const showDiscounts = options.company.discountsEnabled !== false && checkHasDiscounts(invoice.items);
+  const showDiscounts = options.company.discountsEnabled !== false && checkHasDiscounts(base.items);
   
   // Draw table header
   const tableColumns = showDiscounts ? [
@@ -167,7 +182,7 @@ export async function generateInvoicePDF(invoice: Invoice, options: PDFOptions):
   pdf.setFont('helvetica', 'normal');
   pdf.setFontSize(9);
   
-  const sortedItems = [...invoice.items].sort((a, b) => (a.order || 0) - (b.order || 0));
+  const sortedItems = [...base.items].sort((a, b) => (a.order || 0) - (b.order || 0));
   
   for (let index = 0; index < sortedItems.length; index++) {
     const item = sortedItems[index];
@@ -198,7 +213,7 @@ export async function generateInvoicePDF(invoice: Invoice, options: PDFOptions):
     pdf.setTextColor(darkText);
     pdf.text((index + 1).toString(), 25, yPosition);
     pdf.text(splitDesc[0], 40, yPosition);
-    pdf.text(item.quantity.toString(), 95, yPosition);
+    pdf.text(signed(item.quantity).toString(), 95, yPosition);
     
     const discountAmount = item.discountAmount || 0;
     if (showDiscounts) {
@@ -219,7 +234,7 @@ export async function generateInvoicePDF(invoice: Invoice, options: PDFOptions):
     }
     
     const itemTotal = (item.quantity * item.unitPrice) - discountAmount;
-    pdf.text(formatCurrency(itemTotal, locale), 170, yPosition);
+    pdf.text(formatCurrency(signed(itemTotal), locale), 170, yPosition);
     
     yPosition += 4.5;
     
@@ -239,15 +254,15 @@ export async function generateInvoicePDF(invoice: Invoice, options: PDFOptions):
 
   // === TOTALS SECTION ===
   const taxBreakdownData = calculateInvoiceWithDiscounts(
-    invoice.items,
-    { type: invoice.globalDiscountType, value: invoice.globalDiscountValue },
+    base.items,
+    { type: base.globalDiscountType, value: base.globalDiscountValue },
     options.company.isSmallBusiness
   ).taxBreakdown;
   const numberOfTaxRates = Object.keys(taxBreakdownData).filter(rate => Number(rate) > 0).length;
   const showTotalTaxLine = numberOfTaxRates > 1;
   
-  const itemDiscountAmount = invoice.items?.reduce((sum, item) => sum + (item.discountAmount || 0), 0) || 0;
-  const globalDiscountAmount = invoice.globalDiscountAmount || 0;
+  const itemDiscountAmount = base.items?.reduce((sum, item) => sum + (item.discountAmount || 0), 0) || 0;
+  const globalDiscountAmount = base.globalDiscountAmount || 0;
   const hasDiscountData = itemDiscountAmount > 0 || globalDiscountAmount > 0;
   
   let discountLines = 0;
@@ -256,7 +271,7 @@ export async function generateInvoicePDF(invoice: Invoice, options: PDFOptions):
   if (hasDiscountData) discountLines++;
   
   const totalsBoxHeight = 18 + (discountLines * 7) + (numberOfTaxRates * 7) + (showTotalTaxLine ? 7 : 0);
-  const reverseChargeHeight = hasOnlyZeroTaxRate(invoice.items) ? 20 : 0;
+  const reverseChargeHeight = hasOnlyZeroTaxRate(base.items) ? 20 : 0;
   const totalTotalsSpace = totalsBoxHeight + reverseChargeHeight + 5;
   
   // Check if page break needed for totals
@@ -282,14 +297,14 @@ export async function generateInvoicePDF(invoice: Invoice, options: PDFOptions):
   pdf.setTextColor(secondaryRgb.r, secondaryRgb.g, secondaryRgb.b);
   pdf.text('Zwischensumme:', totalsLabelX, yPosition);
   pdf.setTextColor(darkText);
-  pdf.text(formatCurrency(invoice.subtotal, locale), totalsStartX, yPosition);
+  pdf.text(formatCurrency(signed(base.subtotal), locale), totalsStartX, yPosition);
   yPosition += 7;
   
   // Item discounts
   if (itemDiscountAmount > 0) {
     pdf.setTextColor(220, 38, 38);
     pdf.text('Artikelrabatte:', totalsLabelX, yPosition);
-    pdf.text(`-${formatCurrency(itemDiscountAmount, locale)}`, totalsStartX, yPosition);
+    pdf.text(`${cancellation ? '+' : '-'}${formatCurrency(itemDiscountAmount, locale)}`, totalsStartX, yPosition);
     yPosition += 7;
   }
   
@@ -297,7 +312,7 @@ export async function generateInvoicePDF(invoice: Invoice, options: PDFOptions):
   if (globalDiscountAmount > 0) {
     pdf.setTextColor(220, 38, 38);
     pdf.text('Gesamtrabatt:', totalsLabelX, yPosition);
-    pdf.text(`-${formatCurrency(globalDiscountAmount, locale)}`, totalsStartX, yPosition);
+    pdf.text(`${cancellation ? '+' : '-'}${formatCurrency(globalDiscountAmount, locale)}`, totalsStartX, yPosition);
     yPosition += 7;
   }
   
@@ -306,8 +321,8 @@ export async function generateInvoicePDF(invoice: Invoice, options: PDFOptions):
     pdf.setTextColor(secondaryRgb.r, secondaryRgb.g, secondaryRgb.b);
     pdf.text('Nettobetrag:', totalsLabelX, yPosition);
     pdf.setTextColor(darkText);
-    const discountedSubtotal = invoice.subtotal - itemDiscountAmount - globalDiscountAmount;
-    pdf.text(formatCurrency(discountedSubtotal, locale), totalsStartX, yPosition);
+    const discountedSubtotal = base.subtotal - itemDiscountAmount - globalDiscountAmount;
+    pdf.text(formatCurrency(signed(discountedSubtotal), locale), totalsStartX, yPosition);
     yPosition += 7;
   }
   
@@ -321,7 +336,7 @@ export async function generateInvoicePDF(invoice: Invoice, options: PDFOptions):
     pdf.setTextColor(secondaryRgb.r, secondaryRgb.g, secondaryRgb.b);
     pdf.text(`MwSt. (${rate}%):`, totalsLabelX, yPosition);
     pdf.setTextColor(darkText);
-    pdf.text(formatCurrency(breakdown.taxAmount, locale), totalsStartX, yPosition);
+    pdf.text(formatCurrency(signed(breakdown.taxAmount), locale), totalsStartX, yPosition);
     yPosition += 7;
   }
   
@@ -330,7 +345,7 @@ export async function generateInvoicePDF(invoice: Invoice, options: PDFOptions):
     pdf.setTextColor(secondaryRgb.r, secondaryRgb.g, secondaryRgb.b);
     pdf.text('MwSt. gesamt:', totalsLabelX, yPosition);
     pdf.setTextColor(darkText);
-    pdf.text(formatCurrency(invoice.taxAmount, locale), totalsStartX, yPosition);
+    pdf.text(formatCurrency(signed(base.taxAmount), locale), totalsStartX, yPosition);
     yPosition += 7;
   }
   
@@ -339,13 +354,13 @@ export async function generateInvoicePDF(invoice: Invoice, options: PDFOptions):
   pdf.setFont('helvetica', 'bold');
   pdf.setTextColor(primaryRgb.r, primaryRgb.g, primaryRgb.b);
   pdf.text('Gesamtbetrag:', totalsLabelX, yPosition);
-  pdf.text(formatCurrency(invoice.total, locale), totalsStartX, yPosition);
+  pdf.text(formatCurrency(signed(base.total), locale), totalsStartX, yPosition);
   
   resetFont(pdf, darkText);
   yPosition = totalsNotesStartY + totalsBoxHeight;
 
   // === REVERSE CHARGE / SMALL BUSINESS CLAUSE ===
-  if (hasOnlyZeroTaxRate(invoice.items)) {
+  if (hasOnlyZeroTaxRate(base.items)) {
     if (await handlePageBreak(12, 20)) {
       // Clause moved to new page
     }
@@ -371,9 +386,9 @@ export async function generateInvoicePDF(invoice: Invoice, options: PDFOptions):
   let notesHeight = 0;
   let paymentInfoHeight = 0;
   
-  if (invoice.notes) {
+  if (notes) {
     const notesWidth = totalsLabelX - 35;
-    const splitNotes = pdf.splitTextToSize(invoice.notes, notesWidth);
+    const splitNotes = pdf.splitTextToSize(notes, notesWidth);
     notesHeight = 15 + (splitNotes.length * 4.5);
   }
   
@@ -384,7 +399,7 @@ export async function generateInvoicePDF(invoice: Invoice, options: PDFOptions):
   const accountHolder = paymentInfo?.accountHolder || options.company.name;
   const bankName = paymentInfo?.bankName;
   
-  if (bankAccount) {
+  if (bankAccount && !cancellation) {
     paymentInfoHeight = 35;
     if (bankName) paymentInfoHeight += 5;
     if (paymentInfo?.paymentTerms) {
@@ -400,24 +415,24 @@ export async function generateInvoicePDF(invoice: Invoice, options: PDFOptions):
   let notesY = totalsNotesStartY + 5;
   
   // Notes (left side)
-  if (invoice.notes) {
+  if (notes) {
     pdf.setFontSize(10);
     pdf.setTextColor(darkText);
     pdf.setFont('helvetica', 'bold');
-    pdf.text('Anmerkungen:', 20, notesY);
+    pdf.text(cancellation ? 'Storno:' : 'Anmerkungen:', 20, notesY);
     notesY += 6;
     
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(9);
     pdf.setTextColor(grayText);
-    const splitNotes = pdf.splitTextToSize(invoice.notes, totalsLabelX - 35);
+    const splitNotes = pdf.splitTextToSize(notes, totalsLabelX - 35);
     pdf.text(splitNotes, 20, notesY);
     
     resetFont(pdf, darkText);
   }
   
-  // Payment information (left side, below notes or totals)
-  if (bankAccount) {
+  // Payment information (left side, below notes or totals); nicht bei Stornorechnungen
+  if (bankAccount && !cancellation) {
     yPosition = Math.max(notesStartY + 10, yPosition);
     
     // Check for immediate payment
