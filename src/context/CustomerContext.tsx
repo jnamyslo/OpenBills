@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useMemo, ReactNode } from 'react';
+import React, { createContext, useContext, useMemo, useCallback, ReactNode } from 'react';
 import { Customer, HourlyRate, MaterialTemplate } from '../types';
 import { apiService } from '../services/api';
 import { useCrudResource, CrudApi } from '../hooks/useCrudResource';
@@ -15,6 +15,7 @@ interface CustomerContextType {
   addCustomer: (customer: CustomerCreate) => Promise<Customer>;
   updateCustomer: (id: string, customer: Partial<Customer>) => Promise<void>;
   deleteCustomer: (id: string) => Promise<void>;
+  setCustomerArchived: (id: string, archived: boolean) => Promise<void>;
   refreshCustomers: () => Promise<void>;
   getCustomerById: (id: string) => Customer | undefined;
 }
@@ -47,6 +48,12 @@ interface CustomerProviderProps {
 
 export function CustomerProvider({ children, initialCustomers = [] }: CustomerProviderProps) {
   const resource = useCrudResource<Customer, CustomerCreate>('customer', customerApi, initialCustomers);
+  const { setItems } = resource;
+
+  const setCustomerArchived = useCallback(async (id: string, archived: boolean) => {
+    const { archivedAt } = archived ? await apiService.archiveCustomer(id) : await apiService.unarchiveCustomer(id);
+    setItems(prev => prev.map(c => (c.id === id ? { ...c, archivedAt } : c)));
+  }, [setItems]);
 
   const value: CustomerContextType = useMemo(() => ({
     customers: resource.items,
@@ -54,9 +61,10 @@ export function CustomerProvider({ children, initialCustomers = [] }: CustomerPr
     addCustomer: resource.add,
     updateCustomer: resource.update,
     deleteCustomer: resource.remove,
+    setCustomerArchived,
     refreshCustomers: resource.refresh,
     getCustomerById: resource.getById,
-  }), [resource]);
+  }), [resource, setCustomerArchived]);
 
   return (
     <CustomerContext.Provider value={value}>

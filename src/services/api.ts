@@ -198,6 +198,14 @@ class ApiService {
     await this.request(`/customers/${id}`, { method: 'DELETE' });
   }
 
+  async archiveCustomer(id: string): Promise<{ id: string; archivedAt: string | null }> {
+    return this.request(`/customers/${id}/archive`, { method: 'POST' });
+  }
+
+  async unarchiveCustomer(id: string): Promise<{ id: string; archivedAt: string | null }> {
+    return this.request(`/customers/${id}/unarchive`, { method: 'POST' });
+  }
+
   // Customer Email Methods
   async addCustomerEmail(customerId: string, email: string, label?: string): Promise<{ id: string; email: string; label?: string; isActive: boolean }> {
     return this.request(`/customers/${customerId}/emails`, {

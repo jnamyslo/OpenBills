@@ -13,7 +13,9 @@ interface CustomerSelectProps {
 const label = (c: Customer) => `${formatCustomerNumber(c.customerNumber)} - ${c.name}`;
 
 /** Kundenauswahl mit Suche (Name, Kundennummer, E-Mail, Ort). */
-export function CustomerSelect({ customers, value, onChange, placeholder = 'Kunde suchen…' }: CustomerSelectProps) {
+export function CustomerSelect({ customers: allCustomers, value, onChange, placeholder = 'Kunde suchen…' }: CustomerSelectProps) {
+  // Archivierte Kunden nur, wenn sie schon gewählt sind (keine neuen Belege, Backend 409)
+  const customers = allCustomers.filter(c => !c.archivedAt || c.id === value);
   const selected = customers.find(c => c.id === value);
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);

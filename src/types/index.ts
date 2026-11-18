@@ -36,6 +36,8 @@ export interface Customer extends Timestamps {
   additionalEmails?: CustomerEmail[];
   hourlyRates?: HourlyRate[];
   materials?: MaterialTemplate[];
+  /** Archiviert (statt gelöscht): keine neuen Belege, Stammdaten gesperrt. */
+  archivedAt?: string | null;
 }
 
 // ============================================================================

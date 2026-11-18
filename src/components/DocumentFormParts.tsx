@@ -33,7 +33,9 @@ interface CustomerPickerProps {
 }
 
 /** Kundensuche mit Dropdown und Button „Neuen Kunden anlegen“. */
-export function CustomerPicker({ customers, selectedId, onSelect, onCreateNew }: CustomerPickerProps) {
+export function CustomerPicker({ customers: allCustomers, selectedId, onSelect, onCreateNew }: CustomerPickerProps) {
+  // Archivierte Kunden nur, wenn der Beleg schon zu ihnen gehört (keine neuen Belege, Backend 409)
+  const customers = allCustomers.filter(c => !c.archivedAt || c.id === selectedId);
   // null = Anzeige folgt dem ausgewählten Kunden; String = laufende Suche
   const [searchTerm, setSearchTerm] = useState<string | null>(null);
   const [isOpen, setIsOpen] = useState(false);

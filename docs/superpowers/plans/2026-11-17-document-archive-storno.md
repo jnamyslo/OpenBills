@@ -260,5 +260,6 @@ Hintergrund: Seit der Sperre (Task 3) antwortet `DELETE /api/customers/:id` mit 
 - [x] **Step 2:** Implementieren, BTEST grün (461).
   - Gesperrt sind auch: Kundenwechsel eines Entwurfs/Angebots/Auftrags auf einen archivierten Kunden, Angebot → Rechnung/Auftrag, `PUT /api/customers/:id` (409 `CUSTOMER_ARCHIVED`, Helper `backend/utils/customerArchive.js`). Bearbeiten bestehender Entwürfe/Aufträge ohne Kundenwechsel bleibt erlaubt. Archivierte Kunden zählen weiter gegen das Kundenlimit des Tarifs (sonst ließe sich das Limit per Archivieren/Wiederherstellen umgehen).
 - [ ] **Step 3:** Frontend (Filter, Aktionen, Kundenauswahl), Build grün; manuell: Kunde mit Rechnung archivieren, taucht in Auswahl nicht mehr auf, Rechnung weiterhin herunterladbar.
-- [ ] **Step 4:** `CLAUDE.md` (Abschnitt „Belegarchiv und Storno“) um Kunden-Archivierung ergänzen.
-- [ ] **Step 5:** Commit.
+  - Umgesetzt: Filter „Archivierte anzeigen“, Badge, Aktionen Archivieren/Wiederherstellen (archivierte Kunden öffnen keinen Editor), Löschen mit 409 bietet Archivieren an; `CustomerPicker`/`CustomerSelect` blenden archivierte Kunden aus, außer sie sind gewählt. Typecheck (30, Baseline), ESLint, FTEST, Build grün. Manueller Test steht aus.
+- [x] **Step 4:** `CLAUDE.md` (Abschnitt „Belegarchiv und Storno“) um Kunden-Archivierung ergänzen.
+- [x] **Step 5:** Commit.

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import logger from '../utils/logger';
-import { Plus, Edit, Trash2, Search, Mail, Phone, MapPin, Clock, Package } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Mail, Phone, MapPin, Clock, Package, Archive, ArchiveRestore } from 'lucide-react';
 import { useCustomers } from '../context/CustomerContext';
 import { usePlan } from '../context/PlanContext';
 import { PlanLockedNotice } from './PlanLockedNotice';
@@ -16,11 +16,12 @@ interface CustomerManagementProps {
 }
 
 export function CustomerManagement({ autoCreate }: CustomerManagementProps = {}) {
-  const { customers, addCustomer, updateCustomer, deleteCustomer, refreshCustomers } = useCustomers();
+  const { customers, addCustomer, updateCustomer, deleteCustomer, setCustomerArchived, refreshCustomers } = useCustomers();
   const { hasFeature } = usePlan();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
   const [additionalEmails, setAdditionalEmails] = useState<CustomerEmail[]>([]);
   const [newEmailData, setNewEmailData] = useState({ email: '', label: '' });
   const [isAddingEmail, setIsAddingEmail] = useState(false);
@@ -63,6 +64,7 @@ export function CustomerManagement({ autoCreate }: CustomerManagementProps = {})
   });
 
   const filteredCustomers = customers.filter(customer => {
+    if (customer.archivedAt && !showArchived) return false;
     const customerName = customer.name || '';
     const customerEmail = customer.email || '';
     const searchTermLower = searchTerm.toLowerCase();
@@ -237,6 +239,23 @@ export function CustomerManagement({ autoCreate }: CustomerManagementProps = {})
     }
   };
 
+  const setArchived = async (id: string, archived: boolean) => {
+    try {
+      await setCustomerArchived(id, archived);
+    } catch (error) {
+      logger.error('Error archiving customer:', error);
+      alert(archived
+        ? 'Fehler beim Archivieren des Kunden. Bitte versuchen Sie es erneut.'
+        : 'Fehler beim Wiederherstellen des Kunden. Bitte versuchen Sie es erneut.');
+    }
+  };
+
+  const handleArchive = (id: string) => {
+    if (window.confirm('Kunden archivieren? Für archivierte Kunden lassen sich keine neuen Rechnungen, Angebote oder Aufträge anlegen und die Stammdaten nicht ändern. Bestehende Belege bleiben erhalten. Sie können den Kunden jederzeit wiederherstellen.')) {
+      void setArchived(id, true);
+    }
+  };
+
   const handleDelete = async (id: string) => {
     if (window.confirm('Möchten Sie diesen Kunden wirklich löschen?')) {
       try {
@@ -244,12 +263,72 @@ export function CustomerManagement({ autoCreate }: CustomerManagementProps = {})
       } catch (error) {
         logger.error('Error deleting customer:', error);
         const code = (error as { code?: string }).code;
-        alert(code === 'CUSTOMER_HAS_INVOICES' && error instanceof Error
-          ? error.message
-          : 'Fehler beim Löschen des Kunden. Bitte versuchen Sie es erneut.');
+        if (code === 'CUSTOMER_HAS_INVOICES') {
+          // Aufbewahrungspflicht: statt Löschen archivieren (Sperrung nach Art. 17 Abs. 3 lit. b DSGVO)
+          if (window.confirm(`${error instanceof Error ? error.message : ''}\n\nStattdessen archivieren? Der Kunde wird dann in Auswahllisten ausgeblendet; seine Belege bleiben erhalten.`)) {
+            await setArchived(id, true);
+          }
+          return;
+        }
+        alert('Fehler beim Löschen des Kunden. Bitte versuchen Sie es erneut.');
       }
     }
   };
+
+  // Archivierte Kunden: Stammdaten gesperrt (Backend 409), daher kein Bearbeiten
+  const openCustomer = (customer: Customer) => {
+    if (!customer.archivedAt) handleOpenModal(customer);
+  };
+
+  // compact = mobile Kartenansicht
+  const renderActions = (customer: Customer, compact = false) => {
+    const buttonClass = compact ? 'p-1' : '';
+    return (
+    <div className={`flex space-x-2 ${compact ? 'ml-2' : ''}`}>
+      {customer.archivedAt ? (
+        <button
+          onClick={() => setArchived(customer.id, false)}
+          className={`text-primary-custom hover:text-primary-custom/80 ${buttonClass}`}
+          title="Wiederherstellen"
+          aria-label="Wiederherstellen"
+        >
+          <ArchiveRestore className="h-4 w-4" />
+        </button>
+      ) : (
+        <>
+          <button
+            onClick={() => handleOpenModal(customer)}
+            className={`text-primary-custom hover:text-primary-custom/80 ${buttonClass}`}
+            title="Bearbeiten"
+            aria-label="Bearbeiten"
+          >
+            <Edit className="h-4 w-4" />
+          </button>
+          <button
+            onClick={() => handleArchive(customer.id)}
+            className={`text-gray-500 hover:text-gray-700 ${buttonClass}`}
+            title="Archivieren"
+            aria-label="Archivieren"
+          >
+            <Archive className="h-4 w-4" />
+          </button>
+        </>
+      )}
+      <button
+        onClick={() => handleDelete(customer.id)}
+        className={`text-red-600 hover:text-red-900 ${buttonClass}`}
+        title="Löschen"
+        aria-label="Löschen"
+      >
+        <Trash2 className="h-4 w-4" />
+      </button>
+    </div>
+    );
+  };
+
+  const archivedBadge = (
+    <span className="ml-2 text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded">Archiviert</span>
+  );
 
   const handleAddEmail = async () => {
     if (!newEmailData.email.trim()) {
@@ -624,6 +703,15 @@ export function CustomerManagement({ autoCreate }: CustomerManagementProps = {})
             className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
+        <label className="mt-3 flex items-center gap-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            checked={showArchived}
+            onChange={(e) => setShowArchived(e.target.checked)}
+            className="custom-checkbox"
+          />
+          <span>Archivierte anzeigen</span>
+        </label>
       </div>
 
       {/* Customer List */}
@@ -649,9 +737,9 @@ export function CustomerManagement({ autoCreate }: CustomerManagementProps = {})
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredCustomers.map((customer) => (
-                <tr key={customer.id} onClick={(e) => { if ((e.target as HTMLElement).closest('button, a, input, label, select, textarea')) return; handleOpenModal(customer); }} className="cursor-pointer hover:bg-gray-50">
+                <tr key={customer.id} onClick={(e) => { if ((e.target as HTMLElement).closest('button, a, input, label, select, textarea')) return; openCustomer(customer); }} className={customer.archivedAt ? 'bg-gray-50 text-gray-500' : 'cursor-pointer hover:bg-gray-50'}>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">{customer.name}</div>
+                    <div className="text-sm font-medium text-gray-900">{customer.name}{customer.archivedAt && archivedBadge}</div>
                     <div className="text-sm text-gray-500">Kunden-Nr: {formatCustomerNumber(customer.customerNumber)}</div>
                     {customer.taxId && (
                       <div className="text-sm text-gray-500">USt-IdNr: {customer.taxId}</div>
@@ -679,20 +767,7 @@ export function CustomerManagement({ autoCreate }: CustomerManagementProps = {})
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={() => handleOpenModal(customer)}
-                        className="text-primary-custom hover:text-primary-custom/80"
-                      >
-                        <Edit className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(customer.id)}
-                        className="text-red-600 hover:text-red-900"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
+                    {renderActions(customer)}
                   </td>
                 </tr>
               ))}
@@ -703,29 +778,16 @@ export function CustomerManagement({ autoCreate }: CustomerManagementProps = {})
         {/* Mobile Card View */}
         <div className="lg:hidden">
           {filteredCustomers.map((customer) => (
-            <div key={customer.id} onClick={(e) => { if ((e.target as HTMLElement).closest('button, a, input, label, select, textarea')) return; handleOpenModal(customer); }} className="cursor-pointer p-4 border-b border-gray-200 last:border-b-0">
+            <div key={customer.id} onClick={(e) => { if ((e.target as HTMLElement).closest('button, a, input, label, select, textarea')) return; openCustomer(customer); }} className={`p-4 border-b border-gray-200 last:border-b-0 ${customer.archivedAt ? 'bg-gray-50' : 'cursor-pointer'}`}>
               <div className="flex justify-between items-start mb-2">
                 <div className="flex-1">
-                  <h3 className="text-sm font-medium text-gray-900">{customer.name}</h3>
+                  <h3 className="text-sm font-medium text-gray-900">{customer.name}{customer.archivedAt && archivedBadge}</h3>
                   <p className="text-xs text-gray-500">Kunden-Nr: {customer.customerNumber}</p>
                   {customer.taxId && (
                     <p className="text-xs text-gray-500">USt-IdNr: {customer.taxId}</p>
                   )}
                 </div>
-                <div className="flex space-x-2 ml-2">
-                  <button
-                    onClick={() => handleOpenModal(customer)}
-                    className="text-primary-custom hover:text-primary-custom/80 p-1"
-                  >
-                    <Edit className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(customer.id)}
-                    className="text-red-600 hover:text-red-900 p-1"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
+                {renderActions(customer, true)}
               </div>
               
               <div className="space-y-1">
