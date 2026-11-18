@@ -16,6 +16,23 @@ async function loadInvoiceStatus(invoiceId) {
   return result.rows[0]?.status ?? null;
 }
 
+/** Status und Mailtitel aus der DB; Stornorechnungen: „Stornorechnung ST-… zu Rechnung RE-…“. */
+async function loadInvoiceMeta(invoiceId) {
+  if (!invoiceId) return null;
+  const result = await query(
+    `SELECT i.status, i.invoice_number, i.invoice_type, orig.invoice_number AS cancels_invoice_number
+     FROM invoices i LEFT JOIN invoices orig ON orig.id = i.cancels_invoice_id
+     WHERE i.id = $1`,
+    [invoiceId]
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  const mailTitle = row.invoice_type === 'cancellation'
+    ? `Stornorechnung ${row.invoice_number}${row.cancels_invoice_number ? ` zu Rechnung ${row.cancels_invoice_number}` : ''}`
+    : `Rechnung ${row.invoice_number}`;
+  return { status: row.status, mailTitle };
+}
+
 /** Archivdatei für eine versendete Rechnung; Dateinamen wie im Mailanhang (emailService). */
 function invoiceArchiveFile(invoiceData, format, content) {
   const isXml = format === 'xrechnung';
@@ -59,10 +76,11 @@ router.post('/send-invoice-multi', async (req, res) => {
     const companyResult = await query('SELECT primary_color, secondary_color FROM company WHERE id = 1');
     const companySettings = companyResult.rows[0] || { primary_color: '#2563eb', secondary_color: '#64748b' };
 
-    const status = await loadInvoiceStatus(invoiceData.id);
-    if (!status) {
+    const meta = await loadInvoiceMeta(invoiceData.id);
+    if (!meta) {
       return res.status(404).json({ success: false, message: 'Rechnung nicht gefunden' });
     }
+    const { status, mailTitle } = meta;
     const isDraft = status === 'draft';
     if (isDraft && invoiceFormats.some(f => f.format === 'xrechnung')) {
       return res.status(400).json({ success: false, message: DRAFT_XRECHNUNG_MESSAGE });
@@ -88,7 +106,7 @@ router.post('/send-invoice-multi', async (req, res) => {
     const results = [];
     for (const email of customerEmails) {
       try {
-        const result = await sendInvoiceEmailMultiFormat(email, processedFormats, invoiceData, customText, processedAttachments, companySettings);
+        const result = await sendInvoiceEmailMultiFormat(email, processedFormats, { ...invoiceData, mailTitle }, customText, processedAttachments, companySettings);
         results.push({ email, success: true, messageId: result.messageId });
       } catch (error) {
         logger.error(`Error sending to ${email}:`, error);
@@ -139,10 +157,11 @@ router.post('/send-invoice', async (req, res) => {
     const companyResult = await query('SELECT primary_color, secondary_color FROM company WHERE id = 1');
     const companySettings = companyResult.rows[0] || { primary_color: '#2563eb', secondary_color: '#64748b' };
 
-    const status = await loadInvoiceStatus(invoiceData.id);
-    if (!status) {
+    const meta = await loadInvoiceMeta(invoiceData.id);
+    if (!meta) {
       return res.status(404).json({ success: false, message: 'Rechnung nicht gefunden' });
     }
+    const { status, mailTitle } = meta;
     const isDraft = status === 'draft';
     if (isDraft && format === 'xrechnung') {
       return res.status(400).json({ success: false, message: DRAFT_XRECHNUNG_MESSAGE });
@@ -162,7 +181,7 @@ router.post('/send-invoice', async (req, res) => {
       }));
     }
     
-    const result = await sendInvoiceEmail(customerEmail, pdfBuffer, invoiceData, format, customText, processedAttachments, companySettings);
+    const result = await sendInvoiceEmail(customerEmail, pdfBuffer, { ...invoiceData, mailTitle }, format, customText, processedAttachments, companySettings);
 
     const archived = isDraft ? undefined : await archiveSentFiles([invoiceArchiveFile(invoiceData, format, invoicePDF)], req.user?.id);
     

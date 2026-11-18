@@ -268,6 +268,27 @@ describe.skipIf(!hasDb)('Belegarchiv', () => {
       expect((await archived()).rows).toEqual([]);
     });
 
+    it('Mailtitel aus der DB: Rechnung bzw. Stornorechnung zu Rechnung', async () => {
+      const { rows: [{ id: stornoId }] } = await pool.query(
+        `INSERT INTO invoices (invoice_number, customer_id, customer_name, issue_date, due_date, subtotal, tax_amount, total,
+           status, invoice_type, cancels_invoice_id, cancellation_reason)
+         VALUES ('ST-2026-001', $1, 'Kunde GmbH', '2026-11-18', '2026-11-18', -100, -19, -119, 'cancelled', 'cancellation', $2, 'Fehler')
+         RETURNING id`,
+        [customerId, invoiceId]
+      );
+      await request(app).post('/api/email/send-invoice-multi').set('Cookie', cookie).set(ORIGIN).send({
+        customerEmails: ['k@test.example'],
+        invoiceFormats: [{ format: 'zugferd', content: PDF }],
+        invoiceData: { ...invoiceData(), id: stornoId, invoiceNumber: 'ST-2026-001', mailTitle: 'manipuliert' },
+      });
+      expect(mail.sendInvoiceEmailMultiFormat.mock.calls[0][2].mailTitle).toBe('Stornorechnung ST-2026-001 zu Rechnung RE-2026-001');
+
+      await request(app).post('/api/email/send-invoice').set('Cookie', cookie).set(ORIGIN).send({
+        customerEmail: 'k@test.example', invoicePDF: PDF, invoiceData: invoiceData(), format: 'zugferd',
+      });
+      expect(mail.sendInvoiceEmail.mock.calls[0][2].mailTitle).toBe('Rechnung RE-2026-001');
+    });
+
     it('send-invoice archiviert die Datei', async () => {
       const res = await request(app).post('/api/email/send-invoice').set('Cookie', cookie).set(ORIGIN).send({
         customerEmail: 'k@test.example', invoicePDF: XML, invoiceData: invoiceData(), format: 'xrechnung',

@@ -50,6 +50,9 @@ const sanitizeFilename = (filename) => {
 };
 
 // SMTP Configuration
+/** Betreff/Überschrift; `mailTitle` setzt die Route aus der DB (z. B. Stornorechnung). */
+const invoiceMailTitle = (invoiceData) => invoiceData.mailTitle || `Rechnung ${invoiceData.invoiceNumber}`;
+
 export const createTransporter = async () => {
   if (isDemoMode()) return createDemoTransporter();
   // Hosted-Tarife ohne eigenes SMTP versenden Kundenmails über den Plattform-Relay
@@ -411,7 +414,7 @@ export const sendInvoiceEmailMultiFormat = async (customerEmail, invoiceFormats,
 </head>
 <body>
   <div class="header">
-    <h1>Rechnung ${invoiceData.invoiceNumber}</h1>
+    <h1>${escapeHtml(invoiceMailTitle(invoiceData))}</h1>
   </div>
   
   <div class="content">
@@ -545,7 +548,7 @@ export const sendInvoiceEmailMultiFormat = async (customerEmail, invoiceFormats,
       },
       replyTo: senderInfo.replyTo,
       to: customerEmail,
-      subject: `Rechnung ${invoiceData.invoiceNumber}`,
+      subject: invoiceMailTitle(invoiceData),
       html: emailHTML,
       attachments: emailAttachments
     };
@@ -555,7 +558,7 @@ export const sendInvoiceEmailMultiFormat = async (customerEmail, invoiceFormats,
       sender_email: senderInfo.email,
       sender_name: senderInfo.name,
       recipient_email: customerEmail,
-      subject: `Rechnung ${invoiceData.invoiceNumber}`,
+      subject: invoiceMailTitle(invoiceData),
       body_html: emailHTML,
       attachments: emailAttachments.map(att => ({ 
         filename: att.filename, 
@@ -625,7 +628,7 @@ export const sendInvoiceEmail = async (customerEmail, invoicePDF, invoiceData, f
     // Build email HTML content
     let emailHTML = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2>Rechnung ${invoiceData.invoiceNumber}</h2>
+        <h2>${escapeHtml(invoiceMailTitle(invoiceData))}</h2>
         
         <p>Sehr geehrte Damen und Herren,</p>`;
     
@@ -733,7 +736,7 @@ export const sendInvoiceEmail = async (customerEmail, invoicePDF, invoiceData, f
       },
       replyTo: senderInfo.replyTo,
       to: customerEmail,
-      subject: `Rechnung ${invoiceData.invoiceNumber}`,
+      subject: invoiceMailTitle(invoiceData),
       html: emailHTML,
       attachments: emailAttachments
     };
@@ -743,7 +746,7 @@ export const sendInvoiceEmail = async (customerEmail, invoicePDF, invoiceData, f
       sender_email: senderInfo.email,
       sender_name: senderInfo.name,
       recipient_email: customerEmail,
-      subject: `Rechnung ${invoiceData.invoiceNumber}`,
+      subject: invoiceMailTitle(invoiceData),
       body_html: emailHTML,
       attachments: emailAttachments.map(att => ({ 
         filename: att.filename, 
