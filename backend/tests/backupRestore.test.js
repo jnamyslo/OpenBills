@@ -8,7 +8,7 @@ import { pool } from '../database.js';
 import { hasDb, migrateTestDb, resetAuthTables } from './helpers/db.js';
 import { loginAs, waitForAudit, ORIGIN } from './helpers/auth.js';
 import { createApp } from '../app.js';
-import { BACKUP_TABLES, EXCLUDED_TABLES } from '../utils/backupTables.js';
+import { BACKUP_TABLES, EXCLUDED_TABLES, OPTIONAL_TABLES } from '../utils/backupTables.js';
 import { decryptBackup } from '../utils/backupCrypto.js';
 import { decryptSmtpPass } from '../utils/smtpPassword.js';
 
@@ -95,8 +95,9 @@ describe.skipIf(!hasDb)('Backup/Restore', () => {
       `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'`
     );
     const dbTables = rows.map((r) => r.table_name).sort();
-    expect(BACKUP_TABLES.filter((t) => EXCLUDED_TABLES.includes(t))).toEqual([]);
-    expect([...BACKUP_TABLES, ...EXCLUDED_TABLES].sort()).toEqual(dbTables);
+    const all = [...BACKUP_TABLES, ...EXCLUDED_TABLES, ...OPTIONAL_TABLES];
+    expect(all.filter((t, i) => all.indexOf(t) !== i)).toEqual([]);
+    expect(all.sort()).toEqual(dbTables);
   });
 
   it('JSON-Backup-Routen gibt es nicht mehr', async () => {

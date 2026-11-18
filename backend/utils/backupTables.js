@@ -1,5 +1,5 @@
 // Einzige Quelle für den Umfang von Backup/Restore.
-// Jede Tabelle der DB muss in genau einer der beiden Listen stehen (geprüft in tests/backupRestore.test.js).
+// Jede Tabelle der DB muss in genau einer der drei Listen stehen (geprüft in tests/backupRestore.test.js).
 
 // In Restore-Reihenfolge: Eltern vor Kindern (Foreign Keys).
 export const BACKUP_TABLES = [
@@ -25,6 +25,9 @@ export const BACKUP_TABLES = [
   'customer_emails',                 // -> customers
   'email_history',                   // -> invoices, quotes, customers
 ];
+
+// Nur auf Wunsch im Backup (Default aus), siehe docs/superpowers/specs/2026-11-17-document-archive-storno.md.
+export const OPTIONAL_TABLES = ['document_archive'];
 
 // Bewusst nicht im Backup: Instanz-/Auth-Zustand, der beim Restore erhalten bleiben muss.
 export const EXCLUDED_TABLES = [

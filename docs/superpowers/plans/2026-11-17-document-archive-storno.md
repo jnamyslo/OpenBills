@@ -46,10 +46,10 @@
 **Interfaces:**
 - Produces: Tabelle `document_archive` (Spalten laut Spec, `UNIQUE (document_type, document_id, format, sha256)`, Index auf `(document_type, document_id)`), Trigger `document_archive_append_only` (UPDATE und DELETE immer verboten), `invoices.invoice_type VARCHAR(20) NOT NULL DEFAULT 'invoice' CHECK IN ('invoice','cancellation')`, `invoices.cancels_invoice_id UUID REFERENCES invoices(id)` (unique, wenn nicht NULL), `invoices.cancellation_reason TEXT`. Status-CHECK von `invoices` um `'cancelled'` erweitert (Constraint-Name vorher per `pg_constraint` ermitteln, nicht raten).
 
-- [ ] **Step 1:** Failing test: Migration läuft; Insert `invoices.status = 'cancelled'` geht; UPDATE/DELETE auf `document_archive` wirft; Doppel-Insert gleicher Hash wirft 23505.
-- [ ] **Step 2:** Migration mit `up`/`down` schreiben, BTEST grün.
-- [ ] **Step 3:** `backupTables.js` + Vollständigkeitstest anpassen.
-- [ ] **Step 4:** Commit.
+- [x] **Step 1:** Failing test: Migration läuft; Insert `invoices.status = 'cancelled'` geht; UPDATE/DELETE auf `document_archive` wirft; Doppel-Insert gleicher Hash wirft 23505.
+- [x] **Step 2:** Migration mit `up`/`down` schreiben, BTEST grün.
+- [x] **Step 3:** `backupTables.js` + Vollständigkeitstest anpassen.
+- [x] **Step 4:** Commit.
 
 ### Task 2: Archiv-Service und -Route
 
