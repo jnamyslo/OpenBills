@@ -243,7 +243,10 @@ export function CustomerManagement({ autoCreate }: CustomerManagementProps = {})
         await deleteCustomer(id);
       } catch (error) {
         logger.error('Error deleting customer:', error);
-        alert('Fehler beim Löschen des Kunden. Bitte versuchen Sie es erneut.');
+        const code = (error as { code?: string }).code;
+        alert(code === 'CUSTOMER_HAS_INVOICES' && error instanceof Error
+          ? error.message
+          : 'Fehler beim Löschen des Kunden. Bitte versuchen Sie es erneut.');
       }
     }
   };

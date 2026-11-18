@@ -432,10 +432,22 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const result = await query('DELETE FROM customers WHERE id = $1 RETURNING id', [id]);
+    // Freigegebene/stornierte Rechnungen unterliegen der Aufbewahrungspflicht und dürfen
+    // nicht per ON DELETE CASCADE mit dem Kunden verschwinden (Sperre, siehe utils/invoiceLock.js).
+    const result = await query(
+      `DELETE FROM customers c WHERE c.id = $1
+         AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.customer_id = c.id AND i.status <> 'draft')
+       RETURNING id`,
+      [id]
+    );
 
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Customer not found' });
+      const exists = await query('SELECT 1 FROM customers WHERE id = $1', [id]);
+      if (exists.rows.length === 0) return res.status(404).json({ error: 'Customer not found' });
+      return res.status(409).json({
+        code: 'CUSTOMER_HAS_INVOICES',
+        error: 'Der Kunde hat freigegebene Rechnungen. Diese müssen aufbewahrt werden, daher kann der Kunde nicht gelöscht werden.',
+      });
     }
 
     res.json({ message: 'Customer deleted successfully' });

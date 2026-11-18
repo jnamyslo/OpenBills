@@ -158,6 +158,25 @@ describe.skipIf(!hasDb)('Sperre freigegebener Rechnungen', () => {
     expectLocked(await put(id, {}));
   });
 
+  it('Kunde mit freigegebener oder stornierter Rechnung lässt sich nicht löschen', async () => {
+    const delCustomer = () => request(app).delete(`/api/customers/${customerId}`).set('Cookie', cookie).set(ORIGIN);
+    const invoiceId = await createInvoice();
+    let res = await delCustomer();
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('CUSTOMER_HAS_INVOICES');
+    expect((await get(invoiceId)).status).toBe(200);
+
+    await pool.query("UPDATE invoices SET status = 'cancelled' WHERE id = $1", [invoiceId]);
+    expect((await delCustomer()).status).toBe(409);
+
+    // nur Entwürfe: Löschen wie bisher (Entwürfe gehen mit)
+    await pool.query("UPDATE invoices SET status = 'draft' WHERE id = $1", [invoiceId]);
+    res = await delCustomer();
+    expect(res.status).toBe(200);
+    expect((await get(invoiceId)).status).toBe(404);
+    expect((await delCustomer()).status).toBe(404);
+  });
+
   it('Löschen nur für Entwürfe', async () => {
     const sent = await createInvoice();
     expectLocked(await del(sent));
