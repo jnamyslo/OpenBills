@@ -173,6 +173,18 @@ Anlass: KoSIT-Lauf in Task 6. Summen wurden mit ungerundeter Steuer gebildet (BR
   - N6 (erledigt 2026-11-18): PDFs sind reproduzierbar (`src/utils/pdf/pdfIdentity.ts`): Datei-ID aus Belegtyp + ID, Erstell-/Änderungsdatum = Rechnungs- bzw. Angebotsdatum, bei Mahnungen heute 00:00 (Mahndatum steht im Beleg). pdf-lib lädt mit `updateMetadata: false`. Test `deterministicPdf.test.ts`. Neue Fassungen entstehen nur noch bei inhaltlicher Änderung (Stammdaten, Logo, Mahnung an einem anderen Tag).
 - [ ] **Step 5:** Commit.
 
+### Task 7a: PDF/A-3b für alle Beleg-PDFs (eingeschoben)
+
+Anlass: ZUGFeRD verlangt PDF/A-3; die PDFs waren es nicht (nicht eingebettete Helvetica, kein XMP, kein OutputIntent, Anhang `ZUGFeRD-invoice.xml`, stiller Rückfall auf PDF ohne XML). Entscheidung 2026-11-18: alle Beleg-PDFs als PDF/A-3b, Schrift Liberation Sans (SIL OFL, Zeichenbreiten wie Helvetica).
+
+**Files:** `src/assets/fonts/` (Liberation Sans Regular/Bold 2.1.5 + Lizenz), `src/utils/pdf/pdfFonts.ts`, `src/utils/pdf/pdfA.ts`, `src/utils/pdf/srgbProfile.ts` (sRGB v2, CC0), `src/utils/pdf/zugferdGenerator.ts`, `src/utils/pdfGenerator.ts`, `scripts/pdfa-validate.sh`, Tests `pdfA.test.ts`, `pdfaSamples.test.ts`, `draftWatermark.test.ts`
+
+- [x] **Step 1:** Schrift einbetten (lazy geladener Chunk, `putOnlyUsedFonts`, `compress`), alle `setFont` auf `PDF_FONT`.
+- [x] **Step 2:** `finalizePdfA`: PDF 1.7, XMP (pdfaid 3/B, dc/xmp/pdf passend zum Info-Dictionary), sRGB-OutputIntent, bei ZUGFeRD `factur-x.xml` (`text/xml`, `Alternative`, `/AF`) mit Factur-X-Erweiterungsschema (`ConformanceLevel` XRECHNUNG). Rechnung, Storno, Angebot, Mahnung; Entwürfe nicht (Wasserzeichen). Einbettungsfehler werfen statt PDF ohne XML.
+- [x] **Step 3:** veraPDF 1.30.4 (`scripts/pdfa-validate.sh`): 4/4 PASS PDF/A-3b (2026-11-18).
+- [ ] **Step 4:** Mustang 2.26.0 gegen `*-zugferd.pdf` (Skript lädt das Jar; im Agentenlauf nicht ausgeführt). Logo mit Transparenz manuell im Browser erzeugen und mit veraPDF prüfen (Logo-Code braucht `Image`, in Node nicht testbar).
+- Größe: ca. 65 KB je PDF statt ca. 10 KB (Schrift-Teilsatz).
+
 ### Task 8: Archiv-Export
 
 **Files:**

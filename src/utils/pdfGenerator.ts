@@ -3,7 +3,6 @@
  * Refactored for better maintainability and organization
  */
 
-import jsPDF from 'jspdf';
 import logger from './logger';
 import { Invoice, Quote, Company, Customer, JobEntry } from '../types';
 import { formatCurrency } from './formatters';
@@ -30,6 +29,8 @@ import { embedZUGFeRDXMLIntoPDF } from './pdf/zugferdGenerator';
 import { addDraftWatermark, DraftExportError } from './pdf/draftWatermark';
 import { isCancellation, amountSign, toPositiveBase, cancellationNote } from './pdf/cancellation';
 import { applyPdfIdentity, documentDate, startOfToday } from './pdf/pdfIdentity';
+import { finalizePdfABlob } from './pdf/pdfA';
+import { createPdfDocument, PDF_FONT } from './pdf/pdfFonts';
 
 // Export types for external use
 export interface PDFOptions {
@@ -78,7 +79,7 @@ export async function generateInvoicePDF(invoice: Invoice, options: PDFOptions):
     return generateXRechnungXML(invoice, options);
   }
 
-  const pdf = new jsPDF();
+  const pdf = await createPdfDocument();
   applyPdfIdentity(pdf, `invoice:${invoice.id}`, documentDate(invoice.issueDate));
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
@@ -181,7 +182,7 @@ export async function generateInvoicePDF(invoice: Invoice, options: PDFOptions):
   yPosition = drawTableHeader(pdf, yPosition, pageWidth, colors, tableColumns, darkText);
 
   // Table rows
-  pdf.setFont('helvetica', 'normal');
+  pdf.setFont(PDF_FONT, 'normal');
   pdf.setFontSize(9);
   
   const sortedItems = [...base.items].sort((a, b) => (a.order || 0) - (b.order || 0));
@@ -202,7 +203,7 @@ export async function generateInvoicePDF(invoice: Invoice, options: PDFOptions):
     if (await handlePageBreak(totalRowHeight + 5)) {
       // Re-add table header on new page
       yPosition = drawTableHeader(pdf, yPosition, pageWidth, colors, tableColumns, darkText);
-      pdf.setFont('helvetica', 'normal');
+      pdf.setFont(PDF_FONT, 'normal');
     }
     
     // Alternating row colors
@@ -353,7 +354,7 @@ export async function generateInvoicePDF(invoice: Invoice, options: PDFOptions):
   
   // Grand total
   pdf.setFontSize(11);
-  pdf.setFont('helvetica', 'bold');
+  pdf.setFont(PDF_FONT, 'bold');
   pdf.setTextColor(primaryRgb.r, primaryRgb.g, primaryRgb.b);
   pdf.text('Gesamtbetrag:', totalsLabelX, yPosition);
   pdf.text(formatCurrency(signed(base.total), locale), totalsStartX, yPosition);
@@ -376,7 +377,7 @@ export async function generateInvoicePDF(invoice: Invoice, options: PDFOptions):
     const centerX = (pageWidth - textWidth) / 2;
     
     pdf.setFontSize(10);
-    pdf.setFont('helvetica', 'bold');
+    pdf.setFont(PDF_FONT, 'bold');
     pdf.setTextColor(darkText);
     pdf.text(clauseText, centerX, yPosition);
     
@@ -420,11 +421,11 @@ export async function generateInvoicePDF(invoice: Invoice, options: PDFOptions):
   if (notes) {
     pdf.setFontSize(10);
     pdf.setTextColor(darkText);
-    pdf.setFont('helvetica', 'bold');
+    pdf.setFont(PDF_FONT, 'bold');
     pdf.text(cancellation ? 'Storno:' : 'Anmerkungen:', 20, notesY);
     notesY += 6;
     
-    pdf.setFont('helvetica', 'normal');
+    pdf.setFont(PDF_FONT, 'normal');
     pdf.setFontSize(9);
     pdf.setTextColor(grayText);
     const splitNotes = pdf.splitTextToSize(notes, totalsLabelX - 35);
@@ -444,21 +445,21 @@ export async function generateInvoicePDF(invoice: Invoice, options: PDFOptions):
     const isImmediatePayment = daysDifference <= 0;
     
     pdf.setFontSize(10);
-    pdf.setFont('helvetica', 'bold');
+    pdf.setFont(PDF_FONT, 'bold');
     pdf.setTextColor(darkText);
     pdf.text('Zahlungsinformationen:', 20, yPosition);
     yPosition += 6;
     
     // Add immediate payment clause if applicable
     if (isImmediatePayment && options.company.immediatePaymentClause) {
-      pdf.setFont('helvetica', 'normal');
+      pdf.setFont(PDF_FONT, 'normal');
       pdf.setFontSize(9);
       pdf.setTextColor(primaryRgb.r, primaryRgb.g, primaryRgb.b);
       pdf.text(options.company.immediatePaymentClause, 20, yPosition);
       yPosition += 7;
     }
     
-    pdf.setFont('helvetica', 'normal');
+    pdf.setFont(PDF_FONT, 'normal');
     pdf.setFontSize(9);
     pdf.setTextColor(grayText);
     pdf.text('Bitte überweisen Sie den Betrag auf folgendes Konto:', 20, yPosition);
@@ -513,7 +514,7 @@ export async function generateInvoicePDF(invoice: Invoice, options: PDFOptions):
  * Generate Job PDF
  */
 export async function generateJobPDF(job: JobEntry, options: JobPDFOptions): Promise<Blob> {
-  const pdf = new jsPDF();
+  const pdf = await createPdfDocument();
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
   const locale = options.company.locale || 'de-DE';
@@ -570,12 +571,12 @@ export async function generateJobPDF(job: JobEntry, options: JobPDFOptions): Pro
   // === JOB DESCRIPTION ===
   if (job.description) {
     pdf.setFontSize(10);
-    pdf.setFont('helvetica', 'bold');
+    pdf.setFont(PDF_FONT, 'bold');
     pdf.setTextColor(darkText);
     pdf.text('Auftragsbeschreibung:', 20, yPosition);
     yPosition += 6;
     
-    pdf.setFont('helvetica', 'normal');
+    pdf.setFont(PDF_FONT, 'normal');
     pdf.setFontSize(9);
     pdf.setTextColor(grayText);
     const splitDesc = pdf.splitTextToSize(job.description, pageWidth - 40);
@@ -583,11 +584,11 @@ export async function generateJobPDF(job: JobEntry, options: JobPDFOptions): Pro
     const descHeight = splitDesc.length * 4.5;
     if (await handlePageBreak(descHeight)) {
       pdf.setFontSize(10);
-      pdf.setFont('helvetica', 'bold');
+      pdf.setFont(PDF_FONT, 'bold');
       pdf.setTextColor(darkText);
       pdf.text('Auftragsbeschreibung:', 20, yPosition);
       yPosition += 6;
-      pdf.setFont('helvetica', 'normal');
+      pdf.setFont(PDF_FONT, 'normal');
       pdf.setFontSize(9);
       pdf.setTextColor(grayText);
     }
@@ -601,7 +602,7 @@ export async function generateJobPDF(job: JobEntry, options: JobPDFOptions): Pro
   await handlePageBreak(60);
   
   pdf.setFontSize(10);
-  pdf.setFont('helvetica', 'bold');
+  pdf.setFont(PDF_FONT, 'bold');
   pdf.setTextColor(darkText);
   pdf.text('Positionen:', 20, yPosition);
   yPosition += 8;
@@ -639,7 +640,7 @@ export async function generateJobPDF(job: JobEntry, options: JobPDFOptions): Pro
     }
     
     yPosition += 1.5;
-    pdf.setFont('helvetica', 'normal');
+    pdf.setFont(PDF_FONT, 'normal');
     pdf.setFontSize(9);
     pdf.setTextColor(darkText);
     
@@ -681,7 +682,7 @@ export async function generateJobPDF(job: JobEntry, options: JobPDFOptions): Pro
         pdf.rect(20, yPosition - 3, pageWidth - 40, rowHeight, 'F');
       }
       
-      pdf.setFont('helvetica', 'normal');
+      pdf.setFont(PDF_FONT, 'normal');
       pdf.setFontSize(9);
       pdf.setTextColor(darkText);
       
@@ -766,7 +767,7 @@ export async function generateJobPDF(job: JobEntry, options: JobPDFOptions): Pro
   }
   
   pdf.setFontSize(10);
-  pdf.setFont('helvetica', 'bold');
+  pdf.setFont(PDF_FONT, 'bold');
   pdf.setTextColor(primaryRgb.r, primaryRgb.g, primaryRgb.b);
   pdf.text('Gesamtbetrag:', totalsLabelX, yPosition);
   pdf.text(formatCurrency(total, locale), totalsValueX, yPosition, { align: 'right' });
@@ -788,7 +789,7 @@ export async function generateJobPDF(job: JobEntry, options: JobPDFOptions): Pro
     const centerX = (pageWidth - textWidth) / 2;
     
     pdf.setFontSize(10);
-    pdf.setFont('helvetica', 'bold');
+    pdf.setFont(PDF_FONT, 'bold');
     pdf.setTextColor(darkText);
     pdf.text(clauseText, centerX, yPosition);
     
@@ -803,11 +804,11 @@ export async function generateJobPDF(job: JobEntry, options: JobPDFOptions): Pro
     
     pdf.setFontSize(10);
     pdf.setTextColor(darkText);
-    pdf.setFont('helvetica', 'bold');
+    pdf.setFont(PDF_FONT, 'bold');
     pdf.text('Anmerkungen:', margins.left, yPosition);
     yPosition += 6;
     
-    pdf.setFont('helvetica', 'normal');
+    pdf.setFont(PDF_FONT, 'normal');
     pdf.setFontSize(9);
     pdf.setTextColor(grayText);
     const splitNotes = pdf.splitTextToSize(job.notes, pageWidth - margins.left - margins.right);
@@ -816,10 +817,10 @@ export async function generateJobPDF(job: JobEntry, options: JobPDFOptions): Pro
     if (await handlePageBreak(notesHeight)) {
       pdf.setFontSize(10);
       pdf.setTextColor(darkText);
-      pdf.setFont('helvetica', 'bold');
+      pdf.setFont(PDF_FONT, 'bold');
       pdf.text('Anmerkungen:', margins.left, yPosition);
       yPosition += 6;
-      pdf.setFont('helvetica', 'normal');
+      pdf.setFont(PDF_FONT, 'normal');
       pdf.setFontSize(9);
       pdf.setTextColor(grayText);
     }
@@ -837,11 +838,11 @@ export async function generateJobPDF(job: JobEntry, options: JobPDFOptions): Pro
     
     pdf.setFontSize(10);
     pdf.setTextColor(darkText);
-    pdf.setFont('helvetica', 'bold');
+    pdf.setFont(PDF_FONT, 'bold');
     pdf.text('Kundenunterschrift:', margins.left, yPosition);
     yPosition += 6;
     
-    pdf.setFont('helvetica', 'normal');
+    pdf.setFont(PDF_FONT, 'normal');
     pdf.setFontSize(9);
     pdf.setTextColor(grayText);
     pdf.text(`Kunde: ${job.signature.customerName}`, margins.left, yPosition);
@@ -901,7 +902,7 @@ export async function generateJobPDF(job: JobEntry, options: JobPDFOptions): Pro
  * Generate Quote PDF
  */
 export async function generateQuotePDF(quote: Quote & { description?: string }, options: QuotePDFOptions): Promise<Blob> {
-  const pdf = new jsPDF();
+  const pdf = await createPdfDocument();
   applyPdfIdentity(pdf, `quote:${quote.id}`, documentDate(quote.issueDate));
   
   const pageWidth = pdf.internal.pageSize.getWidth();
@@ -961,12 +962,12 @@ export async function generateQuotePDF(quote: Quote & { description?: string }, 
   // === QUOTE DESCRIPTION ===
   if (quote.description) {
     pdf.setFontSize(10);
-    pdf.setFont('helvetica', 'bold');
+    pdf.setFont(PDF_FONT, 'bold');
     pdf.setTextColor(darkText);
     pdf.text('Angebotsbeschreibung:', 20, yPosition);
     yPosition += 6;
     
-    pdf.setFont('helvetica', 'normal');
+    pdf.setFont(PDF_FONT, 'normal');
     pdf.setFontSize(9);
     pdf.setTextColor(grayText);
     const splitDesc = pdf.splitTextToSize(quote.description, pageWidth - 40);
@@ -997,7 +998,7 @@ export async function generateQuotePDF(quote: Quote & { description?: string }, 
 
   yPosition = drawTableHeader(pdf, yPosition, pageWidth, colors, tableColumns, darkText);
 
-  pdf.setFont('helvetica', 'normal');
+  pdf.setFont(PDF_FONT, 'normal');
   pdf.setFontSize(9);
   
   const sortedItems = [...quote.items].sort((a, b) => (a.order || 0) - (b.order || 0));
@@ -1011,7 +1012,7 @@ export async function generateQuotePDF(quote: Quote & { description?: string }, 
     
     if (await handlePageBreak(totalRowHeight + 5)) {
       yPosition = drawTableHeader(pdf, yPosition, pageWidth, colors, tableColumns, darkText);
-      pdf.setFont('helvetica', 'normal');
+      pdf.setFont(PDF_FONT, 'normal');
     }
     
     if (index % 2 === 1) {
@@ -1150,7 +1151,7 @@ export async function generateQuotePDF(quote: Quote & { description?: string }, 
   }
   
   pdf.setFontSize(11);
-  pdf.setFont('helvetica', 'bold');
+  pdf.setFont(PDF_FONT, 'bold');
   pdf.setTextColor(primaryRgb.r, primaryRgb.g, primaryRgb.b);
   pdf.text('Gesamtbetrag:', totalsLabelX, yPosition);
   pdf.text(formatCurrency(quote.total, locale), totalsStartX, yPosition);
@@ -1171,7 +1172,7 @@ export async function generateQuotePDF(quote: Quote & { description?: string }, 
     const centerX = (pageWidth - textWidth) / 2;
     
     pdf.setFontSize(10);
-    pdf.setFont('helvetica', 'bold');
+    pdf.setFont(PDF_FONT, 'bold');
     pdf.setTextColor(darkText);
     pdf.text(clauseText, centerX, yPosition);
     
@@ -1184,12 +1185,12 @@ export async function generateQuotePDF(quote: Quote & { description?: string }, 
     yPosition = Math.max(yPosition, totalsNotesStartY + totalsBoxHeight + 10);
     
     pdf.setFontSize(10);
-    pdf.setFont('helvetica', 'bold');
+    pdf.setFont(PDF_FONT, 'bold');
     pdf.setTextColor(darkText);
     pdf.text('Anmerkungen:', 20, yPosition);
     yPosition += 6;
     
-    pdf.setFont('helvetica', 'normal');
+    pdf.setFont(PDF_FONT, 'normal');
     pdf.setFontSize(9);
     pdf.setTextColor(grayText);
     const splitNotes = pdf.splitTextToSize(quote.notes, totalsLabelX - 35);
@@ -1238,9 +1239,13 @@ export async function generateQuotePDF(quote: Quote & { description?: string }, 
   
   if (quote.status === 'draft') {
     addDraftWatermark(pdf);
+    return pdf.output('blob');
   }
 
-  return pdf.output('blob');
+  return finalizePdfABlob(pdf.output('arraybuffer'), {
+    title: `Angebot ${quote.quoteNumber}`,
+    date: documentDate(quote.issueDate),
+  });
 }
 
 /**
@@ -1253,7 +1258,7 @@ export async function generateReminderPDF(
   _fee: number,
   options: PDFOptions
 ): Promise<Blob> {
-  const pdf = new jsPDF();
+  const pdf = await createPdfDocument();
   applyPdfIdentity(pdf, `reminder:${invoice.id}:${stage}`, startOfToday());
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
@@ -1308,19 +1313,19 @@ export async function generateReminderPDF(
   yPos += 7;
   
   pdf.setFontSize(10);
-  pdf.setFont('helvetica', 'bold');
+  pdf.setFont(PDF_FONT, 'bold');
   pdf.setTextColor(60, 60, 60);
   pdf.text('Bezug: Rechnung', 25, yPos);
   
   yPos += 6;
   
   pdf.setFontSize(11);
-  pdf.setFont('helvetica', 'bold');
+  pdf.setFont(PDF_FONT, 'bold');
   pdf.setTextColor(0, 0, 0);
   pdf.text(`${invoice.invoiceNumber}`, 25, yPos);
   
   pdf.setFontSize(9);
-  pdf.setFont('helvetica', 'normal');
+  pdf.setFont(PDF_FONT, 'normal');
   pdf.setTextColor(80, 80, 80);
   const invoiceDateText = `vom ${new Date(invoice.issueDate).toLocaleDateString(locale)}`;
   const dueDateText = `fällig am ${new Date(invoice.dueDate).toLocaleDateString(locale)}`;
@@ -1332,7 +1337,7 @@ export async function generateReminderPDF(
 
   // Reminder text
   pdf.setFontSize(10);
-  pdf.setFont('helvetica', 'normal');
+  pdf.setFont(PDF_FONT, 'normal');
   pdf.setTextColor(0, 0, 0);
   
   const reminderLines = pdf.splitTextToSize(reminderText, pageWidth - 40);
@@ -1366,7 +1371,7 @@ export async function generateReminderPDF(
   const colAmountX = pageWidth - 50;
   
   pdf.setFontSize(11);
-  pdf.setFont('helvetica', 'normal');
+  pdf.setFont(PDF_FONT, 'normal');
   pdf.setTextColor(60, 60, 60);
   pdf.text('Rechnungsbetrag:', colLabelX, yPos);
   const originalAmount = formatCurrency(invoice.total, locale);
@@ -1392,7 +1397,7 @@ export async function generateReminderPDF(
   yPos += 8;
   
   pdf.setFontSize(13);
-  pdf.setFont('helvetica', 'bold');
+  pdf.setFont(PDF_FONT, 'bold');
   pdf.setTextColor(primaryRgb.r, primaryRgb.g, primaryRgb.b);
   pdf.text('Zu zahlender Gesamtbetrag:', colLabelX, yPos);
   const totalAmount = formatCurrency(invoice.total + cumulativeFee, locale);
@@ -1410,14 +1415,14 @@ export async function generateReminderPDF(
   const bic = paymentInfo.bic || options.company.bic;
   
   pdf.setFontSize(10);
-  pdf.setFont('helvetica', 'bold');
+  pdf.setFont(PDF_FONT, 'bold');
   pdf.setTextColor(60, 60, 60);
   pdf.text('Zahlungsinformationen:', 20, yPos);
   
   yPos += 6;
   
   pdf.setFontSize(9);
-  pdf.setFont('helvetica', 'normal');
+  pdf.setFont(PDF_FONT, 'normal');
   pdf.setTextColor(0, 0, 0);
   
   if (bankAccount) {
@@ -1428,7 +1433,7 @@ export async function generateReminderPDF(
     pdf.text(`BIC: ${bic}`, 20, yPos);
     yPos += 5;
   }
-  pdf.setFont('helvetica', 'bold');
+  pdf.setFont(PDF_FONT, 'bold');
   pdf.text(`Verwendungszweck: ${invoice.invoiceNumber}`, 20, yPos);
 
   // Footer (same style as invoice PDF)
@@ -1463,5 +1468,8 @@ export async function generateReminderPDF(
   
   addFooter();
   
-  return pdf.output('blob');
+  return finalizePdfABlob(pdf.output('arraybuffer'), {
+    title: `Mahnung Stufe ${stage} zu Rechnung ${invoice.invoiceNumber}`,
+    date: startOfToday(),
+  });
 }

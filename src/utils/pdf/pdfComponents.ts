@@ -7,6 +7,7 @@ import { Company, Customer } from '../../types';
 import { ColorConfiguration } from './colorUtils';
 import { loadImage } from './imageHelpers';
 import logger from '../logger';
+import { PDF_FONT } from './pdfFonts';
 
 export interface PageMargins {
   top: number;
@@ -30,7 +31,7 @@ export interface PDFContext {
  * Reset PDF font to default state
  */
 export function resetFont(pdf: jsPDF, darkText: string): void {
-  pdf.setFont('helvetica', 'normal');
+  pdf.setFont(PDF_FONT, 'normal');
   pdf.setFontSize(9);
   pdf.setTextColor(darkText);
 }
@@ -315,7 +316,7 @@ export function drawTableHeader(
   
   pdf.setFontSize(9);
   pdf.setTextColor(darkText);
-  pdf.setFont('helvetica', 'bold');
+  pdf.setFont(PDF_FONT, 'bold');
   
   // Column headers
   for (const col of columns) {

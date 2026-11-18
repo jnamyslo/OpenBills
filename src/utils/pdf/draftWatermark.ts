@@ -4,6 +4,7 @@
  * wie ein fertiges Dokument aussehen.
  */
 import jsPDF, { GState } from 'jspdf';
+import { PDF_FONT } from './pdfFonts';
 
 export const DRAFT_WATERMARK_TEXT = 'ENTWURF';
 
@@ -28,7 +29,7 @@ export function addDraftWatermark(pdf: jsPDF): void {
 
     pdf.saveGraphicsState();
     pdf.setGState(new GState({ opacity: 0.15 }));
-    pdf.setFont('helvetica', 'bold');
+    pdf.setFont(PDF_FONT, 'bold');
     pdf.setFontSize(90);
     pdf.setTextColor(120, 120, 120);
 

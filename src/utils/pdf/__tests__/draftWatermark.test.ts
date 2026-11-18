@@ -12,9 +12,12 @@ const hasEmbeddedFiles = async (blob: Blob) => {
   return Boolean(doc.catalog.get(PDFName.of('AF')) || names?.get(PDFName.of('EmbeddedFiles')));
 };
 
-/** jsPDF schreibt Text unkomprimiert in den Content-Stream. */
-const containsText = async (blob: Blob, text: string) =>
-  new TextDecoder('latin1').decode(await blob.arrayBuffer()).includes(`(${text})`);
+/**
+ * Wasserzeichen erkennen: Content-Streams sind komprimiert und Text steht nur als Glyph-IDs darin.
+ * Erkennbar ist der halbtransparente Grafikzustand (ExtGState, nur vom Wasserzeichen genutzt).
+ */
+const hasWatermark = async (blob: Blob) =>
+  /\/ca 0\.15/.test(new TextDecoder('latin1').decode(await blob.arrayBuffer()));
 
 const invoice = (status: Invoice['status']): Invoice =>
   ({ ...testInvoice([testItem()]), status });
@@ -27,13 +30,13 @@ describe('Entwurfs-Wasserzeichen Rechnung', () => {
 
   it('Entwurf-PDF hat Wasserzeichen und kein eingebettetes ZUGFeRD-XML', async () => {
     const blob = await generateInvoicePDF(invoice('draft'), { ...testOptions(), format: 'zugferd' });
-    expect(await containsText(blob, 'ENTWURF')).toBe(true);
+    expect(await hasWatermark(blob)).toBe(true);
     expect(await hasEmbeddedFiles(blob)).toBe(false);
   });
 
   it('freigegebene Rechnung: kein Wasserzeichen, ZUGFeRD eingebettet', async () => {
     const blob = await generateInvoicePDF(invoice('sent'), { ...testOptions(), format: 'zugferd' });
-    expect(await containsText(blob, 'ENTWURF')).toBe(false);
+    expect(await hasWatermark(blob)).toBe(false);
     expect(await hasEmbeddedFiles(blob)).toBe(true);
   });
 });
@@ -48,8 +51,8 @@ describe('Entwurfs-Wasserzeichen Angebot', () => {
 
   it('nur Entwürfe erhalten das Wasserzeichen', async () => {
     const options = { company: testCompany(), customer: testCustomer() };
-    expect(await containsText(await generateQuotePDF(quote('draft'), options), 'ENTWURF')).toBe(true);
-    expect(await containsText(await generateQuotePDF(quote('sent'), options), 'ENTWURF')).toBe(false);
+    expect(await hasWatermark(await generateQuotePDF(quote('draft'), options))).toBe(true);
+    expect(await hasWatermark(await generateQuotePDF(quote('sent'), options))).toBe(false);
   });
 });
 

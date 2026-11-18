@@ -4,3 +4,5 @@
 .superpowers/
 # KoSIT-Validator (scripts/kosit-validate.sh)
 .kosit/
+# veraPDF/Mustang (scripts/pdfa-validate.sh)
+.pdfa/

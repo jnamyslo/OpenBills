@@ -3,11 +3,10 @@
  * Generates ZUGFeRD 2.1 compliant XML based on EN 16931 standard
  */
 
-import { PDFDocument, AFRelationship } from 'pdf-lib';
+import { finalizePdfABlob } from './pdfA';
 import { documentDate } from './pdfIdentity';
 import { Invoice } from '../../types';
 import { PDFOptions } from '../pdfGenerator';
-import logger from '../logger';
 import { escapeXML, formatAmountForXML, roundToCents, getCountryCode, vatIdentifier } from './xmlUtils';
 import { hasOnlyZeroTaxRate, getTaxCategoryCode, getTaxExemptionReason } from './taxCalculations';
 import { calculateInvoiceWithDiscounts } from '../discountUtils';
@@ -252,53 +251,22 @@ export function generateZUGFeRDXML(source: Invoice, options: PDFOptions): string
 }
 
 /**
- * Embed ZUGFeRD XML data into a PDF/A-3 compliant document
- * @param pdfBuffer - Original PDF as ArrayBuffer
- * @param invoice - Invoice data
- * @param options - PDF options
- * @returns Promise with Blob containing PDF with embedded XML
+ * Bettet das ZUGFeRD-XML als `factur-x.xml` in ein PDF/A-3b ein.
+ * Wirft bei Fehlern: ein PDF ohne XML darf nicht als ZUGFeRD ausgegeben oder archiviert werden.
  */
 export async function embedZUGFeRDXMLIntoPDF(pdfBuffer: ArrayBuffer, invoice: Invoice, options: PDFOptions): Promise<Blob> {
-  try {
-    // updateMetadata: false – sonst setzt pdf-lib Producer und Datum auf „jetzt“ (N6, reproduzierbar)
-    const pdfDoc = await PDFDocument.load(pdfBuffer, { updateMetadata: false });
-    const date = documentDate(invoice.issueDate);
-    const xmlData = generateZUGFeRDXML(invoice, options);
-    
-    if (!xmlData || xmlData.trim().length === 0) {
-      throw new Error('Generated ZUGFeRD XML is empty');
-    }
-    
-    const xmlBytes = new TextEncoder().encode(xmlData);
-    
-    pdfDoc.setTitle(`${isCancellation(invoice) ? 'Stornorechnung' : 'Rechnung'} ${invoice.invoiceNumber}`);
-    pdfDoc.setSubject(`ZUGFeRD invoice ${invoice.invoiceNumber}`);
-    pdfDoc.setKeywords(['ZUGFeRD', 'invoice', 'electronic invoice', 'EN 16931']);
-    pdfDoc.setProducer('OpenBills');
-    pdfDoc.setCreator('OpenBills');
-    pdfDoc.setCreationDate(date);
-    pdfDoc.setModificationDate(date);
-    
-    await pdfDoc.attach(xmlBytes, 'ZUGFeRD-invoice.xml', {
-      mimeType: 'application/xml',
-      description: 'ZUGFeRD invoice data',
-      creationDate: date,
-      modificationDate: date,
-      afRelationship: AFRelationship.Alternative,
-    });
-    
-    const pdfBytes = await pdfDoc.save({
-      useObjectStreams: false,
-      addDefaultPage: false,
-      objectsPerTick: 50
-    });
-    
-    return new Blob([pdfBytes], { type: 'application/pdf' });
-    
-  } catch (error) {
-    logger.error('Error embedding ZUGFeRD XML into PDF:', error instanceof Error ? error.message : String(error));
-    return new Blob([pdfBuffer], { type: 'application/pdf' });
+  const xml = generateZUGFeRDXML(invoice, options);
+  if (!xml.trim()) {
+    throw new Error('ZUGFeRD-XML ist leer');
   }
+  return finalizePdfABlob(
+    pdfBuffer,
+    {
+      title: `${isCancellation(invoice) ? 'Stornorechnung' : 'Rechnung'} ${invoice.invoiceNumber}`,
+      date: documentDate(invoice.issueDate),
+    },
+    { xml, conformanceLevel: 'XRECHNUNG' }
+  );
 }
 
 

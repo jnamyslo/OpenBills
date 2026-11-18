@@ -26,6 +26,7 @@ const original: Invoice = {
   invoiceType: 'invoice',
   cancelledByInvoice: { id: 'st', invoiceNumber: 'ST-2026-001' },
   cancellationReason: null,
+  createdAt: new Date('2026-10-01'),
 };
 
 describe('draftCopyOfInvoice', () => {
