@@ -94,6 +94,7 @@ describe.skipIf(!hasDb)('Sperre freigegebener Rechnungen', () => {
     expectLocked(await put(id, { dueDate: '2026-12-24' }));
     expectLocked(await put(id, { total: 1 }));
     expectLocked(await put(id, { attachments: [] }));
+    expectLocked(await put(id, { globalDiscountType: null, globalDiscountValue: null }));
     expectLocked(await put(id, { attachments: [...invoice.attachments, { name: 'neu.pdf', content: 'YQ==', contentType: 'application/pdf', size: 1 }] }));
     expect((await get(id)).body).toEqual(invoice);
   });

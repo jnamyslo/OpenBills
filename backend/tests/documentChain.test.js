@@ -130,6 +130,36 @@ describe.skipIf(!hasDb)('Belegkette Angebot → Auftrag → Rechnung', () => {
     const cleared = await put({ globalDiscountType: '' });
     expect(cleared.status).toBe(200);
     expect(cleared.body.globalDiscountType).toBeUndefined();
+
+    // So sendet der Editor „Kein Gesamtrabatt“ (withExplicitGlobalDiscount in src/services/api.ts)
+    await put({ globalDiscountType: 'fixed', globalDiscountValue: 15 });
+    const nulled = await put({ globalDiscountType: null, globalDiscountValue: null });
+    expect(nulled.status).toBe(200);
+    expect(nulled.body.globalDiscountType).toBeUndefined();
+    expect(nulled.body.globalDiscountValue).toBeUndefined();
+  });
+
+  it.each([
+    ['invoices', { dueDate: '2026-12-02' }],
+    ['quotes', { validUntil: '2026-12-02' }],
+  ])('Gesamtrabatt an %s lässt sich entfernen (null) und bleibt ohne Rabattfelder erhalten', async (resource, dates) => {
+    const items = [{ description: 'Montage', quantity: 2, unitPrice: 50, taxRate: 19 }];
+    const doc = { customerId, customerName: 'Kunde', issueDate: '2026-11-18', ...dates, items };
+    const created = await request(app).post(`/api/${resource}`).set('Cookie', cookie).set(ORIGIN)
+      .send({ ...doc, globalDiscountType: 'percentage', globalDiscountValue: 10 });
+    expect(created.status).toBe(201);
+    expect(created.body).toMatchObject({ globalDiscountType: 'percentage', total: 107.1 });
+
+    const put = (body) => request(app).put(`/api/${resource}/${created.body.id}`).set('Cookie', cookie).set(ORIGIN).send(body);
+    // Ohne Rabattfelder (Teil-Update) bleibt der Rabatt
+    expect((await put({ ...doc })).body).toMatchObject({ globalDiscountType: 'percentage', total: 107.1 });
+
+    const cleared = await put({ ...doc, globalDiscountType: null, globalDiscountValue: null });
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.globalDiscountType).toBeFalsy();
+    expect(cleared.body.globalDiscountValue).toBeFalsy();
+    expect(cleared.body).toMatchObject({ subtotal: 100, taxAmount: 19, total: 119 });
+    expect(cleared.body.globalDiscountAmount || 0).toBe(0);
   });
 
   it('lehnt ungültige Gesamtrabatte am Auftrag ab', async () => {

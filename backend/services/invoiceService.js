@@ -187,8 +187,11 @@ export async function updateInvoice(id, data) {
     await assertCustomerChangeAllowed(client, current.customer_id, updateData.customerId);
 
     // Summen nur neu berechnen, wenn Positionen mitkommen (sonst wie bisher übernehmen)
-    const globalDiscountType = updateData.globalDiscountType ?? current.global_discount_type;
-    const globalDiscountValue = updateData.globalDiscountValue ?? current.global_discount_value;
+    // null = Gesamtrabatt entfernt; nur ein fehlendes Feld übernimmt den gespeicherten Rabatt
+    const globalDiscountType = updateData.globalDiscountType !== undefined ? updateData.globalDiscountType : current.global_discount_type;
+    const globalDiscountValue = updateData.globalDiscountType !== undefined
+      ? (updateData.globalDiscountType ? updateData.globalDiscountValue : null)
+      : (updateData.globalDiscountValue ?? current.global_discount_value);
     const totals = Array.isArray(updateData.items)
       ? await computeDocumentTotals(client, updateData.items, globalDiscountType, globalDiscountValue)
       : null;

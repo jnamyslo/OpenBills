@@ -10,11 +10,11 @@ import { formatCurrency } from './formatters';
 // Import modular components
 import { getColorConfiguration } from './pdf/colorUtils';
 import {
-  calculateJobTaxBreakdown,
   checkHasDiscounts,
   hasOnlyZeroTaxRate
 } from './pdf/taxCalculations';
 import { calculateInvoiceWithDiscounts } from './discountUtils';
+import { buildInvoiceItemsFromJobs } from './jobInvoiceItems';
 // loadImage is now used internally by addPDFHeader
 import {
   addPDFHeader,
@@ -236,7 +236,8 @@ export async function generateInvoicePDF(invoice: Invoice, options: PDFOptions):
       pdf.text(`${item.taxRate}%`, 150, yPosition);
     }
     
-    const itemTotal = (item.quantity * item.unitPrice) - discountAmount;
+    // Cent-genau wie Summen und E-Rechnung (gerundeter Betrag − gerundeter Rabatt)
+    const itemTotal = calculateInvoiceWithDiscounts([item]).lines[0].net;
     pdf.text(formatCurrency(signed(itemTotal), locale), 170, yPosition);
     
     yPosition += 4.5;
@@ -607,7 +608,34 @@ export async function generateJobPDF(job: JobEntry, options: JobPDFOptions): Pro
   pdf.text('Positionen:', 20, yPosition);
   yPosition += 8;
 
-  const tableColumns = [
+  // Positionen, Rabatte und Summen wie auf der Auftragsrechnung (gleiche Positionen, Cent-Rundung)
+  const isSmallBusiness = options.company.isSmallBusiness;
+  const jobItems = buildInvoiceItemsFromJobs([job], isSmallBusiness);
+  const calc = calculateInvoiceWithDiscounts(
+    jobItems,
+    { type: job.globalDiscountType, value: job.globalDiscountValue },
+    isSmallBusiness
+  );
+  const showDiscounts = options.company.discountsEnabled !== false && checkHasDiscounts(jobItems);
+
+  // Anzeige je Position, in derselben Reihenfolge wie buildInvoiceItemsFromJobs
+  const timeRows = job.timeEntries && job.timeEntries.length > 0
+    ? job.timeEntries.map(entry => ({ description: entry.description || 'Arbeitsleistung', quantity: `${entry.hoursWorked} Std.` }))
+    : job.hoursWorked > 0
+      ? [{ description: 'Arbeitsleistung', quantity: `${job.hoursWorked} Std.` }]
+      : [];
+  const materialRows = (job.materials || []).map(material => ({ description: material.description, quantity: material.quantity.toString() }));
+  const rows = [...timeRows, ...materialRows];
+
+  const tableColumns = showDiscounts ? [
+    { label: 'Pos.', x: 25 },
+    { label: 'Beschreibung', x: 40 },
+    { label: 'Menge/Std.', x: 95 },
+    { label: 'Einzelpreis', x: 115 },
+    { label: 'Rabatt', x: 135 },
+    { label: 'MwSt.', x: 155 },
+    { label: 'Gesamt', x: 170 }
+  ] : [
     { label: 'Pos.', x: 25 },
     { label: 'Beschreibung', x: 40 },
     { label: 'Menge/Std.', x: 95 },
@@ -618,96 +646,51 @@ export async function generateJobPDF(job: JobEntry, options: JobPDFOptions): Pro
 
   yPosition = drawTableHeader(pdf, yPosition, pageWidth, colors, tableColumns, darkText);
 
-  let positionIndex = 1;
-
-  // Time entries
-  const timeEntries = job.timeEntries && job.timeEntries.length > 0 
-    ? job.timeEntries 
-    : [{ description: 'Arbeitsleistung', hoursWorked: job.hoursWorked, hourlyRate: job.hourlyRate, taxRate: 19 }];
-
-  for (const entry of timeEntries) {
-    const desc = entry.description || 'Arbeitsleistung';
-    const splitDesc = pdf.splitTextToSize(desc, 52);
+  for (const [index, row] of rows.entries()) {
+    const item = jobItems[index];
+    const line = calc.lines[index];
+    const splitDesc = pdf.splitTextToSize(row.description, 52);
     const rowHeight = splitDesc.length * 4.5 + 5.5;
-    
+
     if (await handlePageBreak(rowHeight + 5)) {
       yPosition = drawTableHeader(pdf, yPosition, pageWidth, colors, tableColumns, darkText);
     }
-    
-    if (positionIndex % 2 === 0) {
+
+    if ((index + 1) % 2 === 0) {
       pdf.setFillColor(248, 250, 252);
       pdf.rect(20, yPosition - 3, pageWidth - 40, rowHeight, 'F');
     }
-    
+
     yPosition += 1.5;
     pdf.setFont(PDF_FONT, 'normal');
     pdf.setFontSize(9);
     pdf.setTextColor(darkText);
-    
-    pdf.text(positionIndex.toString(), 25, yPosition);
+
+    pdf.text((index + 1).toString(), 25, yPosition);
     pdf.text(splitDesc[0], 40, yPosition);
-    pdf.text(`${entry.hoursWorked} Std.`, 95, yPosition);
-    pdf.text(formatCurrency(entry.hourlyRate, locale), 125, yPosition);
-    
-    const taxRate = options.company.isSmallBusiness ? 0 : (entry.taxRate != null ? entry.taxRate : 19);
-    pdf.text(`${taxRate}%`, 155, yPosition);
-    
-    const entryTotal = entry.hoursWorked * entry.hourlyRate;
-    pdf.text(formatCurrency(entryTotal, locale), 170, yPosition);
-    
+    pdf.text(row.quantity, 95, yPosition);
+
+    if (showDiscounts) {
+      pdf.text(formatCurrency(item.unitPrice, locale), 115, yPosition);
+      if (line.discount > 0) {
+        pdf.text(item.discountType === 'percentage' ? `${item.discountValue}%` : formatCurrency(item.discountValue || 0, locale), 135, yPosition);
+      } else {
+        pdf.text('-', 135, yPosition);
+      }
+    } else {
+      pdf.text(formatCurrency(item.unitPrice, locale), 125, yPosition);
+    }
+    pdf.text(`${item.taxRate}%`, 155, yPosition);
+    pdf.text(formatCurrency(line.net, locale), 170, yPosition);
+
     yPosition += 4.5;
-    
+
     for (let i = 1; i < splitDesc.length; i++) {
       pdf.text(splitDesc[i], 40, yPosition);
       yPosition += 4.5;
     }
-    
-    yPosition += 4.0;
-    
-    positionIndex++;
-  }
 
-  // Materials
-  if (job.materials && job.materials.length > 0) {
-    for (const material of job.materials) {
-      const splitDesc = pdf.splitTextToSize(material.description, 52);
-      const rowHeight = splitDesc.length * 4.5 + 5.5;
-      
-      if (await handlePageBreak(rowHeight + 5)) {
-        yPosition = drawTableHeader(pdf, yPosition, pageWidth, colors, tableColumns, darkText);
-      }
-      
-      if (positionIndex % 2 === 0) {
-        pdf.setFillColor(248, 250, 252);
-        pdf.rect(20, yPosition - 3, pageWidth - 40, rowHeight, 'F');
-      }
-      
-      pdf.setFont(PDF_FONT, 'normal');
-      pdf.setFontSize(9);
-      pdf.setTextColor(darkText);
-      
-      pdf.text(positionIndex.toString(), 25, yPosition);
-      pdf.text(splitDesc[0], 40, yPosition);
-      pdf.text(material.quantity.toString(), 95, yPosition);
-      pdf.text(formatCurrency(material.unitPrice, locale), 125, yPosition);
-      
-      const taxRate = options.company.isSmallBusiness ? 0 : (material.taxRate != null ? material.taxRate : 19);
-      pdf.text(`${taxRate}%`, 155, yPosition);
-      
-      const materialTotal = material.quantity * material.unitPrice;
-      pdf.text(formatCurrency(materialTotal, locale), 170, yPosition);
-      
-      yPosition += 4.5;
-      
-      for (let i = 1; i < splitDesc.length; i++) {
-        pdf.text(splitDesc[i], 40, yPosition);
-        yPosition += 4.5;
-      }
-      
-      yPosition += 4.0;
-      
-      positionIndex++;
-    }
+    yPosition += 4.0;
   }
 
   // Table bottom border
@@ -716,61 +699,64 @@ export async function generateJobPDF(job: JobEntry, options: JobPDFOptions): Pro
   yPosition += 6;
 
   // === TOTALS ===
-  const taxBreakdown = calculateJobTaxBreakdown(job, options.company.isSmallBusiness);
-  const subtotal = Object.values(taxBreakdown).reduce((sum, breakdown) => sum + breakdown.taxableAmount, 0);
-  const totalTaxAmount = Object.values(taxBreakdown).reduce((sum, breakdown) => sum + breakdown.taxAmount, 0);
-  const total = subtotal + totalTaxAmount;
-  
+  const taxBreakdown = calc.taxBreakdown;
+  const totalTaxAmount = calc.taxAmount;
+  const hasDiscountData = calc.itemDiscountAmount > 0 || calc.globalDiscountAmount > 0;
+
   await handlePageBreak(60);
-  
+
   yPosition += 6;
   const totalsBoxWidth = 80;
   const totalsStartX = pageWidth - margins.right;
   const totalsLabelX = totalsStartX - totalsBoxWidth + 5;
   const totalsValueX = totalsStartX - 5;
-  
+
   const taxRates = Object.keys(taxBreakdown).filter(rate => Number(rate) > 0).sort((a, b) => Number(a) - Number(b));
   const showTotalTaxLine = taxRates.length > 1;
-  
+
   let totalsLines = 2 + taxRates.length;
   if (showTotalTaxLine) totalsLines += 1;
-  
+  if (hasDiscountData) totalsLines += 1;
+  if (calc.itemDiscountAmount > 0) totalsLines += 1;
+  if (calc.globalDiscountAmount > 0) totalsLines += 1;
+
   const totalsBoxHeight = Math.max(30, 6 + (totalsLines * 6) + 6);
-  
+
   pdf.setFillColor(248, 250, 252);
   pdf.rect(totalsLabelX - 5, yPosition - 3, totalsBoxWidth, totalsBoxHeight, 'F');
-  
+
   pdf.setFontSize(9);
   yPosition += 4;
-  
-  pdf.setTextColor(secondaryRgb.r, secondaryRgb.g, secondaryRgb.b);
-  pdf.text('Nettobetrag:', totalsLabelX, yPosition);
-  pdf.setTextColor(darkText);
-  pdf.text(formatCurrency(subtotal, locale), totalsValueX, yPosition, { align: 'right' });
-  yPosition += 6;
-  
+
+  const totalsRow = (label: string, value: string, color?: [number, number, number]) => {
+    if (color) pdf.setTextColor(...color);
+    else pdf.setTextColor(secondaryRgb.r, secondaryRgb.g, secondaryRgb.b);
+    pdf.text(label, totalsLabelX, yPosition);
+    if (!color) pdf.setTextColor(darkText);
+    pdf.text(value, totalsValueX, yPosition, { align: 'right' });
+    yPosition += 6;
+  };
+
+  if (hasDiscountData) {
+    totalsRow('Zwischensumme:', formatCurrency(calc.subtotal, locale));
+    if (calc.itemDiscountAmount > 0) totalsRow('Artikelrabatte:', `-${formatCurrency(calc.itemDiscountAmount, locale)}`, [220, 38, 38]);
+    if (calc.globalDiscountAmount > 0) totalsRow('Gesamtrabatt:', `-${formatCurrency(calc.globalDiscountAmount, locale)}`, [220, 38, 38]);
+  }
+  totalsRow('Nettobetrag:', formatCurrency(calc.discountedSubtotal, locale));
+
   for (const rate of taxRates) {
-    const breakdown = taxBreakdown[Number(rate)];
-    pdf.setTextColor(secondaryRgb.r, secondaryRgb.g, secondaryRgb.b);
-    pdf.text(`MwSt. (${rate}%):`, totalsLabelX, yPosition);
-    pdf.setTextColor(darkText);
-    pdf.text(formatCurrency(breakdown.taxAmount, locale), totalsValueX, yPosition, { align: 'right' });
-    yPosition += 6;
+    totalsRow(`MwSt. (${rate}%):`, formatCurrency(taxBreakdown[Number(rate)].taxAmount, locale));
   }
-  
+
   if (showTotalTaxLine) {
-    pdf.setTextColor(secondaryRgb.r, secondaryRgb.g, secondaryRgb.b);
-    pdf.text('MwSt. gesamt:', totalsLabelX, yPosition);
-    pdf.setTextColor(darkText);
-    pdf.text(formatCurrency(totalTaxAmount, locale), totalsValueX, yPosition, { align: 'right' });
-    yPosition += 6;
+    totalsRow('MwSt. gesamt:', formatCurrency(totalTaxAmount, locale));
   }
-  
+
   pdf.setFontSize(10);
   pdf.setFont(PDF_FONT, 'bold');
   pdf.setTextColor(primaryRgb.r, primaryRgb.g, primaryRgb.b);
   pdf.text('Gesamtbetrag:', totalsLabelX, yPosition);
-  pdf.text(formatCurrency(total, locale), totalsValueX, yPosition, { align: 'right' });
+  pdf.text(formatCurrency(calc.total, locale), totalsValueX, yPosition, { align: 'right' });
   
   resetFont(pdf, darkText);
 
@@ -1044,7 +1030,8 @@ export async function generateQuotePDF(quote: Quote & { description?: string }, 
       pdf.text(`${item.taxRate}%`, 150, yPosition);
     }
     
-    const itemTotal = (item.quantity * item.unitPrice) - discountAmount;
+    // Cent-genau wie Summen und E-Rechnung (gerundeter Betrag − gerundeter Rabatt)
+    const itemTotal = calculateInvoiceWithDiscounts([item]).lines[0].net;
     pdf.text(formatCurrency(itemTotal, locale), 170, yPosition);
     
     yPosition += 4.5;

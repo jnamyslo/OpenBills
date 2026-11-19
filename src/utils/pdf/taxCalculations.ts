@@ -2,71 +2,7 @@
  * Tax calculation utilities for PDF generation
  */
 
-import { Invoice, JobEntry } from '../../types';
-import { TaxBreakdown } from '../discountUtils';
-
-/**
- * Calculate tax breakdown for job entries
- * @param job - Job entry
- * @param isSmallBusiness - Whether small business rules apply
- * @returns Tax breakdown by rate
- */
-export function calculateJobTaxBreakdown(job: JobEntry, isSmallBusiness?: boolean): TaxBreakdown {
-  const taxBreakdown: TaxBreakdown = {};
-  
-  // Process time entries (use job's legacy fields if no time entries exist)
-  if (job.timeEntries && job.timeEntries.length > 0) {
-    job.timeEntries.forEach(timeEntry => {
-      const entryTotal = timeEntry.hoursWorked * timeEntry.hourlyRate;
-      // Bei Kleinunternehmerregelung immer 0% MwSt.
-      const taxRate = isSmallBusiness ? 0 : (timeEntry.taxRate != null ? timeEntry.taxRate : 19);
-      const taxAmount = entryTotal * (taxRate / 100);
-      
-      if (taxBreakdown[taxRate]) {
-        taxBreakdown[taxRate].taxableAmount += entryTotal;
-        taxBreakdown[taxRate].taxAmount += taxAmount;
-      } else {
-        taxBreakdown[taxRate] = {
-          taxableAmount: entryTotal,
-          taxAmount: taxAmount
-        };
-      }
-    });
-  } else {
-    // Legacy support: use hoursWorked and hourlyRate
-    const laborTotal = job.hoursWorked * job.hourlyRate;
-    // Bei Kleinunternehmerregelung immer 0% MwSt., sonst 19% als Fallback (Legacy-Jobs haben kein taxRate Feld)
-    const taxRate = isSmallBusiness ? 0 : 19;
-    const taxAmount = laborTotal * (taxRate / 100);
-    
-    taxBreakdown[taxRate] = {
-      taxableAmount: laborTotal,
-      taxAmount: taxAmount
-    };
-  }
-  
-  // Process materials
-  if (job.materials) {
-    job.materials.forEach(material => {
-      const materialTotal = material.quantity * material.unitPrice;
-      // Bei Kleinunternehmerregelung immer 0% MwSt.
-      const taxRate = isSmallBusiness ? 0 : (material.taxRate != null ? material.taxRate : 19);
-      const taxAmount = materialTotal * (taxRate / 100);
-      
-      if (taxBreakdown[taxRate]) {
-        taxBreakdown[taxRate].taxableAmount += materialTotal;
-        taxBreakdown[taxRate].taxAmount += taxAmount;
-      } else {
-        taxBreakdown[taxRate] = {
-          taxableAmount: materialTotal,
-          taxAmount: taxAmount
-        };
-      }
-    });
-  }
-  
-  return taxBreakdown;
-}
+import { Invoice } from '../../types';
 
 /**
  * Check if any discounts exist in invoice items

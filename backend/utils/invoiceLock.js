@@ -3,7 +3,8 @@
 //
 // Das Frontend schickt beim Statuswechsel teils ganze Rechnungsobjekte. Ein Feld gilt nur dann als
 // Änderung, wenn updateInvoice den gespeicherten Wert tatsächlich überschreiben würde – fehlende
-// bzw. null-Felder behält updateInvoice (??), sie werden daher nicht verglichen.
+// bzw. null-Felder behält updateInvoice (??), sie werden daher nicht verglichen. Ausnahme Gesamtrabatt:
+// null entfernt ihn (siehe updateInvoice) und gilt deshalb als Wert.
 
 const RELEASED_STATUSES = ['sent', 'paid', 'overdue', 'reminded_1x', 'reminded_2x', 'reminded_3x'];
 
@@ -76,10 +77,11 @@ export function changedFields(current, currentItems, currentAttachments, data) {
   if (isSet(data.issueDate)) compare('issueDate', payloadDate(data.issueDate), storedDate(current.issue_date));
   if (isSet(data.dueDate)) compare('dueDate', payloadDate(data.dueDate), storedDate(current.due_date));
   if (isSet(data.notes)) compare('notes', text(data.notes), text(current.notes));
-  if (isSet(data.globalDiscountType)) compare('globalDiscountType', text(data.globalDiscountType), text(current.global_discount_type));
+  if (data.globalDiscountType !== undefined) compare('globalDiscountType', text(data.globalDiscountType), text(current.global_discount_type));
+  if (data.globalDiscountValue !== undefined) compare('globalDiscountValue', cents(data.globalDiscountValue), cents(current.global_discount_value));
   for (const [key, col] of [
     ['subtotal', 'subtotal'], ['taxAmount', 'tax_amount'], ['total', 'total'],
-    ['globalDiscountValue', 'global_discount_value'], ['globalDiscountAmount', 'global_discount_amount'],
+    ['globalDiscountAmount', 'global_discount_amount'],
   ]) {
     if (isSet(data[key])) compare(key, cents(data[key]), cents(current[col]));
   }

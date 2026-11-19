@@ -15,6 +15,24 @@ export class PlanError extends Error {
 
 export const isPlanError = (error: unknown): error is PlanError => error instanceof PlanError;
 
+/**
+ * Gesamtrabatt für den Versand normalisieren. Editoren setzen „Kein Gesamtrabatt“ als `undefined`;
+ * JSON.stringify würde das Feld weglassen und das Backend den alten Rabatt behalten. Ist das Feld
+ * vorhanden (Editor-Speichern), wird ein fehlender oder leerer Rabatt deshalb als `null` gesendet —
+ * wie die Summenberechnung ihn behandelt (kein Rabatt). Teil-Updates ohne das Feld bleiben unberührt.
+ */
+export function withExplicitGlobalDiscount<T extends { globalDiscountType?: unknown; globalDiscountValue?: unknown }>(data: T): T {
+  if (!('globalDiscountType' in data) && !('globalDiscountValue' in data)) return data;
+  const raw = data.globalDiscountValue;
+  const value = raw === null || raw === undefined || raw === '' ? NaN : Number(raw);
+  const active = Boolean(data.globalDiscountType) && Number.isFinite(value);
+  return {
+    ...data,
+    globalDiscountType: active ? data.globalDiscountType : null,
+    globalDiscountValue: active ? value : null,
+  };
+}
+
 /** Event, auf das der PlanContext mit dem Upgrade-Dialog reagiert. */
 export const PLAN_ERROR_EVENT = 'openbills:plan-error';
 
@@ -286,14 +304,14 @@ class ApiService {
   async createInvoice(invoice: Omit<Invoice, 'id' | 'createdAt'>): Promise<Invoice> {
     return this.request<Invoice>('/invoices', {
       method: 'POST',
-      body: JSON.stringify(invoice),
+      body: JSON.stringify(withExplicitGlobalDiscount(invoice)),
     });
   }
 
   async updateInvoice(id: string, invoice: Partial<Invoice>): Promise<Invoice> {
     return this.request<Invoice>(`/invoices/${id}`, {
       method: 'PUT',
-      body: JSON.stringify(invoice),
+      body: JSON.stringify(withExplicitGlobalDiscount(invoice)),
     });
   }
 
@@ -387,14 +405,14 @@ class ApiService {
   async createQuote(quote: Omit<Quote, 'id' | 'createdAt'>): Promise<Quote> {
     return this.request<Quote>('/quotes', {
       method: 'POST',
-      body: JSON.stringify(quote),
+      body: JSON.stringify(withExplicitGlobalDiscount(quote)),
     });
   }
 
   async updateQuote(id: string, quote: Partial<Quote>): Promise<Quote> {
     return this.request<Quote>(`/quotes/${id}`, {
       method: 'PUT',
-      body: JSON.stringify(quote),
+      body: JSON.stringify(withExplicitGlobalDiscount(quote)),
     });
   }
 
@@ -517,14 +535,14 @@ class ApiService {
   async createJobEntry(job: Omit<JobEntry, 'id' | 'createdAt' | 'updatedAt'>): Promise<JobEntry> {
     return this.request<JobEntry>('/jobs', {
       method: 'POST',
-      body: JSON.stringify(job),
+      body: JSON.stringify(withExplicitGlobalDiscount(job)),
     });
   }
 
   async updateJobEntry(id: string, job: Partial<JobEntry>): Promise<JobEntry> {
     return this.request<JobEntry>(`/jobs/${id}`, {
       method: 'PUT',
-      body: JSON.stringify(job),
+      body: JSON.stringify(withExplicitGlobalDiscount(job)),
     });
   }
 
