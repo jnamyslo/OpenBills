@@ -240,10 +240,11 @@ function AppContent({ currentPageState, handlePageChange }: AppContentProps) {
       case 'invoices':
         return (
           <InvoiceManagement
-            initialFilter={currentPageState.filter === 'new' ? undefined : currentPageState.filter}
-            initialSearchTerm={safeDecode(currentPageState.searchTerm)}
+            initialFilter={currentPageState.filter === 'new' || currentPageState.filter === 'edit' ? undefined : currentPageState.filter}
+            initialSearchTerm={currentPageState.filter === 'edit' ? undefined : safeDecode(currentPageState.searchTerm)}
             onNavigate={handlePageChange}
             autoCreate={currentPageState.filter === 'new'}
+            openInvoiceId={currentPageState.filter === 'edit' ? currentPageState.searchTerm : undefined}
           />
         );
       case 'quotes':

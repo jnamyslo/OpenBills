@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { demoMailNote } from '../utils/demo';
 import logger from '../utils/logger';
 import { withInvoiceContent } from '../utils/attachmentContent';
@@ -34,9 +34,11 @@ interface InvoiceManagementProps {
   onNavigate?: (page: string) => void;
   /** Über Dashboard-Schnellaktion (#invoices/new): Editor für neue Rechnung direkt öffnen. */
   autoCreate?: boolean;
+  /** Über #invoices/edit/<id> (z. B. nach Umwandlung eines Auftrags): Rechnung direkt öffnen. */
+  openInvoiceId?: string;
 }
 
-export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate, autoCreate }: InvoiceManagementProps = {}) {
+export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate, autoCreate, openInvoiceId }: InvoiceManagementProps = {}) {
   const { customers } = useCustomers();
   const { invoices, addInvoice, deleteInvoice, updateInvoice, refreshInvoices } = useInvoices();
   const { refreshJobEntries } = useJobs();
@@ -208,6 +210,18 @@ export function InvoiceManagement({ initialFilter, initialSearchTerm, onNavigate
     handleOpenEditor();
     clearCreateRoute('invoices');
   }, [autoCreate]);
+
+  // Direkt eine bestimmte Rechnung öffnen, sobald sie geladen ist (nur einmal je ID,
+  // die App-Route bleibt nach replaceState stehen)
+  const openedInvoiceIdRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!openInvoiceId || openedInvoiceIdRef.current === openInvoiceId) return;
+    const invoice = invoices.find(i => i.id === openInvoiceId);
+    if (!invoice) return;
+    openedInvoiceIdRef.current = openInvoiceId;
+    handleOpenEditor(invoice);
+    clearCreateRoute('invoices');
+  }, [openInvoiceId, invoices]);
 
   const handleCloseEditor = () => {
     setIsEditorOpen(false);

@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import logger from '../utils/logger';
 import { withJobContent } from '../utils/attachmentContent';
-import { Plus, Edit, Trash2, Clock, User, Calendar, FileText, Search, Timer, CheckCircle, AlertTriangle, Briefcase, Download, Eye, PenTool } from 'lucide-react';
+import { Plus, Edit, Trash2, FileText, FileCheck, Search, Check, Info, X, AlertTriangle, Briefcase, Download, Eye, PenTool } from 'lucide-react';
 import { useCustomers } from '../context/CustomerContext';
 import { useJobs } from '../context/JobContext';
 import { useInvoices } from '../context/InvoiceContext';
@@ -17,6 +17,7 @@ import { createJobAttachmentPreviewDocuments } from '../utils/previewDocuments';
 import { generateJobPDF, downloadBlob } from '../utils/pdfGenerator';
 import { calculateTotalHours } from '../utils/jobUtils';
 import { clearCreateRoute } from '../utils/quickActions';
+import { useJobInvoicing } from '../hooks/useJobInvoicing';
 
 interface JobManagementProps {
   onNavigate?: (page: string) => void;
@@ -32,6 +33,7 @@ export function JobManagement({ onNavigate, autoCreate, initialFilter, initialSe
   const { jobEntries, addJobEntry, updateJobEntry, deleteJobEntry, refreshJobEntries, addJobSignature } = useJobs();
   const { company } = useCompany();
   const { invoices } = useInvoices();
+  const { createInvoiceForJobs } = useJobInvoicing();
 
   const goToInvoice = (job: JobEntry) => {
     const invoice = invoices.find(i => i.id === job.invoiceId);
@@ -43,6 +45,7 @@ export function JobManagement({ onNavigate, autoCreate, initialFilter, initialSe
   const [showInvoiceGenerator, setShowInvoiceGenerator] = useState(false);
   const [selectedJobIds, setSelectedJobIds] = useState<string[]>([]);
   const [isBulkOperation, setIsBulkOperation] = useState(false);
+  const [convertingJobId, setConvertingJobId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('not-invoiced');
   const [customerFilter, setCustomerFilter] = useState<string>('all');
@@ -148,16 +151,13 @@ export function JobManagement({ onNavigate, autoCreate, initialFilter, initialSe
     });
   }, [jobEntries, searchTerm, statusFilter, customerFilter, dateFilter]);
 
-  // Calculate statistics
-  const stats = useMemo(() => {
-    const totalJobs = filteredJobs.length;
-    const completedJobs = filteredJobs.filter(job => job.status === 'completed').length;
-    const inProgressJobs = filteredJobs.filter(job => job.status === 'in-progress').length;
-    const notInvoicedJobs = filteredJobs.filter(job => job.status !== 'invoiced').length;
-    const totalHours = filteredJobs.reduce((sum: number, job) => sum + calculateTotalHours(job), 0);
-    
-    return { totalJobs, completedJobs, inProgressJobs, notInvoicedJobs, totalHours };
-  }, [filteredJobs]);
+  // Abgeschlossene Aufträge sind abrechenbar
+  const completedFilteredJobs = filteredJobs.filter(job => job.status === 'completed');
+  const selectedCompletedJobIds = selectedJobIds.filter(jobId => {
+    const job = jobEntries.find(j => j.id === jobId);
+    return job && job.status === 'completed';
+  });
+  const skippedSelectedCount = selectedJobIds.length - selectedCompletedJobIds.length;
 
   const handleEdit = (job: JobEntry) => {
     // Check if job is invoiced and warn user
@@ -276,6 +276,16 @@ export function JobManagement({ onNavigate, autoCreate, initialFilter, initialSe
     }
   };
 
+  const getStatusLabel = (status: JobEntry['status']) => {
+    switch (status) {
+      case 'draft': return 'Entwurf';
+      case 'in-progress': return 'In Bearbeitung';
+      case 'completed': return 'Abgeschlossen';
+      case 'invoiced': return 'Abgerechnet';
+      default: return status;
+    }
+  };
+
   const getPriorityColor = (priority?: string) => {
     switch (priority) {
       case 'high': return 'text-red-600';
@@ -294,17 +304,34 @@ export function JobManagement({ onNavigate, autoCreate, initialFilter, initialSe
     }
   };
 
+  // Einzelner Auftrag: direkt in Rechnung (Entwurf) umwandeln und im Editor öffnen
+  const handleConvertToInvoice = async (job: JobEntry) => {
+    if (job.status !== 'completed' || convertingJobId) return;
+    setConvertingJobId(job.id);
+    try {
+      const invoice = await createInvoiceForJobs([job]);
+      if (!invoice) {
+        alert('Kunde des Auftrags nicht gefunden.');
+        return;
+      }
+      setSelectedJobIds([]);
+      window.location.hash = `invoices/edit/${invoice.id}`;
+    } catch (error) {
+      logger.error('Error converting job to invoice', { error, jobId: job.id });
+      alert('Fehler beim Erstellen der Rechnung. Bitte versuchen Sie es erneut.');
+    } finally {
+      setConvertingJobId(null);
+    }
+  };
+
+  // Auswahl: ein abgeschlossener Auftrag → direkt umwandeln, mehrere → Sammelrechnung
   const handleBulkInvoiceGeneration = () => {
-    const completedSelectedJobs = selectedJobIds.filter(jobId => {
-      const job = jobEntries.find(j => j.id === jobId);
-      return job && job.status === 'completed';
-    });
-    
-    if (completedSelectedJobs.length === 0) {
-      alert('Keine abgeschlossenen Aufträge ausgewählt. Nur abgeschlossene Aufträge können abgerechnet werden.');
+    if (selectedCompletedJobIds.length === 0) return;
+    if (selectedCompletedJobIds.length === 1) {
+      const job = jobEntries.find(j => j.id === selectedCompletedJobIds[0]);
+      if (job) handleConvertToInvoice(job);
       return;
     }
-    
     setShowInvoiceGenerator(true);
   };
 
@@ -534,13 +561,9 @@ export function JobManagement({ onNavigate, autoCreate, initialFilter, initialSe
   if (showInvoiceGenerator) {
     // Only pass completed jobs — bulk selection can include non-completed jobs,
     // but only completed jobs may be invoiced (see handleBulkInvoiceGeneration).
-    const completedSelectedJobIds = selectedJobIds.filter(jobId => {
-      const job = jobEntries.find(j => j.id === jobId);
-      return job && job.status === 'completed';
-    });
     return (
       <JobInvoiceGenerator
-        selectedJobIds={completedSelectedJobIds}
+        selectedJobIds={selectedCompletedJobIds}
         onClose={() => {
           setShowInvoiceGenerator(false);
           setSelectedJobIds([]);
@@ -553,262 +576,268 @@ export function JobManagement({ onNavigate, autoCreate, initialFilter, initialSe
     );
   }
 
+  // Nächster Schritt je Status (wie bei Rechnungen/Angeboten in der Statusspalte)
+  const renderNextStep = (job: JobEntry, mobile: boolean) => {
+    const size = mobile ? 'px-3 py-1' : 'px-2 py-1';
+    if (job.status === 'draft' || job.status === 'in-progress') {
+      return (
+        <button
+          className={`bg-green-100 hover:bg-green-200 text-green-700 hover:text-green-800 ${size} rounded-md transition-colors duration-200 shadow-sm flex items-center text-xs font-medium`}
+          title="Als abgeschlossen markieren"
+          onClick={() => handleStatusChange(job.id, 'completed')}
+        >
+          <Check className="h-3 w-3 mr-1" />
+          <span>Abschließen</span>
+        </button>
+      );
+    }
+    if (job.status === 'completed') {
+      const isConverting = convertingJobId === job.id;
+      return (
+        <button
+          className={`bg-blue-100 hover:bg-blue-200 text-blue-700 hover:text-blue-800 ${size} rounded-md transition-colors duration-200 shadow-sm flex items-center text-xs font-medium disabled:opacity-60`}
+          title="In Rechnung umwandeln"
+          onClick={() => handleConvertToInvoice(job)}
+          disabled={convertingJobId !== null}
+        >
+          {isConverting ? (
+            <div className="animate-spin h-3 w-3 mr-1 border-2 border-blue-600 border-t-transparent rounded-full"></div>
+          ) : (
+            <FileCheck className="h-3 w-3 mr-1" />
+          )}
+          <span>{isConverting ? 'Wird erstellt…' : 'In Rechnung umwandeln'}</span>
+        </button>
+      );
+    }
+    if (job.status === 'invoiced' && job.invoiceId && invoices.some(i => i.id === job.invoiceId)) {
+      return (
+        <button
+          className={`bg-blue-100 hover:bg-blue-200 text-blue-700 hover:text-blue-800 ${size} rounded-md transition-colors duration-200 shadow-sm flex items-center text-xs font-medium`}
+          title="Zur Rechnung"
+          onClick={() => goToInvoice(job)}
+        >
+          <FileText className="h-3 w-3 mr-1" />
+          <span>Zur Rechnung</span>
+        </button>
+      );
+    }
+    return null;
+  };
+
+  const renderActions = (job: JobEntry, mobile: boolean) => {
+    const pad = mobile ? 'p-2' : 'p-1.5';
+    const icon = mobile ? 'h-3 w-3' : 'h-3.5 w-3.5';
+    return (
+      <div className={mobile ? 'flex space-x-1' : 'flex flex-wrap gap-1'}>
+        <button
+          onClick={() => handleEdit(job)}
+          className={`bg-primary-light-custom hover:bg-primary-medium-custom text-primary-custom hover:text-primary-custom ${pad} rounded-md transition-colors duration-200 shadow-sm`}
+          title={job.status === 'invoiced' ? 'Bearbeiten (GoBD-Warnung wird angezeigt)' : 'Bearbeiten'}
+        >
+          <Edit className={icon} />
+        </button>
+        <button
+          onClick={() => handlePreview(job)}
+          className={`bg-blue-100 hover:bg-blue-200 text-blue-700 hover:text-blue-800 ${pad} rounded-md transition-colors duration-200 shadow-sm`}
+          title="Dokumente anzeigen"
+        >
+          <Eye className={icon} />
+        </button>
+        <button
+          onClick={() => handleExportJobPDF(job)}
+          className={`bg-green-100 hover:bg-green-200 text-green-700 hover:text-green-800 ${pad} rounded-md transition-colors duration-200 shadow-sm`}
+          title="PDF herunterladen"
+        >
+          <Download className={icon} />
+        </button>
+        {!job.signature && job.status !== 'completed' && job.status !== 'invoiced' && (
+          <button
+            onClick={() => handleSignature(job)}
+            className={`bg-purple-100 hover:bg-purple-200 text-purple-700 hover:text-purple-800 ${pad} rounded-md transition-colors duration-200 shadow-sm`}
+            title="Unterschrift hinzufügen"
+          >
+            <PenTool className={icon} />
+          </button>
+        )}
+        <button
+          onClick={() => handleDelete(job)}
+          className={`bg-red-100 hover:bg-red-200 text-red-700 hover:text-red-800 ${pad} rounded-md transition-colors duration-200 shadow-sm`}
+          title={job.status === 'invoiced' ? 'Löschen (GoBD-Warnung wird angezeigt)' : 'Löschen'}
+        >
+          <Trash2 className={icon} />
+        </button>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div className="flex items-center">
-          <Briefcase className="h-6 w-6 lg:h-8 lg:w-8 text-primary-custom mr-2 lg:mr-3" />
-          <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">Auftragsmanagement</h1>
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+        <div>
+          <h2 className="text-2xl lg:text-3xl font-bold text-gray-900">Aufträge</h2>
+          <p className="text-gray-600 mt-1">Verwalten Sie Ihre Aufträge</p>
         </div>
-        
-        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-          {selectedJobIds.length > 0 && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-2">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div className="flex items-center">
-                  <CheckCircle className="h-4 w-4 text-blue-600 mr-2" />
-                  <span className="text-sm text-blue-800 font-medium">
-                    {selectedJobIds.length} Auftrag{selectedJobIds.length > 1 ? 'e' : ''} ausgewählt
-                    {selectedJobIds.length > 0 && (
-                      <span className="ml-1 text-xs">
-                        ({selectedJobIds.filter(jobId => {
-                          const job = jobEntries.find((j: JobEntry) => j.id === jobId);
-                          return job && job.status === 'completed';
-                        }).length} abgeschlossen)
-                      </span>
-                    )}
-                  </span>
-                </div>
-                
-                <div className="flex flex-col sm:flex-row gap-2">
-                  {/* Bulk Status Change */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-blue-800">Status ändern:</span>
-                    <select
-                      onChange={(e) => {
-                        if (e.target.value) {
-                          handleBulkStatusChange(e.target.value as JobEntry['status']);
-                          e.target.value = '';
-                        }
-                      }}
-                      disabled={isBulkOperation}
-                      className="text-xs px-2 py-1 border border-blue-300 rounded focus:ring-2 focus:ring-blue-500"
-                      defaultValue=""
-                    >
-                      <option value="">Wählen...</option>
-                      <option value="draft">Entwurf</option>
-                      <option value="in-progress">In Bearbeitung</option>
-                      <option value="completed">Abgeschlossen</option>
-                      <option value="invoiced">Abgerechnet</option>
-                    </select>
-                  </div>
-
-                  {/* Bulk Invoice Generation */}
-                  <button
-                    onClick={handleBulkInvoiceGeneration}
-                    disabled={isBulkOperation || selectedJobIds.filter(jobId => {
-                      const job = jobEntries.find((j: JobEntry) => j.id === jobId);
-                      return job && job.status === 'completed';
-                    }).length === 0}
-                    className="bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 transition-colors flex items-center text-sm disabled:bg-gray-400"
-                  >
-                    <FileText className="h-4 w-4 mr-1" />
-                    Rechnung erstellen
-                  </button>
-
-                  {/* Bulk Download */}
-                  <button
-                    onClick={handleBulkDownload}
-                    disabled={isBulkOperation}
-                    className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 transition-colors flex items-center text-sm disabled:bg-gray-400"
-                  >
-                    <Download className="h-4 w-4 mr-1" />
-                    PDF herunterladen
-                  </button>
-
-                  {/* Bulk Delete */}
-                  <button
-                    onClick={handleBulkDelete}
-                    disabled={isBulkOperation}
-                    className="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 transition-colors flex items-center text-sm disabled:bg-gray-400"
-                  >
-                    <Trash2 className="h-4 w-4 mr-1" />
-                    Löschen
-                  </button>
-
-                  {/* Clear Selection */}
-                  <button
-                    onClick={() => setSelectedJobIds([])}
-                    className="bg-gray-200 text-gray-700 px-3 py-1 rounded hover:bg-gray-300 transition-colors text-sm"
-                  >
-                    Auswahl aufheben
-                  </button>
-                </div>
-              </div>
-              
-              <p className="text-xs text-blue-600 mt-2">
-                <strong>Hinweis:</strong> Alle Aufträge können ausgewählt werden, aber nur abgeschlossene Aufträge können abgerechnet werden.
-              </p>
-            </div>
-          )}
-          
-          <button
-            onClick={() => setShowForm(true)}
-            className="bg-primary-custom text-white px-3 lg:px-4 py-2 rounded-xl hover:bg-primary-custom/90 transition-all duration-300 hover:scale-105 flex items-center text-sm lg:text-base"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Neuer Auftrag
-          </button>
-        </div>
-      </div>
-
-      {/* Statistics Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 lg:gap-4">
-        <button 
-          onClick={() => setStatusFilter('not-invoiced')}
-          className="bg-white p-3 lg:p-4 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:bg-gray-50 transition-all duration-300 hover:scale-105 text-left cursor-pointer"
+        <button
+          onClick={() => setShowForm(true)}
+          className="btn-primary text-white px-4 py-2 rounded-xl flex items-center justify-center space-x-2 hover:brightness-90 transition-all duration-300 hover:scale-105"
         >
-          <div className="flex items-center">
-            <Timer className="h-6 w-6 lg:h-8 lg:w-8 text-blue-600 mr-2 lg:mr-3" />
-            <div>
-              <p className="text-xs lg:text-sm font-medium text-gray-600">Nicht abgerechnet</p>
-              <p className="text-lg lg:text-2xl font-bold text-gray-900">{stats.notInvoicedJobs}</p>
-            </div>
-          </div>
+          <Plus className="h-5 w-5" />
+          <span className="hidden sm:inline">Neuer Auftrag</span>
+          <span className="sm:hidden">Neu</span>
         </button>
-
-        <button 
-          onClick={() => setStatusFilter('all')}
-          className="bg-white p-3 lg:p-4 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:bg-gray-50 transition-all duration-300 hover:scale-105 text-left cursor-pointer"
-        >
-          <div className="flex items-center">
-            <Briefcase className="h-6 w-6 lg:h-8 lg:w-8 text-gray-600 mr-2 lg:mr-3" />
-            <div>
-              <p className="text-xs lg:text-sm font-medium text-gray-600">Gesamt</p>
-              <p className="text-lg lg:text-2xl font-bold text-gray-900">{stats.totalJobs}</p>
-            </div>
-          </div>
-        </button>
-
-        <button 
-          onClick={() => setStatusFilter('in-progress')}
-          className="bg-white p-3 lg:p-4 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:bg-gray-50 transition-all duration-300 hover:scale-105 text-left cursor-pointer"
-        >
-          <div className="flex items-center">
-            <Timer className="h-6 w-6 lg:h-8 lg:w-8 text-yellow-600 mr-2 lg:mr-3" />
-            <div>
-              <p className="text-xs lg:text-sm font-medium text-gray-600">In Bearbeitung</p>
-              <p className="text-lg lg:text-2xl font-bold text-gray-900">{stats.inProgressJobs}</p>
-            </div>
-          </div>
-        </button>
-
-        <button 
-          onClick={() => setStatusFilter('completed')}
-          className="bg-white p-3 lg:p-4 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:bg-gray-50 transition-all duration-300 hover:scale-105 text-left cursor-pointer"
-        >
-          <div className="flex items-center">
-            <CheckCircle className="h-6 w-6 lg:h-8 lg:w-8 text-green-600 mr-2 lg:mr-3" />
-            <div>
-              <p className="text-xs lg:text-sm font-medium text-gray-600">Abgeschlossen</p>
-              <p className="text-lg lg:text-2xl font-bold text-gray-900">{stats.completedJobs}</p>
-            </div>
-          </div>
-        </button>
-
-        <div className="bg-white p-3 lg:p-4 rounded-xl shadow-sm border border-gray-100">
-          <div className="flex items-center">
-            <Clock className="h-6 w-6 lg:h-8 lg:w-8 text-purple-600 mr-2 lg:mr-3" />
-            <div>
-              <p className="text-xs lg:text-sm font-medium text-gray-600">Stunden</p>
-              <p className="text-lg lg:text-2xl font-bold text-gray-900">{stats.totalHours.toFixed(1)}</p>
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* Filters */}
-      <div className="bg-white p-4 lg:p-6 rounded-xl shadow-sm border border-gray-100">
-        <div className="flex flex-col lg:flex-row gap-4">
-          {/* Search */}
-          <div className="flex-1">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-              <input
-                type="text"
-                placeholder="Auftrag suchen..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-custom focus:border-transparent text-sm lg:text-base"
-              />
-            </div>
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+        <div className="flex flex-col md:flex-row gap-4">
+          <div className="flex-1 relative">
+            <Search className="h-5 w-5 absolute left-3 top-3 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Aufträge suchen..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
           </div>
-
-          {/* Filters Row */}
-          <div className="flex flex-col sm:flex-row gap-2 lg:gap-4">
-            {/* Status Filter */}
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-custom focus:border-transparent text-sm lg:text-base"
-            >
-              <option value="all">Alle Status</option>
-              <option value="not-invoiced">Alle außer abgerechnet</option>
-              <option value="draft">Entwurf</option>
-              <option value="in-progress">In Bearbeitung</option>
-              <option value="completed">Abgeschlossen</option>
-              <option value="invoiced">Abgerechnet</option>
-            </select>
-
-            {/* Customer Filter */}
-            <select
-              value={customerFilter}
-              onChange={(e) => setCustomerFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-custom focus:border-transparent text-sm lg:text-base"
-            >
-              <option value="all">Alle Kunden</option>
-              {customers.map(customer => (
-                <option key={customer.id} value={customer.id}>
-                  {customer.name}
-                </option>
-              ))}
-            </select>
-
-            {/* Date Filter */}
-            <select
-              value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-custom focus:border-transparent text-sm lg:text-base"
-            >
-              <option value="all">Alle Zeiträume</option>
-              <option value="today">Heute</option>
-              <option value="week">Diese Woche</option>
-              <option value="month">Dieser Monat</option>
-            </select>
-          </div>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="all">Alle Status</option>
+            <option value="not-invoiced">Alle außer abgerechnet</option>
+            <option value="draft">Entwurf</option>
+            <option value="in-progress">In Bearbeitung</option>
+            <option value="completed">Abgeschlossen</option>
+            <option value="invoiced">Abgerechnet</option>
+          </select>
+          <select
+            value={customerFilter}
+            onChange={(e) => setCustomerFilter(e.target.value)}
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="all">Alle Kunden</option>
+            {customers.map(customer => (
+              <option key={customer.id} value={customer.id}>
+                {customer.name}
+              </option>
+            ))}
+          </select>
+          <select
+            value={dateFilter}
+            onChange={(e) => setDateFilter(e.target.value)}
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="all">Alle Zeiträume</option>
+            <option value="today">Heute</option>
+            <option value="week">Diese Woche</option>
+            <option value="month">Dieser Monat</option>
+          </select>
         </div>
       </div>
 
-      {/* Jobs List */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-        {/* Info box wenn es nicht-abgeschlossene Aufträge gibt (ohne bereits abgerechnete) */}
-        {filteredJobs.some((job: JobEntry) => job.status !== 'completed' && job.status !== 'invoiced') && filteredJobs.length > 0 && (
-          <div className="bg-yellow-50 border-b border-yellow-200 p-4">
-            <div className="flex items-start space-x-2">
-              <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5 flex-shrink-0" />
-              <div>
-                <h4 className="text-sm font-medium text-yellow-900">Hinweis zur Rechnungserstellung</h4>
-                <p className="text-sm text-yellow-800 mt-1">
-                  Sie haben {filteredJobs.filter((job: JobEntry) => job.status !== 'completed' && job.status !== 'invoiced').length} Auftrag(e), 
-                  die noch nicht als "Abgeschlossen" markiert sind. Nur abgeschlossene Aufträge können für die 
-                  Rechnungserstellung ausgewählt werden.
-                </p>
+      {/* Bulk Operations Bar */}
+      {selectedJobIds.length > 0 ? (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex flex-col">
+              <span className="text-sm text-blue-800 font-medium">
+                {selectedJobIds.length} Auftrag/Aufträge ausgewählt
+              </span>
+              {selectedCompletedJobIds.length > 0 && skippedSelectedCount > 0 && (
+                <span className="text-xs text-blue-700 mt-1">
+                  {skippedSelectedCount} nicht abgeschlossen, werden bei der Abrechnung übersprungen
+                </span>
+              )}
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              {/* Bulk Status Change */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-blue-800">Status ändern:</span>
+                <select
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      handleBulkStatusChange(e.target.value as JobEntry['status']);
+                      e.target.value = '';
+                    }
+                  }}
+                  disabled={isBulkOperation}
+                  className="text-xs px-2 py-1 border border-blue-300 rounded focus:ring-2 focus:ring-blue-500"
+                  defaultValue=""
+                >
+                  <option value="">Wählen...</option>
+                  <option value="draft">Entwurf</option>
+                  <option value="in-progress">In Bearbeitung</option>
+                  <option value="completed">Abgeschlossen</option>
+                  <option value="invoiced">Abgerechnet</option>
+                </select>
               </div>
+
+              {/* Rechnung: einer → direkt, mehrere → Sammelrechnung */}
+              <button
+                onClick={handleBulkInvoiceGeneration}
+                disabled={isBulkOperation || convertingJobId !== null || selectedCompletedJobIds.length === 0}
+                title={selectedCompletedJobIds.length === 0 ? 'Nur abgeschlossene Aufträge können abgerechnet werden' : undefined}
+                className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 transition-colors flex items-center text-sm disabled:bg-gray-400"
+              >
+                <FileCheck className="h-4 w-4 mr-1" />
+                {selectedCompletedJobIds.length >= 2
+                  ? `Sammelrechnung erstellen (${selectedCompletedJobIds.length})`
+                  : 'In Rechnung umwandeln'}
+              </button>
+
+              {/* Bulk Download */}
+              <button
+                onClick={handleBulkDownload}
+                disabled={isBulkOperation}
+                className="bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 transition-colors flex items-center text-sm disabled:bg-gray-400"
+              >
+                <Download className="h-4 w-4 mr-1" />
+                Herunterladen
+              </button>
+
+              {/* Bulk Delete */}
+              <button
+                onClick={handleBulkDelete}
+                disabled={isBulkOperation}
+                className="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 transition-colors flex items-center text-sm disabled:bg-gray-400"
+              >
+                <Trash2 className="h-4 w-4 mr-1" />
+                Löschen
+              </button>
+
+              {/* Clear Selection */}
+              <button
+                onClick={() => setSelectedJobIds([])}
+                className="bg-gray-500 text-white px-3 py-1 rounded hover:bg-gray-600 transition-colors flex items-center text-sm"
+              >
+                <X className="h-4 w-4 mr-1" />
+                Auswahl aufheben
+              </button>
             </div>
           </div>
-        )}
-        
+        </div>
+      ) : completedFilteredJobs.length >= 2 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex items-start">
+            <Info className="h-4 w-4 text-blue-600 mr-2 mt-0.5 flex-shrink-0" />
+            <span className="text-sm text-blue-800">
+              {completedFilteredJobs.length} abgeschlossene Aufträge bereit zur Abrechnung. Mehrere auswählen, um sie in einer Sammelrechnung abzurechnen.
+            </span>
+          </div>
+          <button
+            onClick={() => setSelectedJobIds(completedFilteredJobs.map(job => job.id))}
+            className="bg-white border border-blue-300 text-blue-700 px-3 py-1 rounded hover:bg-blue-100 transition-colors text-sm whitespace-nowrap"
+          >
+            Alle abgeschlossenen auswählen
+          </button>
+        </div>
+      )}
+
+      {/* Job List */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100">
         {filteredJobs.length === 0 ? (
           <div className="p-8 lg:p-12 text-center">
             <Briefcase className="h-12 w-12 lg:h-16 lg:w-16 text-gray-400 mx-auto mb-4" />
@@ -818,254 +847,86 @@ export function JobManagement({ onNavigate, autoCreate, initialFilter, initialSe
                 ? 'Versuchen Sie andere Filter oder erstellen Sie einen neuen Auftrag.'
                 : 'Erstellen Sie Ihren ersten Auftrag, um loszulegen.'}
             </p>
-            
+
             {/* Info box für neue Benutzer */}
             {jobEntries.length === 0 && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 text-left max-w-md mx-auto">
-                <h4 className="text-sm font-medium text-blue-900 mb-2">So funktioniert die Rechnungserstellung:</h4>
+                <h4 className="text-sm font-medium text-blue-900 mb-2">So funktioniert die Abrechnung:</h4>
                 <ol className="text-sm text-blue-800 space-y-1">
-                  <li>1. Aufträge erstellen und Arbeitszeit erfassen</li>
-                  <li>2. Aufträge als "Abgeschlossen" markieren</li>
-                  <li>3. Abgeschlossene Aufträge auswählen</li>
-                  <li>4. "Rechnung erstellen" klicken</li>
-                  <li>5. Rechnungsart wählen (Einzel/Tages/Monatsrechnung)</li>
+                  <li>1. Auftrag erstellen und Arbeitszeit erfassen</li>
+                  <li>2. Auftrag abschließen</li>
+                  <li>3. Einzeln: „In Rechnung umwandeln“ in der Zeile</li>
+                  <li>4. Mehrere: Aufträge anhaken → „Sammelrechnung erstellen“</li>
                 </ol>
               </div>
             )}
-            
+
             <button
               onClick={() => setShowForm(true)}
-              className="bg-primary-custom text-white px-4 lg:px-6 py-2 lg:py-3 rounded-xl hover:bg-primary-custom/90 transition-all duration-300 hover:scale-105"
+              className="btn-primary text-white px-4 lg:px-6 py-2 lg:py-3 rounded-xl hover:brightness-90 transition-all duration-300 hover:scale-105"
             >
               Ersten Auftrag erstellen
             </button>
           </div>
         ) : (
           <>
-            {/* Mobile View */}
-            <div className="block lg:hidden">
-              <div className="p-4 border-b bg-gray-50">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">                        <input
-                          type="checkbox"
-                          onChange={(e) => handleSelectAllJobs(e.target.checked)}
-                          checked={
-                            filteredJobs.length > 0 &&
-                            filteredJobs.every((job: JobEntry) => selectedJobIds.includes(job.id))
-                          }
-                          className="custom-checkbox"
-                          title="Alle Aufträge auswählen"
-                        />
-                    <span className="ml-2 text-sm text-gray-600">Alle auswählen</span>
-                  </div>
-                  <span className="text-xs text-gray-500">
-                    {filteredJobs.filter((job: JobEntry) => job.status === 'completed').length} abgeschlossen
-                  </span>
-                </div>
-              </div>
-              
-              <div className="divide-y divide-gray-200">
-                {filteredJobs.map((job) => (
-                  <div key={job.id} className="p-4 hover:bg-gray-50 cursor-pointer" onClick={(e) => handleRowClick(e, job)}>
-                    <div className="flex items-start space-x-3">
-                      <div className="flex-shrink-0 pt-1">
-                        <input
-                          type="checkbox"
-                          checked={selectedJobIds.includes(job.id)}
-                          onChange={(e) => handleJobSelection(job.id, e.target.checked)}
-                          className="custom-checkbox cursor-pointer"
-                          title="Auftrag auswählen"
-                        />
-                      </div>
-                      
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between mb-2">
-                          <h3 className="text-sm font-medium text-gray-900 truncate flex items-center">
-                            {job.priority && (
-                              <AlertTriangle className={`h-4 w-4 mr-1 flex-shrink-0 ${getPriorityColor(job.priority)}`} />
-                            )}
-                            {job.title}
-                          </h3>
-                          <div className="flex items-center space-x-1 ml-2">
-                            {job.status === 'invoiced' && job.invoiceId && invoices.some(i => i.id === job.invoiceId) && (
-                              <button
-                                onClick={() => goToInvoice(job)}
-                                className="text-green-600 hover:text-green-900 p-1 flex items-center text-xs font-medium"
-                                title="Zur Rechnung"
-                              >
-                                <FileText className="h-4 w-4" />
-                              </button>
-                            )}
-                            <button
-                              onClick={() => handleExportJobPDF(job)}
-                              className="text-blue-600 hover:text-blue-900 p-1"
-                              title="PDF exportieren"
-                            >
-                              <Download className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={() => handlePreview(job)}
-                              className="text-green-600 hover:text-green-900 p-1"
-                              title="Dokumente anzeigen"
-                            >
-                              <Eye className="h-4 w-4" />
-                            </button>
-                            {!job.signature && job.status !== 'completed' && job.status !== 'invoiced' && (
-                              <button
-                                onClick={() => handleSignature(job)}
-                                className="text-purple-600 hover:text-purple-900 p-1"
-                                title="Unterschrift hinzufügen"
-                              >
-                                <PenTool className="h-4 w-4" />
-                              </button>
-                            )}
-                            <button
-                              onClick={() => handleEdit(job)}
-                              className="p-1 text-indigo-600 hover:text-indigo-900"
-                              title={job.status === 'invoiced' ? 'Bearbeiten (GoBD-Warnung wird angezeigt)' : 'Bearbeiten'}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDelete(job)}
-                              className="p-1 text-red-600 hover:text-red-900"
-                              title={job.status === 'invoiced' ? 'Löschen (GoBD-Warnung wird angezeigt)' : 'Löschen'}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </div>
-                        
-                        <p className="text-sm text-gray-500 mb-3 line-clamp-2">
-                          {job.description}
-                        </p>
-                        
-                        <div className="grid grid-cols-2 gap-3 text-sm">
-                          <div className="flex items-center">
-                            <span className="text-gray-500 mr-2">Nr:</span>
-                            <span className="text-gray-900 font-medium">{job.jobNumber}</span>
-                          </div>
-                          
-                          <div className="flex items-center">
-                            <span className="text-gray-500 mr-2">Ext:</span>
-                            <span className="text-gray-900">{job.externalJobNumber || '-'}</span>
-                          </div>
-                          
-                          <div className="flex items-center">
-                            <User className="h-4 w-4 text-gray-400 mr-1 flex-shrink-0" />
-                            <span className="text-gray-900 truncate">{job.customerName}</span>
-                          </div>
-                          
-                          <div className="flex items-center">
-                            <Calendar className="h-4 w-4 text-gray-400 mr-1 flex-shrink-0" />
-                            <span className="text-gray-900">{new Date(job.date).toLocaleDateString(locale)}</span>
-                          </div>
-                          
-                          <div className="flex items-center col-span-2">
-                            <Clock className="h-4 w-4 text-gray-400 mr-1 flex-shrink-0" />
-                            <span className="text-gray-900">{calculateTotalHours(job).toFixed(1)}h</span>
-                          </div>
-                        </div>
-                        
-                        <div className="mt-3">
-                          <select
-                            value={job.status}
-                            onChange={(e) => handleStatusChange(job.id, e.target.value as JobEntry['status'])}
-                            disabled={job.status === 'invoiced'}
-                            className={`text-xs font-semibold rounded-full px-3 py-1 border-0 ${getStatusColor(job.status)} focus:ring-2 focus:ring-primary-custom w-auto ${
-                              job.status === 'invoiced' ? 'cursor-not-allowed opacity-75' : ''
-                            }`}
-                            title={job.status === 'invoiced' ? 'Status von abgerechneten Aufträgen kann nicht geändert werden' : ''}
-                          >
-                            <option value="draft">Entwurf</option>
-                            <option value="in-progress">In Bearbeitung</option>
-                            <option value="completed">Abgeschlossen</option>
-                            <option value="invoiced">Abgerechnet</option>
-                          </select>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Desktop Table View */}
-            <div className="hidden lg:block overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-2 py-3 text-left w-12">
-                      <div className="flex items-center">
+            {/* Desktop/Tablet Table View */}
+            <div className="hidden md:block overflow-x-auto scrollbar-hide">
+              <div className="min-w-full overflow-hidden">
+                <table className="w-full min-w-[900px]">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-3 py-3 text-left w-16">
                         <input
                           type="checkbox"
                           onChange={(e) => handleSelectAllJobs(e.target.checked)}
-                          checked={
-                            filteredJobs.length > 0 &&
-                            filteredJobs.every((job: JobEntry) => selectedJobIds.includes(job.id))
-                          }
+                          checked={filteredJobs.every((job: JobEntry) => selectedJobIds.includes(job.id))}
                           className="custom-checkbox"
-                          title="Alle Aufträge auswählen"
+                          title="Alle auswählen"
                         />
-                      </div>
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
-                      Nr.
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">
-                      Ext.
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Auftrag
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
-                      Kunde
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
-                      Datum
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28">
-                      Status
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">
-                      Std.
-                    </th>
-                    <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
-                      Aktionen
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredJobs.map((job) => (
-                    <tr key={job.id} className="hover:bg-gray-50 cursor-pointer" onClick={(e) => handleRowClick(e, job)}>
-                      <td className="px-2 py-4 w-12">
-                        <div className="flex items-center">
+                      </th>
+                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
+                        Nr.
+                      </th>
+                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Auftrag
+                      </th>
+                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Kunde
+                      </th>
+                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
+                        Datum
+                      </th>
+                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">
+                        Std.
+                      </th>
+                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-40">
+                        Status
+                      </th>
+                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-48">
+                        Aktionen
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {filteredJobs.map((job) => (
+                      <tr key={job.id} onClick={(e) => handleRowClick(e, job)} className="cursor-pointer hover:bg-gray-50">
+                        <td className="px-3 py-4 w-16">
                           <input
                             type="checkbox"
                             checked={selectedJobIds.includes(job.id)}
                             onChange={(e) => handleJobSelection(job.id, e.target.checked)}
-                            className="custom-checkbox cursor-pointer"
+                            className="custom-checkbox"
                             title="Auftrag auswählen"
                           />
-                          {job.status !== 'completed' && job.status !== 'invoiced' && (
-                            <span className="ml-1 text-xs text-gray-400" title="Auftrag noch nicht abgeschlossen">
-                              ⚠️
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-3 py-4 w-24">
-                        <div className="text-sm font-medium text-gray-900 truncate">
+                        </td>
+                        <td className="px-3 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                           {job.jobNumber}
-                        </div>
-                      </td>
-                      <td className="px-3 py-4 w-20">
-                        <div className="text-sm text-gray-600 truncate">
-                          {job.externalJobNumber || '-'}
-                        </div>
-                      </td>
-                      <td className="px-3 py-4">
-                        <div>
+                          {job.externalJobNumber && (
+                            <div className="text-xs font-normal text-gray-500">Ext: {job.externalJobNumber}</div>
+                          )}
+                        </td>
+                        <td className="px-3 py-4">
                           <div className="text-sm font-medium text-gray-900 flex items-center">
                             {job.priority && (
                               <AlertTriangle className={`h-4 w-4 mr-2 flex-shrink-0 ${getPriorityColor(job.priority)}`} />
@@ -1075,96 +936,99 @@ export function JobManagement({ onNavigate, autoCreate, initialFilter, initialSe
                           <div className="text-sm text-gray-500 truncate max-w-xs">
                             {job.description}
                           </div>
+                        </td>
+                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {job.customerName}
+                        </td>
+                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {new Date(job.date).toLocaleDateString(locale)}
+                        </td>
+                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {calculateTotalHours(job).toFixed(1)}h
+                        </td>
+                        <td className="px-3 py-4 whitespace-nowrap">
+                          <div className="flex flex-col space-y-1">
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(job.status)}`}>
+                              {getStatusLabel(job.status)}
+                            </span>
+                            {renderNextStep(job, false)}
+                          </div>
+                        </td>
+                        <td className="px-3 py-4 whitespace-nowrap text-sm font-medium">
+                          {renderActions(job, false)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Mobile Card View */}
+            <div className="md:hidden">
+              {/* Mobile Select All */}
+              <div className="p-4 border-b bg-gray-50">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      onChange={(e) => handleSelectAllJobs(e.target.checked)}
+                      checked={filteredJobs.every((job: JobEntry) => selectedJobIds.includes(job.id))}
+                      className="custom-checkbox"
+                      title="Alle auswählen"
+                    />
+                    <span className="ml-2 text-sm text-gray-600">Alle auswählen</span>
+                  </div>
+                  <span className="text-xs text-gray-500">
+                    {filteredJobs.length} Auftrag/Aufträge
+                  </span>
+                </div>
+              </div>
+
+              {filteredJobs.map((job) => (
+                <div key={job.id} onClick={(e) => handleRowClick(e, job)} className="cursor-pointer p-4 border-b border-gray-200 last:border-b-0">
+                  <div className="flex items-start space-x-3">
+                    <div className="flex-shrink-0 pt-1">
+                      <input
+                        type="checkbox"
+                        checked={selectedJobIds.includes(job.id)}
+                        onChange={(e) => handleJobSelection(job.id, e.target.checked)}
+                        className="custom-checkbox"
+                        title="Auftrag auswählen"
+                      />
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-start mb-3">
+                        <div className="flex-1 min-w-0">
+                          <h3 className="text-sm font-medium text-gray-900 truncate flex items-center">
+                            {job.priority && (
+                              <AlertTriangle className={`h-4 w-4 mr-1 flex-shrink-0 ${getPriorityColor(job.priority)}`} />
+                            )}
+                            {job.jobNumber}{job.externalJobNumber ? ` · Ext: ${job.externalJobNumber}` : ''}
+                          </h3>
+                          <p className="text-sm text-gray-900 truncate">{job.title}</p>
+                          <p className="text-sm text-gray-600 truncate">{job.customerName}</p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {new Date(job.date).toLocaleDateString(locale)} · {calculateTotalHours(job).toFixed(1)}h
+                          </p>
                         </div>
-                      </td>
-                      <td className="px-3 py-4 w-32">
-                        <div className="flex items-center">
-                          <User className="h-4 w-4 text-gray-400 mr-2 flex-shrink-0" />
-                          <span className="text-sm text-gray-900 truncate">{job.customerName}</span>
+                        <div className="text-right ml-4">
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(job.status)}`}>
+                            {getStatusLabel(job.status)}
+                          </span>
                         </div>
-                      </td>
-                      <td className="px-3 py-4 w-24">
-                        <div className="flex items-center">
-                          <Calendar className="h-4 w-4 text-gray-400 mr-2 flex-shrink-0" />
-                          <span className="text-sm text-gray-900 whitespace-nowrap">{new Date(job.date).toLocaleDateString(locale)}</span>
-                        </div>
-                      </td>
-                      <td className="px-3 py-4 w-28">
-                        <select
-                          value={job.status}
-                          onChange={(e) => handleStatusChange(job.id, e.target.value as JobEntry['status'])}
-                          disabled={job.status === 'invoiced'}
-                          className={`text-xs font-semibold rounded-full px-2 py-1 border-0 ${getStatusColor(job.status)} focus:ring-2 focus:ring-primary-custom ${
-                            job.status === 'invoiced' ? 'cursor-not-allowed opacity-75' : ''
-                          }`}
-                          title={job.status === 'invoiced' ? 'Status von abgerechneten Aufträgen kann nicht geändert werden' : ''}
-                        >
-                          <option value="draft">Entwurf</option>
-                          <option value="in-progress">In Bearbeitung</option>
-                          <option value="completed">Abgeschlossen</option>
-                          <option value="invoiced">Abgerechnet</option>
-                        </select>
-                      </td>
-                      <td className="px-3 py-4 w-20">
-                        <div className="flex items-center">
-                          <Clock className="h-4 w-4 text-gray-400 mr-2 flex-shrink-0" />
-                          <span className="text-sm text-gray-900">{calculateTotalHours(job).toFixed(1)}h</span>
-                        </div>
-                      </td>
-                      <td className="px-3 py-4 text-right w-24">
-                        <div className="flex justify-end space-x-1">
-                          {job.status === 'invoiced' && job.invoiceId && invoices.some(i => i.id === job.invoiceId) && (
-                            <button
-                              onClick={() => goToInvoice(job)}
-                              className="text-green-600 hover:text-green-900 p-1 flex items-center text-xs font-medium"
-                              title="Zur Rechnung"
-                            >
-                              <FileText className="h-4 w-4" />
-                            </button>
-                          )}
-                          <button
-                            onClick={() => handleExportJobPDF(job)}
-                            className="text-blue-600 hover:text-blue-900 p-1"
-                            title="PDF exportieren"
-                          >
-                            <Download className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => handlePreview(job)}
-                            className="text-green-600 hover:text-green-900 p-1"
-                            title="Dokumente anzeigen"
-                          >
-                            <Eye className="h-4 w-4" />
-                          </button>
-                          {!job.signature && job.status !== 'completed' && job.status !== 'invoiced' && (
-                            <button
-                              onClick={() => handleSignature(job)}
-                              className="text-purple-600 hover:text-purple-900 p-1"
-                              title="Unterschrift hinzufügen"
-                            >
-                              <PenTool className="h-4 w-4" />
-                            </button>
-                          )}
-                          <button
-                            onClick={() => handleEdit(job)}
-                            className="p-1 text-indigo-600 hover:text-indigo-900"
-                            title={job.status === 'invoiced' ? 'Bearbeiten (GoBD-Warnung wird angezeigt)' : 'Bearbeiten'}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(job)}
-                            className="p-1 text-red-600 hover:text-red-900"
-                            title={job.status === 'invoiced' ? 'Löschen (GoBD-Warnung wird angezeigt)' : 'Löschen'}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </div>
+
+                      {/* Action buttons for mobile */}
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        {renderNextStep(job, true)}
+                        {renderActions(job, true)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </>
         )}

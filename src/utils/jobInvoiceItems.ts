@@ -120,7 +120,7 @@ export function buildInvoiceFromJobs(jobs: JobEntry[], isSmallBusiness = false) 
   }
   const discount = jobs.length > 0 ? discountOf(jobs[0]) : undefined;
   const items = buildInvoiceItemsFromJobs(jobs, isSmallBusiness);
-  const { subtotal, taxAmount, total, globalDiscountAmount } = calculateInvoiceWithDiscounts(
+  const { subtotal, taxAmount, total, globalDiscountAmount, discountedSubtotal } = calculateInvoiceWithDiscounts(
     items,
     discount ?? {},
     isSmallBusiness
@@ -133,5 +133,7 @@ export function buildInvoiceFromJobs(jobs: JobEntry[], isSmallBusiness = false) 
     globalDiscountType: discount?.type,
     globalDiscountValue: discount?.value,
     globalDiscountAmount: discount ? globalDiscountAmount : undefined,
+    /** Netto nach allen Rabatten */
+    netTotal: discountedSubtotal,
   };
 }

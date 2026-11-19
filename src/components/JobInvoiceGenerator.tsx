@@ -1,17 +1,14 @@
 import { Modal } from './Modal';
 import React, { useState } from 'react';
 import logger from '../utils/logger';
-import { withJobContent } from '../utils/attachmentContent';
 import { FileText, Calendar, Users, Check, AlertTriangle } from 'lucide-react';
-import { JobEntry, Customer } from '../types';
+import { JobEntry } from '../types';
 import { useCustomers } from '../context/CustomerContext';
-import { useInvoices } from '../context/InvoiceContext';
 import { useJobs } from '../context/JobContext';
-import { useQuotes } from '../context/QuoteContext';
 import { useCompany } from '../context/CompanyContext';
-import { generateJobPDF } from '../utils/pdfGenerator';
-import { generateUUID } from '../utils/uuid';
 import { buildInvoiceFromJobs, groupJobsByGlobalDiscount } from '../utils/jobInvoiceItems';
+import { calculateTotalHours } from '../utils/jobUtils';
+import { useJobInvoicing } from '../hooks/useJobInvoicing';
 
 interface JobInvoiceGeneratorProps {
   selectedJobIds: string[];
@@ -25,10 +22,9 @@ export function JobInvoiceGenerator({
   onInvoiceGenerated
 }: JobInvoiceGeneratorProps) {
   const { customers } = useCustomers();
-  const { addInvoice, refreshInvoices } = useInvoices();
-  const { jobEntries: jobs, updateJobEntry } = useJobs();
-  const { refreshQuotes } = useQuotes();
+  const { jobEntries: jobs } = useJobs();
   const { company } = useCompany();
+  const { createInvoiceForJobs: createInvoiceFromJobs } = useJobInvoicing();
   const [generationType, setGenerationType] = useState<'single' | 'daily' | 'weekly' | 'monthly'>('single');
   const [isGenerating, setIsGenerating] = useState(false);
 
@@ -71,92 +67,49 @@ export function JobInvoiceGenerator({
     }
   };
 
+  const periodKey = (job: JobEntry): string => {
+    const date = new Date(job.date);
+    switch (generationType) {
+      case 'daily':
+        return date.toDateString();
+      case 'weekly': {
+        // Montag der Woche (ISO-Woche)
+        const monday = new Date(date);
+        const day = date.getDay();
+        monday.setDate(date.getDate() - day + (day === 0 ? -6 : 1));
+        monday.setHours(0, 0, 0, 0);
+        return `${monday.getFullYear()}-W${String(getISOWeek(monday)).padStart(2, '0')}`;
+      }
+      case 'monthly':
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      default:
+        return job.id;
+    }
+  };
+
+  // Eine Rechnung je Kunde und Zeitraum; Aufträge mit unterschiedlichem Gesamtrabatt
+  // werden getrennt abgerechnet, damit die Summen exakt bleiben.
+  const groupByPeriod = (): JobEntry[][] => {
+    const periods = new Map<string, JobEntry[]>();
+    for (const job of completedJobs) {
+      const key = `${job.customerId}|${periodKey(job)}`;
+      periods.set(key, [...(periods.get(key) ?? []), job]);
+    }
+    return [...periods.values()];
+  };
+  const planInvoices = (): JobEntry[][] => groupByPeriod().flatMap(groupJobsByGlobalDiscount);
+
   const generateInvoices = async () => {
     // Fehler pro Rechnung abfangen, damit ein Fehlschlag nicht den Rest des
     // Stapels abbricht und halb abgerechnete Aufträge hinterlässt.
     const failures: string[] = [];
-    const createInvoiceSafely = async (jobs: JobEntry[]) => {
+    for (const group of planInvoices()) {
       try {
-        // Aufträge mit unterschiedlichem Gesamtrabatt werden getrennt abgerechnet, damit die Summen exakt bleiben.
-        for (const group of groupJobsByGlobalDiscount(jobs)) {
-          await createInvoiceForJobs(group);
-        }
+        await createInvoiceForJobs(group);
       } catch (error) {
         logger.error('Error creating invoice for jobs', { error });
-        failures.push(jobs.map(j => j.jobNumber || j.title).join(', '));
+        failures.push(group.map(j => j.jobNumber || j.title).join(', '));
       }
-    };
-
-    switch (generationType) {
-      case 'single':
-        // Create separate invoice for each completed job only
-        for (const job of completedJobs) {
-          await createInvoiceSafely([job]);
-        }
-        break;
-      
-      case 'daily':
-        // Create one invoice per day per customer
-        for (const [, customerJobs] of Object.entries(jobsByCustomer)) {
-          const jobsByDateForCustomer = (customerJobs as JobEntry[]).reduce((acc: Record<string, JobEntry[]>, job: JobEntry) => {
-            const dateKey = new Date(job.date).toDateString();
-            if (!acc[dateKey]) {
-              acc[dateKey] = [];
-            }
-            acc[dateKey].push(job);
-            return acc;
-          }, {} as Record<string, JobEntry[]>);
-          
-          for (const dayJobs of Object.values(jobsByDateForCustomer)) {
-            await createInvoiceSafely(dayJobs);
-          }
-        }
-        break;
-      
-      case 'weekly':
-        // Create one invoice per week per customer
-        for (const [, customerJobs] of Object.entries(jobsByCustomer)) {
-          const jobsByWeekForCustomer = (customerJobs as JobEntry[]).reduce((acc: Record<string, JobEntry[]>, job: JobEntry) => {
-            const date = new Date(job.date);
-            // Get Monday of the week (ISO week)
-            const monday = new Date(date);
-            const day = date.getDay();
-            const diff = date.getDate() - day + (day === 0 ? -6 : 1);
-            monday.setDate(diff);
-            monday.setHours(0, 0, 0, 0);
-            
-            const weekKey = `${monday.getFullYear()}-W${String(getISOWeek(monday)).padStart(2, '0')}`;
-            if (!acc[weekKey]) {
-              acc[weekKey] = [];
-            }
-            acc[weekKey].push(job);
-            return acc;
-          }, {} as Record<string, JobEntry[]>);
-          
-          for (const weekJobs of Object.values(jobsByWeekForCustomer)) {
-            await createInvoiceSafely(weekJobs);
-          }
-        }
-        break;
-      
-      case 'monthly':
-        // Create one invoice per month per customer
-        for (const [, customerJobs] of Object.entries(jobsByCustomer)) {
-          const jobsByMonthForCustomer = (customerJobs as JobEntry[]).reduce((acc: Record<string, JobEntry[]>, job: JobEntry) => {
-            const date = new Date(job.date);
-            const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-            if (!acc[monthKey]) {
-              acc[monthKey] = [];
-            }
-            acc[monthKey].push(job);
-            return acc;
-          }, {} as Record<string, JobEntry[]>);
-          
-          for (const monthJobs of Object.values(jobsByMonthForCustomer)) {
-            await createInvoiceSafely(monthJobs);
-          }
-        }
-        break;
     }
 
     if (failures.length > 0) {
@@ -167,16 +120,8 @@ export function JobInvoiceGenerator({
   const createInvoiceForJobs = async (jobsToInvoice: JobEntry[]) => {
     if (jobsToInvoice.length === 0) return;
 
-    const customer = customers.find((c: Customer) => c.id === jobsToInvoice[0].customerId);
-    if (!customer) return;
-
-    const { items: pricedItems, subtotal, taxAmount, total, globalDiscountType, globalDiscountValue, globalDiscountAmount } = buildInvoiceFromJobs(
-      jobsToInvoice,
-      company?.isSmallBusiness
-    );
-
     let issueDate = new Date();
-    
+
     if (generationType === 'daily') {
       // For daily invoices, use the date of the jobs
       issueDate = new Date(jobsToInvoice[0].date);
@@ -187,7 +132,7 @@ export function JobInvoiceGenerator({
       const day = firstJobDate.getDay();
       const diff = firstJobDate.getDate() - day + (day === 0 ? -6 : 1);
       monday.setDate(diff);
-      
+
       // Get Sunday of the same week
       const sunday = new Date(monday);
       sunday.setDate(monday.getDate() + 6);
@@ -198,109 +143,8 @@ export function JobInvoiceGenerator({
       const lastDayOfMonth = new Date(firstJobDate.getFullYear(), firstJobDate.getMonth() + 1, 0);
       issueDate = lastDayOfMonth;
     }
-    
-    // Generate job PDFs as attachments and collect job attachments
-    const attachments = [];
-    
-    // Add original job attachments first
-    for (const listJob of jobsToInvoice) {
-      if (listJob.attachments && listJob.attachments.length > 0) {
-        const job = await withJobContent(listJob);
-        for (const attachment of job.attachments || []) {
-          attachments.push({
-            id: generateUUID(),
-            name: `${job.title}_${attachment.name}`,
-            content: attachment.content,
-            contentType: attachment.contentType,
-            size: attachment.size,
-            uploadedAt: new Date()
-          });
-        }
-      }
-    }
-    
-    // Then add generated job PDFs
-    for (const job of jobsToInvoice) {
-      try {
-        const jobPDF = await generateJobPDF(job, {
-          company,
-          customer
-        });
-        
-        // Convert blob to base64
-        const reader = new FileReader();
-        const base64Promise = new Promise<string>((resolve, reject) => {
-          reader.onloadend = () => {
-            const result = reader.result as string;
-            // Remove data URL prefix to get just the base64 string
-            const base64 = result.split(',')[1];
-            resolve(base64);
-          };
-          reader.onerror = reject;
-        });
-        reader.readAsDataURL(jobPDF);
-        
-        const base64Content = await base64Promise;
-        
-        attachments.push({
-          id: generateUUID(),
-          name: `Auftrag_${job.title.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date(job.date).toLocaleDateString('de-DE').replace(/\./g, '-')}.pdf`,
-          content: base64Content,
-          contentType: 'application/pdf',
-          size: jobPDF.size,
-          uploadedAt: new Date()
-        });
-      } catch (error) {
-        logger.error('Error generating job PDF for attachment:', error);
-        // Continue without this attachment if generation fails
-      }
-    }
 
-    // Calculate due date based on issue date and company payment days
-    const paymentDays = company.defaultPaymentDays !== undefined ? company.defaultPaymentDays : 30;
-    const dueDate = new Date(issueDate.getTime() + paymentDays * 24 * 60 * 60 * 1000);
-    
-    const invoice = {
-      invoiceNumber: '', // Will be generated by backend
-      customerId: customer.id,
-      customerName: customer.name,
-      issueDate: issueDate,
-      dueDate: dueDate,
-      items: pricedItems,
-      subtotal,
-      taxAmount,
-      total,
-      globalDiscountType,
-      globalDiscountValue,
-      globalDiscountAmount,
-      status: 'draft' as const,
-      notes: `Automatisch erstellt aus ${jobsToInvoice.length} Auftrag${jobsToInvoice.length > 1 ? 'en' : ''}:\n\n${jobsToInvoice.map(j => `• ${j.jobNumber}${j.externalJobNumber ? ` (Ext: ${j.externalJobNumber})` : ''}: ${j.title}`).join('\n')}`,
-      attachments
-    };
-
-    const createdInvoice = await addInvoice(invoice);
-    
-    // Refresh invoices in other components
-    await refreshInvoices();
-
-    // Update job status to 'invoiced'.
-    // Die Rechnung ist an dieser Stelle bereits angelegt — ein fehlgeschlagenes
-    // Status-Update darf den Vorgang nicht abbrechen, sonst bleiben Aufträge
-    // ohne Kennzeichnung zurück, obwohl die Rechnung existiert.
-    const unmarked: string[] = [];
-    for (const job of jobsToInvoice) {
-      try {
-        await updateJobEntry(job.id, { status: 'invoiced', invoiceId: createdInvoice.id });
-      } catch (error) {
-        logger.error('Error marking job as invoiced', { error, jobId: job.id });
-        unmarked.push(job.jobNumber || job.title);
-      }
-    }
-    // Angebote verknüpfter Aufträge gelten damit als abgerechnet.
-    await refreshQuotes();
-    if (unmarked.length > 0) {
-      alert(`Die Rechnung wurde erstellt, aber folgende Aufträge konnten nicht als "abgerechnet" markiert werden: ${unmarked.join(', ')}`);
-    }
+    await createInvoiceFromJobs(jobsToInvoice, issueDate);
   };
 
   const formatCurrency = (amount: number) => {
@@ -316,65 +160,19 @@ export function JobInvoiceGenerator({
     return new Date(date).toLocaleDateString('de-DE');
   };
 
-  const calculateJobTotal = (job: JobEntry) => {
-    const laborCost = job.hoursWorked * job.hourlyRate;
-    const materialCost = job.materials?.reduce((sum, material) => sum + material.total, 0) || 0;
-    return laborCost + materialCost;
-  };
+  const netAmount = (jobsOnInvoice: JobEntry[]) =>
+    buildInvoiceFromJobs(jobsOnInvoice, company?.isSmallBusiness).netTotal;
 
-  const getTotalAmount = () => {
-    return completedJobs.reduce((sum: number, job: JobEntry) => sum + calculateJobTotal(job), 0);
-  };
+  const getTotalAmount = () => planInvoices().reduce((sum, group) => sum + netAmount(group), 0);
 
   const getPreviewInfo = () => {
-    switch (generationType) {
-      case 'single':
-        return `${completedJobs.length} Rechnung(en) werden erstellt (eine pro Auftrag)`;
-      case 'daily': {
-        const completedJobsByDate = completedJobs.reduce((acc: Record<string, JobEntry[]>, job: JobEntry) => {
-          const dateKey = new Date(job.date).toDateString();
-          if (!acc[dateKey]) {
-            acc[dateKey] = [];
-          }
-          acc[dateKey].push(job);
-          return acc;
-        }, {} as Record<string, JobEntry[]>);
-        return `${Object.keys(completedJobsByDate).length} Rechnung(en) werden erstellt (eine pro Tag)`;
-      }
-      case 'weekly': {
-        const completedJobsByWeek = completedJobs.reduce((acc: Record<string, JobEntry[]>, job: JobEntry) => {
-          const date = new Date(job.date);
-          // Get Monday of the week (ISO week)
-          const monday = new Date(date);
-          const day = date.getDay();
-          const diff = date.getDate() - day + (day === 0 ? -6 : 1);
-          monday.setDate(diff);
-          monday.setHours(0, 0, 0, 0);
-          
-          const weekKey = `${monday.getFullYear()}-W${String(getISOWeek(monday)).padStart(2, '0')}`;
-          if (!acc[weekKey]) {
-            acc[weekKey] = [];
-          }
-          acc[weekKey].push(job);
-          return acc;
-        }, {} as Record<string, JobEntry[]>);
-        return `${Object.keys(completedJobsByWeek).length} Rechnung(en) werden erstellt (eine pro Woche)`;
-      }
-      case 'monthly': {
-        const completedJobsByMonth = completedJobs.reduce((acc: Record<string, JobEntry[]>, job: JobEntry) => {
-          const date = new Date(job.date);
-          const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-          if (!acc[monthKey]) {
-            acc[monthKey] = [];
-          }
-          acc[monthKey].push(job);
-          return acc;
-        }, {} as Record<string, JobEntry[]>);
-        return `${Object.keys(completedJobsByMonth).length} Rechnung(en) werden erstellt (eine pro Monat)`;
-      }
-      default:
-        return '';
-    }
+    const per = { single: 'Auftrag', daily: 'Tag', weekly: 'Woche', monthly: 'Monat' }[generationType];
+    const count = planInvoices().length;
+    const split = count - groupByPeriod().length;
+    const splitInfo = split > 0
+      ? `, davon ${split} zusätzlich, weil Aufträge mit unterschiedlichem Gesamtrabatt getrennt abgerechnet werden`
+      : '';
+    return `${count} Rechnung(en) werden erstellt (je Kunde eine pro ${per}${splitInfo})`;
   };
 
   return (
@@ -523,7 +321,7 @@ export function JobInvoiceGenerator({
               <div className="space-y-3">
                 {Object.entries(jobsByCustomer).map(([customerId, customerJobs]) => {
                   const customer = customers.find(c => c.id === customerId);
-                  const customerTotal = customerJobs.reduce((sum, job) => sum + calculateJobTotal(job), 0);
+                  const customerTotal = customerJobs.reduce((sum, job) => sum + netAmount([job]), 0);
                   
                   return (
                     <div key={customerId} className="border border-gray-200 rounded-lg p-3 bg-white">
@@ -544,10 +342,10 @@ export function JobInvoiceGenerator({
                               <Calendar className="h-3 w-3 text-gray-400" />
                               <span className="text-gray-600">{formatDate(job.date)}</span>
                               <span className="text-gray-900">{job.title}</span>
-                              <span className="text-gray-500">({job.hoursWorked}h)</span>
+                              <span className="text-gray-500">({calculateTotalHours(job).toFixed(1)}h)</span>
                             </div>
                             <span className="text-gray-900">
-                              {formatCurrency(calculateJobTotal(job))}
+                              {formatCurrency(netAmount([job]))}
                             </span>
                           </div>
                         ))}
