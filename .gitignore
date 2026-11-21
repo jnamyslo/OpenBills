@@ -6,3 +6,4 @@
 .kosit/
 # veraPDF/Mustang (scripts/pdfa-validate.sh)
 .pdfa/
+.DS_Store
